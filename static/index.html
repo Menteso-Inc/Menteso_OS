@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menteso — Agent Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-brand">
+                <span class="header-icon">🏢</span>
+                <div>
+                    <h1 class="header-title">MENTESO</h1>
+                    <p class="header-subtitle">Visual Observer Agent — Monitoring all systems</p>
+                </div>
+            </div>
+            <div class="header-status">
+                <span class="pulse-dot"></span>
+                <span>System Online</span>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3>Agents</h3>
+                <span class="agent-count" id="agent-count">0</span>
+            </div>
+            <div class="agent-list" id="agent-list"></div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main" id="main-content"></main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
