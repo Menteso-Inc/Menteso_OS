@@ -13,6 +13,24 @@ const state = {
     lastResult: null,
     startTime: null,
     uploadedFilePath: null,
+    browser: {
+        url: "",
+        event: "idle",
+        patent_id: "",
+        title: "",
+        applicant: "",
+        country: "",
+        row: 0,
+        total: 0,
+        pdf_url: "",
+        emails: [],
+        phones: [],
+        name: "",
+        status: "",
+        found_count: 0,
+        not_found_count: 0,
+        error_count: 0,
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -58,9 +76,13 @@ async function runAgent(name, params = {}) {
     state.executionLog = [];
     state.lastResult = null;
     state.startTime = Date.now();
+    state.browser = {
+        url: "", event: "idle", patent_id: "", title: "", applicant: "",
+        country: "", row: 0, total: 0, pdf_url: "", emails: [], phones: [],
+        name: "", status: "", found_count: 0, not_found_count: 0, error_count: 0,
+    };
     renderMain();
 
-    // Build query string from params
     const query = new URLSearchParams();
     if (params.file_path) query.set("file_path", params.file_path);
     if (params.mode) query.set("mode", params.mode);
@@ -95,8 +117,9 @@ async function runAgent(name, params = {}) {
     }
 
     state.isRunning = false;
+    state.browser.event = "done";
+    updateBrowserPreview();
 
-    // Refresh agent data after run
     await loadAgents();
     if (state.selectedAgent) {
         const detail = await loadAgentDetail(state.selectedAgent.module_name);
@@ -109,13 +132,22 @@ function handleSSEEvent(data) {
     if (data.type === "step") {
         const type = classifyMessage(data.message);
         addLogLine(data.message, type);
+    } else if (data.type === "browser") {
+        handleBrowserEvent(data);
     } else if (data.type === "complete") {
         state.lastResult = data.result;
         addLogLine("Agent execution complete.", "success");
+        state.browser.event = "done";
+        updateBrowserPreview();
         renderMain();
     } else if (data.type === "error") {
         addLogLine(`FATAL: ${data.message}`, "error");
     }
+}
+
+function handleBrowserEvent(data) {
+    Object.assign(state.browser, data);
+    updateBrowserPreview();
 }
 
 function classifyMessage(msg) {
@@ -142,6 +174,209 @@ function addLogLine(message, type = "step") {
         else terminal.appendChild(line);
         terminal.scrollTop = terminal.scrollHeight;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Browser Preview — live DOM updates
+// ---------------------------------------------------------------------------
+function updateBrowserPreview() {
+    const urlBar = document.getElementById("browser-url");
+    const statusEl = document.getElementById("browser-status");
+    const content = document.getElementById("browser-content");
+    if (!urlBar || !content) return;
+
+    const b = state.browser;
+
+    // Update URL bar
+    urlBar.textContent = b.url || "about:blank";
+    urlBar.title = b.url || "";
+
+    // Update status dot
+    if (statusEl) {
+        const ev = b.event;
+        if (ev === "navigate" || ev === "downloading" || ev === "extracting") {
+            statusEl.innerHTML = '<span class="browser-status-dot loading"></span> Loading';
+        } else if (ev === "contacts" && b.status === "found") {
+            statusEl.innerHTML = '<span class="browser-status-dot found"></span> Found';
+        } else if (ev === "no_pdf" || (ev === "contacts" && b.status !== "found")) {
+            statusEl.innerHTML = '<span class="browser-status-dot not-found"></span> Not Found';
+        } else if (ev === "pdf_found") {
+            statusEl.innerHTML = '<span class="browser-status-dot found"></span> PDF Found';
+        } else if (ev === "done") {
+            statusEl.innerHTML = '<span class="browser-status-dot done"></span> Complete';
+        } else {
+            statusEl.innerHTML = '<span class="browser-status-dot idle"></span> Idle';
+        }
+    }
+
+    // Update content area
+    if (b.event === "idle") {
+        content.innerHTML = `
+            <div class="browser-idle-state">
+                <div class="browser-idle-icon">&#x1F310;</div>
+                <div class="browser-idle-text">Waiting for agent to start scraping...</div>
+            </div>
+        `;
+    } else if (b.event === "navigate") {
+        content.innerHTML = `
+            <div class="browser-page">
+                <div class="browser-loading-bar"></div>
+                <div class="browser-patent-header">
+                    <div class="browser-patent-id">${esc(b.patent_id)}</div>
+                    <div class="browser-patent-title">${esc(b.title)}</div>
+                    <div class="browser-patent-meta">
+                        <span>${esc(b.applicant)}</span>
+                        ${b.country ? `<span class="browser-country">${esc(b.country)}</span>` : ""}
+                    </div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Documents</div>
+                    <div class="browser-doc searching">
+                        <span class="spinner-sm"></span> Searching for RO/101 or 306 PDF...
+                    </div>
+                </div>
+                ${renderBrowserProgress(b)}
+            </div>
+        `;
+    } else if (b.event === "pdf_found") {
+        content.innerHTML = `
+            <div class="browser-page">
+                <div class="browser-patent-header">
+                    <div class="browser-patent-id">${esc(b.patent_id)}</div>
+                    <div class="browser-patent-title">${esc(b.title || state.browser.title)}</div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Documents</div>
+                    <div class="browser-doc found-doc">
+                        <span class="doc-icon">&#x1F4C4;</span>
+                        <span>RO/101 or 306 PDF</span>
+                        <span class="doc-status found">FOUND</span>
+                    </div>
+                    <div class="browser-doc downloading">
+                        <span class="spinner-sm"></span> Downloading PDF...
+                    </div>
+                </div>
+                ${renderBrowserProgress(b)}
+            </div>
+        `;
+    } else if (b.event === "no_pdf") {
+        content.innerHTML = `
+            <div class="browser-page">
+                <div class="browser-patent-header">
+                    <div class="browser-patent-id">${esc(b.patent_id)}</div>
+                    <div class="browser-patent-title">${esc(b.title || state.browser.title)}</div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Documents</div>
+                    <div class="browser-doc not-found-doc">
+                        <span class="doc-icon">&#x274C;</span>
+                        <span>No RO/101 or 306 PDF found</span>
+                        <span class="doc-status not-found">NOT FOUND</span>
+                    </div>
+                </div>
+                ${renderBrowserProgress(b)}
+            </div>
+        `;
+    } else if (b.event === "extracting") {
+        content.innerHTML = `
+            <div class="browser-page">
+                <div class="browser-patent-header">
+                    <div class="browser-patent-id">${esc(b.patent_id)}</div>
+                    <div class="browser-patent-title">${esc(b.title || state.browser.title)}</div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Documents</div>
+                    <div class="browser-doc found-doc">
+                        <span class="doc-icon">&#x1F4C4;</span>
+                        <span>PDF Downloaded</span>
+                        <span class="doc-status found">OK</span>
+                    </div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Contact Extraction</div>
+                    <div class="browser-extracting">
+                        <span class="spinner-sm"></span> Scanning PDF for emails, phones, names...
+                    </div>
+                </div>
+                ${renderBrowserProgress(b)}
+            </div>
+        `;
+    } else if (b.event === "contacts") {
+        const hasContacts = b.emails.length > 0 || b.phones.length > 0;
+        content.innerHTML = `
+            <div class="browser-page">
+                <div class="browser-patent-header">
+                    <div class="browser-patent-id">${esc(b.patent_id)}</div>
+                    <div class="browser-patent-title">${esc(b.title)}</div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Documents</div>
+                    <div class="browser-doc found-doc">
+                        <span class="doc-icon">&#x1F4C4;</span>
+                        <span>PDF Processed</span>
+                        <span class="doc-status found">OK</span>
+                    </div>
+                </div>
+                <div class="browser-section">
+                    <div class="browser-section-title">Extracted Contacts</div>
+                    ${hasContacts ? `
+                        ${b.emails.map(e => `<div class="contact-item email"><span class="contact-icon">&#x1F4E7;</span> ${esc(e)}</div>`).join("")}
+                        ${b.phones.map(p => `<div class="contact-item phone"><span class="contact-icon">&#x1F4DE;</span> ${esc(p)}</div>`).join("")}
+                        ${b.name ? `<div class="contact-item name"><span class="contact-icon">&#x1F464;</span> ${esc(b.name)}</div>` : ""}
+                    ` : `
+                        <div class="contact-none">No contacts found in this PDF</div>
+                    `}
+                </div>
+                ${renderBrowserProgress(b)}
+            </div>
+        `;
+    } else if (b.event === "done") {
+        content.innerHTML = `
+            <div class="browser-done-state">
+                <div class="browser-done-icon">&#x2705;</div>
+                <div class="browser-done-title">Scraping Complete</div>
+                <div class="browser-done-stats">
+                    <div class="browser-done-stat">
+                        <span class="done-stat-value found">${b.found_count || 0}</span>
+                        <span class="done-stat-label">Found</span>
+                    </div>
+                    <div class="browser-done-stat">
+                        <span class="done-stat-value not-found">${b.not_found_count || 0}</span>
+                        <span class="done-stat-label">Not Found</span>
+                    </div>
+                    <div class="browser-done-stat">
+                        <span class="done-stat-value error">${b.error_count || 0}</span>
+                        <span class="done-stat-label">Errors</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+function renderBrowserProgress(b) {
+    if (!b.total) return "";
+    const pct = Math.round((b.row / b.total) * 100);
+    const fc = b.found_count || 0;
+    const nfc = b.not_found_count || 0;
+    const ec = b.error_count || 0;
+    return `
+        <div class="browser-progress">
+            <div class="browser-progress-bar">
+                <div class="browser-progress-fill" style="width:${pct}%"></div>
+            </div>
+            <div class="browser-progress-text">
+                Row ${b.row} / ${b.total}
+                <span class="browser-progress-stats">
+                    <span class="bp-found">${fc} found</span>
+                    <span class="bp-sep">|</span>
+                    <span class="bp-not-found">${nfc} not found</span>
+                    <span class="bp-sep">|</span>
+                    <span class="bp-errors">${ec} errors</span>
+                </span>
+            </div>
+        </div>
+    `;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,8 +433,8 @@ function renderMain() {
     if (!state.selectedAgent) {
         main.innerHTML = `
             <div class="welcome">
-                <div class="welcome-icon">👁️</div>
-                <h2>Visual Observer Agent</h2>
+                <div class="welcome-icon">&#x1F441;&#xFE0F;</div>
+                <h2>Virtual Office</h2>
                 <p>Select an agent from the sidebar to monitor its activity, run it, and inspect results in real-time.</p>
             </div>
         `;
@@ -259,23 +494,47 @@ function renderMain() {
         </div>
     `;
 
-    // --- Input section (agent-specific) ---
+    // --- Input section ---
     if (agent.accepts_upload) {
         html += renderUploadSection(agent);
     } else {
         html += renderSimpleRunSection();
     }
 
-    // --- Terminal ---
+    // --- Execution Log + Browser Preview (side by side) ---
     html += `
-        <div class="terminal-section">
-            <div class="section-title">Execution Log</div>
-            <div class="terminal" id="terminal">
-                ${state.executionLog.length === 0 && !state.isRunning
-                    ? '<span class="terminal-empty">Configure input above and click "Run Agent" to start...</span>'
-                    : ""}
-                ${state.executionLog.map((l) => createTerminalLineHTML(l)).join("")}
-                ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
+        <div class="execution-split">
+            <div class="execution-log-panel">
+                <div class="section-title">Execution Log</div>
+                <div class="terminal" id="terminal">
+                    ${state.executionLog.length === 0 && !state.isRunning
+                        ? '<span class="terminal-empty">Configure input above and click "Run Agent" to start...</span>'
+                        : ""}
+                    ${state.executionLog.map((l) => createTerminalLineHTML(l)).join("")}
+                    ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
+                </div>
+            </div>
+            <div class="browser-preview-panel">
+                <div class="section-title">Scraping Browser</div>
+                <div class="browser-frame">
+                    <div class="browser-toolbar">
+                        <div class="browser-dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <div class="browser-url-bar" id="browser-url">about:blank</div>
+                        <div class="browser-status-indicator" id="browser-status">
+                            <span class="browser-status-dot idle"></span> Idle
+                        </div>
+                    </div>
+                    <div class="browser-content" id="browser-content">
+                        <div class="browser-idle-state">
+                            <div class="browser-idle-icon">&#x1F310;</div>
+                            <div class="browser-idle-text">Waiting for agent to start scraping...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -284,8 +543,6 @@ function renderMain() {
     if (state.lastResult) {
         if (agent.module_name === "pct_agent") {
             html += renderPCTResults(state.lastResult);
-        } else if (state.lastResult.status === "success") {
-            html += renderTestAgentResults(state.lastResult);
         } else if (state.lastResult.status === "failure") {
             html += renderFailureResults(state.lastResult);
         }
@@ -331,12 +588,12 @@ function renderUploadSection(agent) {
                     <div class="upload-dropzone" id="dropzone">
                         ${uploaded
                             ? `<div class="upload-done">
-                                    <span class="upload-done-icon">✓</span>
+                                    <span class="upload-done-icon">&#x2713;</span>
                                     <span class="upload-done-name">${esc(uploaded.split(/[\\/]/).pop())}</span>
-                                    <button class="upload-clear" id="clear-upload">✕</button>
+                                    <button class="upload-clear" id="clear-upload">&#x2715;</button>
                                </div>`
                             : `<div class="upload-prompt">
-                                    <span class="upload-icon">📄</span>
+                                    <span class="upload-icon">&#x1F4C4;</span>
                                     <span>Drop Excel file here or <label for="file-input" class="upload-link">browse</label></span>
                                     <span class="upload-hint">${types || ".xlsx, .xls"}</span>
                                </div>`
@@ -348,7 +605,7 @@ function renderUploadSection(agent) {
                 <!-- WIPO area (hidden by default) -->
                 <div id="wipo-area" style="display:none">
                     <div class="wipo-info">
-                        <span class="wipo-icon">🌐</span>
+                        <span class="wipo-icon">&#x1F310;</span>
                         <div>
                             <div class="wipo-title">WIPO PatentScope Weekly Browse</div>
                             <div class="wipo-url">patentscope.wipo.int/search/en/resultWeeklyBrowse.jsf</div>
@@ -360,7 +617,7 @@ function renderUploadSection(agent) {
                 <button class="run-btn" id="run-btn" ${state.isRunning ? "disabled" : ""}>
                     ${state.isRunning
                         ? '<span class="spinner"></span> Processing...'
-                        : "▶&nbsp;&nbsp;Run PCT Agent"}
+                        : "&#x25B6;&nbsp;&nbsp;Run PCT Agent"}
                 </button>
             </div>
         </div>
@@ -373,7 +630,7 @@ function renderSimpleRunSection() {
             <button class="run-btn" id="run-btn" ${state.isRunning ? "disabled" : ""}>
                 ${state.isRunning
                     ? '<span class="spinner"></span> Running...'
-                    : "▶&nbsp;&nbsp;Run Agent"}
+                    : "&#x25B6;&nbsp;&nbsp;Run Agent"}
             </button>
         </div>
     `;
@@ -387,7 +644,7 @@ function renderPCTResults(result) {
         return `
             <div class="results-section">
                 <div class="section-title">Results</div>
-                <div class="error-banner">⚠ ${esc(result.error || "Agent failed")}</div>
+                <div class="error-banner">&#x26A0; ${esc(result.error || "Agent failed")}</div>
             </div>
         `;
     }
@@ -429,31 +686,35 @@ function renderPCTResults(result) {
             <!-- Download button -->
             ${outputName ? `
             <a href="/api/download/${encodeURIComponent(outputName)}" class="download-btn" download>
-                📥 Download Output Excel: ${esc(outputName)}
+                &#x1F4E5; Download Work Report: ${esc(outputName)}
             </a>
             ` : ""}
 
             <!-- Row-by-row results table -->
             <div class="result-card" style="margin-top:16px;overflow-x:auto">
-                <h4>📋 Row Details</h4>
+                <h4>&#x1F4CB; Row Details</h4>
                 <table class="results-table">
                     <thead>
                         <tr>
                             <th>Row</th>
-                            <th>Doc ID</th>
+                            <th>Publication No</th>
+                            <th>Country</th>
                             <th>Status</th>
                             <th>Email(s)</th>
                             <th>Phone(s)</th>
+                            <th>Name</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${results.map((r) => `
                             <tr class="row-${r.status}">
                                 <td>${r.row}</td>
-                                <td>${esc(r.doc_id || "-")}</td>
+                                <td>${esc(r.patent_id || "-")}</td>
+                                <td>${esc(r.country || "-")}</td>
                                 <td><span class="status-pill status-${r.status}">${esc(r.status)}</span></td>
                                 <td>${r.emails?.length ? esc(r.emails.join("; ")) : "-"}</td>
                                 <td>${r.phones?.length ? esc(r.phones.join("; ")) : "-"}</td>
+                                <td>${esc(r.name || "-")}</td>
                             </tr>
                         `).join("")}
                     </tbody>
@@ -462,16 +723,16 @@ function renderPCTResults(result) {
 
             <!-- Self-tests -->
             <div class="result-card" style="margin-top:16px">
-                <h4>🧪 Self-Test Results — ${tests.passed_count || 0}/${tests.total || 0} Passed</h4>
+                <h4>&#x1F9EA; Self-Test Results — ${tests.passed_count || 0}/${tests.total || 0} Passed</h4>
                 ${(tests.passed_tests || []).map((t) => `
                     <div class="test-item">
-                        <span class="test-icon" style="color:var(--success)">✓</span>
+                        <span class="test-icon" style="color:var(--success)">&#x2713;</span>
                         <span class="test-name">${esc(t)}</span>
                     </div>
                 `).join("")}
                 ${(tests.failures || []).map((f) => `
                     <div class="test-item">
-                        <span class="test-icon" style="color:var(--error)">✗</span>
+                        <span class="test-icon" style="color:var(--error)">&#x2717;</span>
                         <span class="test-name">${esc(f.name)}: ${esc(f.message)}</span>
                     </div>
                 `).join("")}
@@ -481,65 +742,11 @@ function renderPCTResults(result) {
     return html;
 }
 
-function renderTestAgentResults(result) {
-    const data = result.data || {};
-    const sys = data.system || {};
-    const py = data.python || {};
-    const disk = data.disk || {};
-    const env = data.env_status || {};
-    const tests = result.tests || {};
-    const usage = disk.usage_percent || 0;
-
-    return `
-        <div class="results-section">
-            <div class="section-title">Results</div>
-            <div class="results-grid">
-                <div class="result-card">
-                    <h4>🖥 System</h4>
-                    ${Object.entries(sys).map(([k, v]) => `
-                        <div class="result-row"><span class="result-key">${esc(k)}</span><span class="result-val">${esc(String(v))}</span></div>
-                    `).join("")}
-                </div>
-                <div class="result-card">
-                    <h4>🐍 Python</h4>
-                    ${Object.entries(py).map(([k, v]) => `
-                        <div class="result-row"><span class="result-key">${esc(k)}</span><span class="result-val">${esc(String(v))}</span></div>
-                    `).join("")}
-                </div>
-                <div class="result-card">
-                    <h4>💾 Disk Usage</h4>
-                    <div class="result-row"><span class="result-key">Total</span><span class="result-val">${disk.total_gb || 0} GB</span></div>
-                    <div class="result-row"><span class="result-key">Used</span><span class="result-val">${disk.used_gb || 0} GB</span></div>
-                    <div class="result-row"><span class="result-key">Free</span><span class="result-val">${disk.free_gb || 0} GB</span></div>
-                    <div class="progress-bar"><div class="progress-fill ${usage > 85 ? "high" : ""}" style="width:${usage}%"></div></div>
-                    <div style="text-align:center;margin-top:8px;font-size:13px;color:var(--text-secondary)">${usage}% used</div>
-                </div>
-                <div class="result-card">
-                    <h4>🔑 Environment Keys</h4>
-                    ${Object.entries(env).map(([k, v]) => `
-                        <div class="result-row"><span class="result-key">${esc(k)}</span><span class="result-val">${v === "set" ? "🟢 Set" : "🔴 Not Set"}</span></div>
-                    `).join("")}
-                </div>
-            </div>
-            <div class="result-card" style="margin-top:16px">
-                <h4>🧪 Self-Test Results — ${tests.passed_count || 0}/${tests.total || 0} Passed</h4>
-                ${(tests.passed_tests || []).map((t) => `<div class="test-item"><span class="test-icon" style="color:var(--success)">✓</span><span class="test-name">${esc(t)}</span></div>`).join("")}
-                ${(tests.failures || []).map((f) => `<div class="test-item"><span class="test-icon" style="color:var(--error)">✗</span><span class="test-name">${esc(f.name)}: ${esc(f.message)}</span></div>`).join("")}
-            </div>
-            <div class="stats-grid" style="margin-top:16px;grid-template-columns:repeat(3,1fr)">
-                <div class="stat-card"><div class="stat-value success">${result.attempts || 1}</div><div class="stat-label">Attempts</div></div>
-                <div class="stat-card"><div class="stat-value">${result.execution_time || 0}s</div><div class="stat-label">Execution Time</div></div>
-                <div class="stat-card"><div class="stat-value success">${tests.passed_count || 0}/${tests.total || 0}</div><div class="stat-label">Tests Passed</div></div>
-            </div>
-        </div>
-    `;
-}
-
 function renderFailureResults(result) {
     return `
         <div class="results-section">
             <div class="section-title">Results</div>
-            <div class="error-banner">⚠ ${esc(result.error || `Agent failed after ${result.errors?.length || "?"} attempts`)}</div>
+            <div class="error-banner">&#x26A0; ${esc(result.error || `Agent failed after ${result.errors?.length || "?"} attempts`)}</div>
             ${(result.errors || []).map((err) => `
                 <div class="result-card" style="margin-bottom:12px">
                     <h4>Attempt ${err.attempt}</h4>
@@ -559,7 +766,7 @@ function renderMemorySection(learnings) {
                 : `<div class="memory-list">
                     ${learnings.slice(-8).reverse().map((l) => `
                         <div class="memory-entry">
-                            <span class="memory-icon">${l.outcome === "success" ? "✅" : "❌"}</span>
+                            <span class="memory-icon">${l.outcome === "success" ? "&#x2705;" : "&#x274C;"}</span>
                             <div class="memory-content">
                                 <div class="memory-task">${esc(l.task)}</div>
                                 <div class="memory-insight">${esc(l.insight)}</div>
@@ -672,7 +879,7 @@ function createTerminalLine(entry) {
     const div = document.createElement("div");
     div.className = `terminal-line ${entry.type}`;
     const prefix =
-        entry.type === "success" ? "✓" : entry.type === "error" ? "✗" : "›";
+        entry.type === "success" ? "&#x2713;" : entry.type === "error" ? "&#x2717;" : "&#x203A;";
     div.innerHTML = `
         <span class="terminal-time">${entry.time}</span>
         <span class="terminal-prefix">${prefix}</span>
@@ -683,7 +890,7 @@ function createTerminalLine(entry) {
 
 function createTerminalLineHTML(entry) {
     const prefix =
-        entry.type === "success" ? "✓" : entry.type === "error" ? "✗" : "›";
+        entry.type === "success" ? "&#x2713;" : entry.type === "error" ? "&#x2717;" : "&#x203A;";
     return `
         <div class="terminal-line ${entry.type}">
             <span class="terminal-time">${entry.time}</span>

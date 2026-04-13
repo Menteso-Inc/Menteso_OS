@@ -1,7 +1,9 @@
 """
 PCT Agent — Patent Cooperation Treaty
-Orchestrates sub-agents: Scraper → PDF Extractor → Contact Finder
-Accepts Excel upload or WIPO URL, extracts contacts from patent PDFs.
+Reads WIPO resultList.xls → scrapes patent pages → extracts contacts → outputs Work Report Excel.
+
+Input:  resultList.xls (from WIPO PatentScope weekly browse) or .xlsx with same columns
+Output: Work Report DD-Month-YYYY.xlsx matching the standard work report format
 """
 import os
 import re
@@ -9,17 +11,23 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
 try:
     import openpyxl
+    from openpyxl.styles import Font
     HAS_OPENPYXL = True
 except ImportError:
     HAS_OPENPYXL = False
 
+try:
+    import xlrd
+    HAS_XLRD = True
+except ImportError:
+    HAS_XLRD = False
+
 from shared.memory import load_memory, save_learning, get_best_strategy
 from shared.self_debug import run_with_self_debug
-from .scraper import scrape_patent_detail, download_pdf, download_wipo_excel
+from .scraper import download_wipo_excel
+from .browser import PatentBrowser
 from .pdf_extractor import extract_contacts_from_pdf
 from .tests import tests
 
@@ -27,14 +35,14 @@ from .tests import tests
 AGENT_CONFIG = {
     "name": "PCT Agent",
     "description": (
-        "Patent Cooperation Treaty agent. Processes patent Excel sheets — "
-        "scrapes WIPO PatentScope, downloads RO/101 or 306 PDFs, "
-        "extracts email/phone contacts from each patent entry."
+        "Patent Cooperation Treaty agent. Reads WIPO resultList Excel, "
+        "scrapes PatentScope patent pages, downloads RO/101 or 306 PDFs, "
+        "extracts email/phone/name contacts, and outputs a Work Report Excel."
     ),
     "role": "Patent Data Processor",
     "goal": "Extract contact information from WIPO patent filings",
     "status": "active",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "requires_llm": False,
     "accepts_upload": True,
     "upload_types": [".xlsx", ".xls"],
@@ -52,56 +60,202 @@ AGENT_CONFIG = {
 STEP_DELAY = 0.3
 
 
-def find_url_column(headers):
-    """Find the column that contains WIPO URLs."""
-    url_keywords = ["url", "link", "wipo", "patentscope", "patent_url", "web"]
-    for i, h in enumerate(headers):
-        if h is None:
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def id_to_url(patent_id):
+    """Convert patent ID to WIPO PatentScope URL.
+    e.g. 'WO/2025/097187' → 'https://patentscope.wipo.int/search/en/WO2025097187'
+    """
+    clean = patent_id.replace("/", "")
+    return f"https://patentscope.wipo.int/search/en/{clean}"
+
+
+def extract_country(appl_no):
+    """Extract country code from application number.
+    e.g. 'US2023/078371' → 'US', 'AT2024/060361' → 'AT'
+    """
+    match = re.match(r'^([A-Z]{2})', str(appl_no).strip())
+    return match.group(1) if match else ""
+
+
+# ---------------------------------------------------------------------------
+# Excel reader — supports both .xls (xlrd) and .xlsx (openpyxl)
+# ---------------------------------------------------------------------------
+def read_input_excel(file_path, on_step=None):
+    """Read WIPO resultList Excel. Returns list of row dicts.
+    Handles:
+      - .xls files (xlrd) — WIPO default download format
+      - .xlsx files (openpyxl)
+      - Skips blank rows and gazette header rows
+    """
+    ext = Path(file_path).suffix.lower()
+
+    if ext == ".xls":
+        if not HAS_XLRD:
+            raise ImportError("xlrd is required for .xls files — pip install xlrd")
+        return _read_xls(file_path, on_step)
+    elif ext in (".xlsx", ".xlsm"):
+        if not HAS_OPENPYXL:
+            raise ImportError("openpyxl is required for .xlsx files — pip install openpyxl")
+        return _read_xlsx(file_path, on_step)
+    else:
+        raise ValueError(f"Unsupported file format: {ext}")
+
+
+def _read_xls(file_path, on_step=None):
+    """Read .xls file using xlrd (WIPO resultList format)."""
+    wb = xlrd.open_workbook(file_path)
+    ws = wb.sheet_by_index(0)
+
+    if on_step:
+        on_step(f"[Excel Reader] Sheet: '{ws.name}' — {ws.nrows} rows x {ws.ncols} cols")
+
+    # Find header row — look for a row where first cell is "ID"
+    header_row = None
+    for r in range(min(10, ws.nrows)):
+        val = str(ws.cell_value(r, 0)).strip()
+        if val.upper() == "ID":
+            header_row = r
+            break
+
+    if header_row is None:
+        raise ValueError("Could not find header row with 'ID' column in the Excel file")
+
+    headers = [str(ws.cell_value(header_row, c)).strip() for c in range(ws.ncols)]
+    if on_step:
+        on_step(f"[Excel Reader] Headers found at row {header_row + 1}: {headers}")
+
+    col_map = _map_columns(headers)
+
+    rows = []
+    for r in range(header_row + 1, ws.nrows):
+        row_vals = [ws.cell_value(r, c) for c in range(ws.ncols)]
+        patent_id = str(row_vals[col_map.get("id", 0)]).strip()
+        if not patent_id:
             continue
-        h_lower = str(h).lower().strip()
-        for kw in url_keywords:
-            if kw in h_lower:
-                return i
-    # Fallback: scan first few rows for patentscope URLs
-    return None
+
+        rows.append({
+            "id": patent_id,
+            "title": str(row_vals[col_map.get("title", 1)]).strip(),
+            "appl_no": str(row_vals[col_map.get("appl_no", 3)]).strip(),
+            "applicant": str(row_vals[col_map.get("applicant", 5)]).strip(),
+            "kind": str(row_vals[col_map.get("kind", 2)]).strip() if "kind" in col_map else "",
+            "ipc": str(row_vals[col_map.get("ipc", 4)]).strip() if "ipc" in col_map else "",
+        })
+
+    if on_step:
+        on_step(f"[Excel Reader] Parsed {len(rows)} patent entries")
+
+    return rows
 
 
-def find_url_column_by_content(ws, max_scan=5):
-    """Scan cell values to find a column containing WIPO URLs."""
-    for row in ws.iter_rows(min_row=2, max_row=min(ws.max_row, max_scan + 1)):
+def _read_xlsx(file_path, on_step=None):
+    """Read .xlsx file using openpyxl."""
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    ws = wb.active
+
+    if on_step:
+        on_step(f"[Excel Reader] Sheet: '{ws.title}' — {ws.max_row} rows x {ws.max_column} cols")
+
+    # Find header row
+    header_row = None
+    for row in ws.iter_rows(min_row=1, max_row=10, values_only=False):
         for cell in row:
-            if cell.value and "patentscope.wipo.int" in str(cell.value):
-                return cell.column - 1  # 0-indexed
-    return None
+            if cell.value and str(cell.value).strip().upper() == "ID":
+                header_row = cell.row
+                break
+        if header_row:
+            break
+
+    if header_row is None:
+        raise ValueError("Could not find header row with 'ID' column in the Excel file")
+
+    header_cells = list(ws.iter_rows(min_row=header_row, max_row=header_row))[0]
+    headers = [str(cell.value or "").strip() for cell in header_cells]
+    if on_step:
+        on_step(f"[Excel Reader] Headers found at row {header_row}: {headers}")
+
+    col_map = _map_columns(headers)
+
+    rows = []
+    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+        row_vals = list(row)
+        patent_id = str(row_vals[col_map.get("id", 0)] or "").strip()
+        if not patent_id:
+            continue
+
+        rows.append({
+            "id": patent_id,
+            "title": str(row_vals[col_map.get("title", 1)] or "").strip(),
+            "appl_no": str(row_vals[col_map.get("appl_no", 3)] or "").strip(),
+            "applicant": str(row_vals[col_map.get("applicant", 5)] or "").strip(),
+            "kind": str(row_vals[col_map.get("kind", 2)] or "").strip() if "kind" in col_map else "",
+            "ipc": str(row_vals[col_map.get("ipc", 4)] or "").strip() if "ipc" in col_map else "",
+        })
+
+    if on_step:
+        on_step(f"[Excel Reader] Parsed {len(rows)} patent entries")
+
+    wb.close()
+    return rows
 
 
+def _map_columns(headers):
+    """Map header names to column indices."""
+    col_map = {}
+    for i, h in enumerate(headers):
+        h_upper = h.upper()
+        if h_upper == "ID":
+            col_map["id"] = i
+        elif h_upper == "TITLE":
+            col_map["title"] = i
+        elif h_upper == "APPLICANT":
+            col_map["applicant"] = i
+        elif "APPL" in h_upper:
+            # Must come AFTER "APPLICANT" check — "Appl.No" contains "APPL"
+            col_map["appl_no"] = i
+        elif h_upper == "IPC":
+            col_map["ipc"] = i
+        elif h_upper == "KIND":
+            col_map["kind"] = i
+    return col_map
+
+
+# ---------------------------------------------------------------------------
+# Main agent runner
+# ---------------------------------------------------------------------------
 def run_agent(input_data=None, on_step=None):
     """
     Execute the PCT agent.
     input_data expects:
-      - file_path: path to uploaded Excel
+      - file_path: path to uploaded Excel (.xls or .xlsx)
       - mode: "upload" or "wipo_download"
     """
     start_time = time.time()
     agent_name = "pct_agent"
 
+    def step(msg):
+        if on_step:
+            on_step(msg)
+
+    def browser_event(event_data):
+        if on_step:
+            on_step({"type": "browser", **event_data})
+
     # --- Step 1: Load memory ---
-    if on_step:
-        on_step("Loading PCT agent memory...")
+    step("Loading PCT agent memory...")
     time.sleep(STEP_DELAY)
     memory = load_memory(agent_name)
     runs = memory["stats"]["total_runs"]
     rate = memory["stats"]["success_rate"]
-    if on_step:
-        on_step(f"Memory loaded — {runs} past runs, {rate:.0%} success rate")
+    step(f"Memory loaded — {runs} past runs, {rate:.0%} success rate")
     time.sleep(STEP_DELAY)
 
     # --- Step 2: Select strategy ---
-    if on_step:
-        on_step("Selecting best strategy...")
+    step("Selecting best strategy...")
     strategy = get_best_strategy(agent_name, "process_excel", default="sequential_scrape")
-    if on_step:
-        on_step(f"Strategy: {strategy}")
+    step(f"Strategy: {strategy}")
     time.sleep(STEP_DELAY)
 
     # --- Step 3: Validate input ---
@@ -112,8 +266,7 @@ def run_agent(input_data=None, on_step=None):
     file_path = input_data.get("file_path")
 
     if mode == "wipo_download":
-        if on_step:
-            on_step("[Mode: WIPO Download] Downloading Excel from PatentScope...")
+        step("[Mode: WIPO Download] Downloading Excel from PatentScope...")
         time.sleep(STEP_DELAY)
 
         def do_download():
@@ -122,208 +275,169 @@ def run_agent(input_data=None, on_step=None):
         dl_result = run_with_self_debug(do_download, max_retries=2, on_step=on_step)
         if dl_result["status"] == "success" and dl_result["result"]:
             file_path = dl_result["result"]
-            if on_step:
-                on_step(f"Excel downloaded: {file_path}")
+            step(f"Excel downloaded: {file_path}")
         else:
-            if on_step:
-                on_step("[WIPO Download] Could not download Excel — check network/URL")
+            step("[WIPO Download] Could not download Excel — check network/URL")
             save_learning(agent_name, "process_excel", "failure",
                           "WIPO download failed", "try_different_headers")
-            return {
-                "status": "failure",
-                "error": "Could not download Excel from WIPO PatentScope",
-                "results": [],
-                "summary": {"total": 0, "found": 0, "not_found": 0, "errors": 0},
-            }
+            return _failure("Could not download Excel from WIPO PatentScope")
 
     if not file_path or not os.path.exists(file_path):
-        error_msg = f"Excel file not found: {file_path}"
-        if on_step:
-            on_step(f"ERROR: {error_msg}")
-        return {
-            "status": "failure",
-            "error": error_msg,
-            "results": [],
-            "summary": {"total": 0, "found": 0, "not_found": 0, "errors": 0},
-        }
+        step(f"ERROR: Excel file not found: {file_path}")
+        return _failure(f"Excel file not found: {file_path}")
 
-    # --- Step 4: Check dependencies ---
-    if not HAS_OPENPYXL:
-        if on_step:
-            on_step("ERROR: openpyxl not installed — pip install openpyxl")
-        return {
-            "status": "failure",
-            "error": "openpyxl is required. Install with: pip install openpyxl",
-            "results": [],
-            "summary": {"total": 0, "found": 0, "not_found": 0, "errors": 0},
-        }
-
-    # --- Step 5: Read Excel ---
-    if on_step:
-        on_step(f"[Excel Reader] Opening: {Path(file_path).name}")
+    # --- Step 4: Read input Excel ---
+    step(f"[Excel Reader] Opening: {Path(file_path).name}")
     time.sleep(STEP_DELAY)
 
-    wb = openpyxl.load_workbook(file_path, data_only=True)
-    ws = wb.active
-    headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+    try:
+        patent_rows = read_input_excel(file_path, on_step=step)
+    except Exception as e:
+        step(f"ERROR: Failed to read Excel: {e}")
+        return _failure(f"Failed to read Excel: {e}")
 
-    if on_step:
-        on_step(f"[Excel Reader] Found {ws.max_row - 1} rows, {len(headers)} columns")
-        on_step(f"[Excel Reader] Headers: {headers}")
+    if not patent_rows:
+        step("ERROR: No patent entries found in the Excel file")
+        return _failure("No patent entries found in the Excel file")
+
+    step(f"Ready to process {len(patent_rows)} patent entries")
     time.sleep(STEP_DELAY)
 
-    # Find URL column
-    url_col_idx = find_url_column(headers)
-    if url_col_idx is None:
-        url_col_idx = find_url_column_by_content(ws)
-
-    if url_col_idx is None:
-        if on_step:
-            on_step("ERROR: No URL column found in Excel")
-        return {
-            "status": "failure",
-            "error": "Could not find a column with WIPO URLs in the Excel file",
-            "results": [],
-            "summary": {"total": 0, "found": 0, "not_found": 0, "errors": 0},
-        }
-
-    if on_step:
-        on_step(f"[Excel Reader] URL column found: '{headers[url_col_idx]}' (column {url_col_idx + 1})")
+    # --- Step 5: Launch browser & process each row ---
+    step("Launching browser for WIPO scraping...")
+    step("A Chromium window will open — solve any CAPTCHAs when prompted.")
     time.sleep(STEP_DELAY)
-
-    # --- Step 6: Process each row ---
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    })
 
     results = []
     found_count = 0
     not_found_count = 0
     error_count = 0
-    total_rows = ws.max_row - 1
+    total = len(patent_rows)
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=1):
-        row_data = list(row)
-        url = str(row_data[url_col_idx]) if url_col_idx < len(row_data) and row_data[url_col_idx] else None
+    patent_browser = PatentBrowser(headless=False, on_step=on_step)
+    try:
+        patent_browser.start()
+    except Exception as e:
+        step(f"ERROR: Could not launch browser: {e}")
+        return _failure(f"Browser launch failed: {e}")
 
-        if not url or "patentscope" not in url:
-            results.append({
-                "row": row_idx,
+    try:
+        for idx, row_data in enumerate(patent_rows, start=1):
+            patent_id = row_data["id"]
+            title = row_data["title"]
+            url = id_to_url(patent_id)
+            country = extract_country(row_data["appl_no"])
+            doc_id = patent_id.replace("/", "_")
+
+            step(f"[Row {idx}/{total}] Processing: {patent_id}")
+
+            # Dashboard browser preview: navigate
+            browser_event({
+                "event": "navigate",
                 "url": url,
-                "status": "skipped",
-                "reason": "No valid WIPO URL",
-                "emails": [],
-                "phones": [],
+                "row": idx,
+                "total": total,
+                "patent_id": patent_id,
+                "title": title,
+                "applicant": row_data["applicant"],
+                "country": country,
             })
-            continue
 
-        if on_step:
-            on_step(f"[Row {row_idx}/{total_rows}] Processing: {url[:80]}...")
+            # Use Playwright browser to scrape patent & download RO/101 PDF
+            step(f"[Row {idx}] [Browser] Opening patent page & searching for RO/101 PDF...")
+            pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=on_step)
 
-        # Extract docId for naming
-        doc_id_match = re.search(r'docId=(\w+)', url)
-        doc_id = doc_id_match.group(1) if doc_id_match else f"row_{row_idx}"
+            if not pdf_path:
+                browser_event({
+                    "event": "no_pdf",
+                    "url": url,
+                    "row": idx,
+                    "total": total,
+                    "patent_id": patent_id,
+                })
+                step(f"[Row {idx}] No RO/101 PDF found")
+                results.append(_row_result(
+                    idx, row_data, url, country, "not_found",
+                    reason="No RO/101 PDF found on patent page",
+                ))
+                not_found_count += 1
+                continue
 
-        # Step 6a: Find PDF URL on the patent detail page
-        if on_step:
-            on_step(f"[Row {row_idx}] [Scraper] Searching for RO/101 or 306 PDF...")
-
-        pdf_url = scrape_patent_detail(url, session=session, on_step=on_step)
-
-        if not pdf_url:
-            if on_step:
-                on_step(f"[Row {row_idx}] [Scraper] No PDF found — marking as not_found")
-            results.append({
-                "row": row_idx,
+            # PDF downloaded — extract contacts
+            browser_event({
+                "event": "extracting",
                 "url": url,
-                "doc_id": doc_id,
-                "status": "not_found",
-                "reason": "No RO/101 or 306 PDF found on detail page",
-                "emails": [],
-                "phones": [],
+                "row": idx,
+                "total": total,
+                "patent_id": patent_id,
             })
-            not_found_count += 1
-            continue
+            step(f"[Row {idx}] [PDF Extractor] Extracting contacts...")
+            contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step)
 
-        # Step 6b: Download the PDF
-        if on_step:
-            on_step(f"[Row {row_idx}] [Scraper] Downloading PDF...")
+            emails = contacts.get("emails", [])
+            phones = contacts.get("phones", [])
+            name = contacts.get("name", "")
+            status = contacts["status"]
 
-        pdf_path = download_pdf(pdf_url, doc_id, session=session, on_step=on_step)
-
-        if not pdf_path:
-            results.append({
-                "row": row_idx,
+            # Dashboard browser preview: contacts result
+            browser_event({
+                "event": "contacts",
                 "url": url,
-                "doc_id": doc_id,
-                "status": "error",
-                "reason": "PDF download failed",
-                "emails": [],
-                "phones": [],
+                "row": idx,
+                "total": total,
+                "patent_id": patent_id,
+                "title": title,
+                "emails": emails,
+                "phones": phones,
+                "name": name,
+                "status": status,
+                "found_count": found_count + (1 if status == "found" else 0),
+                "not_found_count": not_found_count + (1 if status == "not_found" else 0),
+                "error_count": error_count,
             })
-            error_count += 1
-            continue
 
-        # Step 6c: Extract contacts from PDF
-        if on_step:
-            on_step(f"[Row {row_idx}] [PDF Extractor] Extracting contacts...")
-
-        contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step)
-
-        row_result = {
-            "row": row_idx,
-            "url": url,
-            "doc_id": doc_id,
-            "status": contacts["status"],
-            "emails": contacts.get("emails", []),
-            "phones": contacts.get("phones", []),
-        }
-
-        if contacts["status"] == "found":
-            found_count += 1
-            if on_step:
-                on_step(
-                    f"[Row {row_idx}] FOUND: "
-                    f"{', '.join(contacts['emails'][:2])} | "
-                    f"{', '.join(contacts['phones'][:2])}"
+            if status == "found":
+                found_count += 1
+                step(
+                    f"[Row {idx}] FOUND: "
+                    f"{', '.join(emails[:2]) if emails else 'no email'} | "
+                    f"{', '.join(phones[:2]) if phones else 'no phone'}"
                 )
-        elif contacts["status"] == "not_found":
-            not_found_count += 1
-            if on_step:
-                on_step(f"[Row {row_idx}] No contact info found in PDF")
-        else:
-            error_count += 1
-            row_result["reason"] = contacts.get("error", "Unknown error")
-            if on_step:
-                on_step(f"[Row {row_idx}] Error: {contacts.get('error', 'Unknown')}")
+            elif status == "not_found":
+                not_found_count += 1
+                step(f"[Row {idx}] No contact info found in PDF")
+            else:
+                error_count += 1
+                step(f"[Row {idx}] Error: {contacts.get('error', 'Unknown')}")
 
-        results.append(row_result)
+            results.append(_row_result(
+                idx, row_data, url, country, status,
+                emails=emails, phones=phones, name=name,
+            ))
 
-        # Small delay between requests to avoid rate limiting
-        time.sleep(0.5)
+            time.sleep(0.5)
 
-    # --- Step 7: Generate output Excel ---
-    if on_step:
-        on_step(f"[Output] Generating output Excel...")
+    finally:
+        step("[Browser] Closing browser...")
+        patent_browser.close()
+
+    # --- Step 6: Generate Work Report Excel ---
+    step("Generating Work Report Excel...")
     time.sleep(STEP_DELAY)
 
-    output_path = generate_output_excel(file_path, headers, results, on_step)
-
-    if on_step:
-        on_step(f"[Output] Saved: {Path(output_path).name}")
+    output_path = generate_work_report(results, on_step=step)
+    step(f"Output saved: {Path(output_path).name}")
     time.sleep(STEP_DELAY)
 
-    # --- Step 8: Self-test ---
-    if on_step:
-        on_step("Running self-tests...")
+    # --- Step 7: Self-test ---
+    step("Running self-tests...")
     time.sleep(STEP_DELAY)
 
     agent_result = {
         "status": "success",
         "results": results,
         "summary": {
-            "total": total_rows,
+            "total": total,
             "processed": len(results),
             "found": found_count,
             "not_found": not_found_count,
@@ -337,16 +451,15 @@ def run_agent(input_data=None, on_step=None):
     test_result = tests.run(agent_result)
     agent_result["tests"] = test_result
 
-    if on_step:
-        if test_result["passed"]:
-            on_step(f"All {test_result['total']} self-tests passed!")
-        else:
-            on_step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
+    if test_result["passed"]:
+        step(f"All {test_result['total']} self-tests passed!")
+    else:
+        step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
 
-    # --- Step 9: Save learning ---
+    # --- Step 8: Save learning ---
     execution_time = time.time() - start_time
     insight = (
-        f"Processed {total_rows} rows: {found_count} contacts found, "
+        f"Processed {total} rows: {found_count} contacts found, "
         f"{not_found_count} not found, {error_count} errors"
     )
     save_learning(
@@ -355,59 +468,108 @@ def run_agent(input_data=None, on_step=None):
         insight, strategy, execution_time,
     )
 
-    if on_step:
-        on_step(f"Learning saved. Total time: {execution_time:.1f}s")
+    step(f"Learning saved. Total time: {execution_time:.1f}s")
     time.sleep(STEP_DELAY)
 
-    if on_step:
-        on_step(
-            f"DONE — {found_count} contacts found, {not_found_count} not found, "
-            f"{error_count} errors out of {total_rows} rows"
-        )
+    step(
+        f"DONE — {found_count} contacts found, {not_found_count} not found, "
+        f"{error_count} errors out of {total} rows"
+    )
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
     return agent_result
 
 
-def generate_output_excel(original_path, original_headers, results, on_step=None):
-    """Generate output Excel with original data + new contact columns."""
-    wb_in = openpyxl.load_workbook(original_path, data_only=True)
-    ws_in = wb_in.active
+# ---------------------------------------------------------------------------
+# Output generator — Work Report format
+# ---------------------------------------------------------------------------
+WORK_REPORT_HEADERS = [
+    "Publication Number", "Title", "Application No", "Applicant",
+    "Url", "Cat", "Phone No", "Email", "Name", "Country",
+    "Date", "Researcher", "Deadline",
+]
 
-    wb_out = openpyxl.Workbook()
-    ws_out = wb_out.active
-    ws_out.title = "PCT Results"
 
-    # Write headers: original + new contact columns
-    out_headers = list(original_headers) + ["Email(s)", "Phone(s)", "Contact Status"]
-    for col_idx, h in enumerate(out_headers, start=1):
-        ws_out.cell(row=1, column=col_idx, value=h)
+def generate_work_report(results, on_step=None):
+    """Generate a Work Report Excel matching the standard output format."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
 
-    # Build results lookup by row number
-    results_map = {r["row"]: r for r in results}
+    # Sheet name: "Work Report DD-Month-YYYY"
+    date_str = datetime.now().strftime("%d-%B-%Y")
+    sheet_name = f"Work Report {date_str}"
+    ws.title = sheet_name[:31]
 
-    # Copy data rows and append contact info
-    for row_idx, row in enumerate(ws_in.iter_rows(min_row=2, values_only=True), start=1):
-        out_row = list(row)
-        result = results_map.get(row_idx, {})
+    # Write headers with bold font
+    for col, header in enumerate(WORK_REPORT_HEADERS, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True)
 
-        emails = "; ".join(result.get("emails", []))
-        phones = "; ".join(result.get("phones", []))
-        status = result.get("status", "skipped")
+    run_date = f"Shared - {datetime.now().strftime('%d-%m-%Y')}"
 
-        out_row.extend([emails, phones, status])
+    for i, r in enumerate(results, start=2):
+        ws.cell(row=i, column=1, value=r.get("patent_id", ""))
+        ws.cell(row=i, column=2, value=r.get("title", ""))
+        ws.cell(row=i, column=3, value=r.get("appl_no", ""))
+        ws.cell(row=i, column=4, value=r.get("applicant", ""))
+        ws.cell(row=i, column=5, value=r.get("url", ""))
+        ws.cell(row=i, column=6, value="")             # Cat — filled manually
+        ws.cell(row=i, column=7, value="; ".join(r.get("phones", [])))
+        ws.cell(row=i, column=8, value="; ".join(r.get("emails", [])))
+        ws.cell(row=i, column=9, value=r.get("name", ""))
+        ws.cell(row=i, column=10, value=r.get("country", ""))
+        ws.cell(row=i, column=11, value=run_date)
+        ws.cell(row=i, column=12, value="")            # Researcher — filled manually
+        ws.cell(row=i, column=13, value="")            # Deadline — filled manually
 
-        for col_idx, val in enumerate(out_row, start=1):
-            ws_out.cell(row=row_idx + 1, column=col_idx, value=val)
-
-    # Save output
-    output_dir = Path(original_path).parent.parent / "outputs"
+    # Save to outputs/
+    output_dir = Path(__file__).parent.parent.parent / "outputs"
     output_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_name = f"pct_results_{timestamp}.xlsx"
-    output_path = output_dir / output_name
-    wb_out.save(str(output_path))
 
-    wb_in.close()
+    output_name = f"Work Report {date_str}.xlsx"
+    output_path = output_dir / output_name
+    counter = 2
+    while output_path.exists():
+        output_name = f"Work Report {date_str} book{counter}.xlsx"
+        output_path = output_dir / output_name
+        counter += 1
+
+    wb.save(str(output_path))
+
+    if on_step:
+        on_step(f"[Output] Work Report saved: {output_name} ({len(results)} rows)")
+
     return str(output_path)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _row_result(idx, row_data, url, country, status,
+                emails=None, phones=None, name="", reason=""):
+    """Build a standardised row result dict."""
+    return {
+        "row": idx,
+        "patent_id": row_data["id"],
+        "title": row_data["title"],
+        "appl_no": row_data["appl_no"],
+        "applicant": row_data["applicant"],
+        "url": url,
+        "country": country,
+        "status": status,
+        "emails": emails or [],
+        "phones": phones or [],
+        "name": name,
+        "reason": reason,
+    }
+
+
+def _failure(error_msg):
+    """Build a standardised failure result."""
+    return {
+        "status": "failure",
+        "error": error_msg,
+        "results": [],
+        "summary": {"total": 0, "found": 0, "not_found": 0, "errors": 0},
+    }

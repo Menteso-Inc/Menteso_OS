@@ -134,7 +134,10 @@ async def run_agent_sse(name: str, file_path: str = None, mode: str = None):
     msg_queue = queue.Queue()
 
     def on_step(message):
-        msg_queue.put(json.dumps({"type": "step", "message": message}))
+        if isinstance(message, dict):
+            msg_queue.put(json.dumps(message))
+        else:
+            msg_queue.put(json.dumps({"type": "step", "message": message}))
 
     def worker():
         try:
