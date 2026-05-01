@@ -115,6 +115,50 @@ async def download_file(filename: str):
 
 
 # ---------------------------------------------------------------------------
+# API — Pipeline progress (for page refreshes during long runs)
+# ---------------------------------------------------------------------------
+@app.get("/api/agents/{name}/progress")
+async def agent_progress(name: str):
+    """Return current progress from the latest progress JSONL file."""
+    import json as _json
+    candidates = sorted(OUTPUTS_DIR.glob("pct_progress_*.jsonl"), reverse=True)
+    if not candidates:
+        return {"status": "no_progress"}
+    path = candidates[0]
+    try:
+        meta = None
+        completed = 0
+        found = 0
+        not_found = 0
+        errors = 0
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                obj = _json.loads(line.strip())
+                if obj.get("_meta"):
+                    meta = obj
+                    continue
+                completed += 1
+                s = obj.get("status", "")
+                if s == "found":
+                    found += 1
+                elif s == "not_found":
+                    not_found += 1
+                else:
+                    errors += 1
+        return {
+            "status": "in_progress" if meta else "unknown",
+            "file": path.name,
+            "total": meta.get("total", 0) if meta else 0,
+            "completed": completed,
+            "found": found,
+            "not_found": not_found,
+            "errors": errors,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # API — Run agent (SSE stream) — supports input_data via query params
 # ---------------------------------------------------------------------------
 @app.get("/api/agents/{name}/run")

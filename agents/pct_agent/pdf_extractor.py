@@ -1,9 +1,10 @@
 """
 PCT Sub-Agent: PDF Extractor
 Extracts email addresses, phone numbers, and person names from PDF files.
-Supports both text-based and scanned (image) PDFs via Windows OCR fallback.
+Smart OCR: prioritises page 2 (contact page), early exit on email found.
 """
 import re
+import threading
 try:
     import fitz  # PyMuPDF
     HAS_PYMUPDF = True
@@ -18,12 +19,15 @@ try:
 except ImportError:
     HAS_WINOCR = False
 
-# Regex patterns for contact info
+# ---------------------------------------------------------------------------
+# Email regex — primary + OCR-artifact tolerant
+# ---------------------------------------------------------------------------
 EMAIL_PATTERN = re.compile(
     r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
     re.IGNORECASE
 )
 
+# Phone regex
 PHONE_PATTERN = re.compile(
     r'(?:'
     r'\+\d{1,3}[\s\-]?\d[\s\-]?(?:\d[\s\-]?){6,14}'  # international: +61 8 6183 2900
@@ -48,9 +52,123 @@ PHONE_BLACKLIST = {
 }
 
 
+# ---------------------------------------------------------------------------
+# OCR artifact cleanup — critical for email recovery
+# ---------------------------------------------------------------------------
+def _is_valid_email(email):
+    """Validate that an extracted email is plausible (filters OCR overruns).
+    When we strip spaces from OCR text, the regex can overshoot and capture
+    trailing words like 'office@sonn.atGmbHco'.  The TLD check catches this.
+    """
+    parts = email.rsplit('.', 1)
+    if len(parts) != 2:
+        return False
+    tld = parts[1]
+    # TLD should be 2-6 letters only (com, at, org, co, uk, info, etc.)
+    if not (2 <= len(tld) <= 6 and tld.isalpha()):
+        return False
+    # Local part should have at least 1 char
+    local = email.split('@')[0]
+    if len(local) < 1:
+        return False
+    return True
+
+
+def _extract_emails_around_at(text):
+    """Reconstruct OCR-damaged emails by finding @ tokens and expanding.
+    OCR commonly produces:  "offi ce@ wi rnsberger-lerchbaum. com"
+    Split into words: ["offi", "ce@", "wi", "rnsberger-lerchbaum.", "com"]
+
+    Algorithm:
+      1. Find each word containing @
+      2. Expand RIGHT one word at a time until the domain has a valid TLD
+         (stop at the MINIMUM right expansion — avoids grabbing extra words)
+      3. Expand LEFT to capture the full local part (maximise left expansion)
+    """
+    words = text.split()
+    emails = []
+    used = set()
+
+    for idx, word in enumerate(words):
+        if '@' not in word or idx in used:
+            continue
+
+        # Step 1: Find minimum right expansion that gives a valid domain TLD
+        right_end = None
+        for right in range(min(8, len(words) - idx)):
+            end = idx + right + 1
+            joined = ''.join(words[idx:end])
+            if '@' in joined:
+                domain_part = joined.split('@', 1)[1]
+                if '.' in domain_part:
+                    tld = domain_part.rsplit('.', 1)[1]
+                    if 2 <= len(tld) <= 6 and tld.isalpha():
+                        right_end = end
+                        break
+
+        if right_end is None:
+            continue
+
+        # Step 2: Expand left — but only if local part looks incomplete
+        at_pos_in_word = word.index('@')
+        local_so_far = word[:at_pos_in_word]  # e.g. "ce" from "ce@"
+
+        # Start with no left expansion
+        joined = ''.join(words[idx:right_end])
+        matches = [m for m in EMAIL_PATTERN.findall(joined) if _is_valid_email(m)]
+        best_email = matches[0] if matches else None
+
+        # Only expand left if the local part is very short (OCR likely split it)
+        if len(local_so_far) <= 3:
+            for left in range(1, min(4, idx + 1)):
+                prev_word = words[idx - left]
+                # Stop if the previous word isn't purely alphabetic
+                # (digits, symbols, phone numbers are not part of an email)
+                if not prev_word.isalpha():
+                    break
+                start = idx - left
+                joined = ''.join(words[start:right_end])
+                matches = [m for m in EMAIL_PATTERN.findall(joined) if _is_valid_email(m)]
+                if matches:
+                    best_email = max(matches, key=len)
+                    # Stop expanding once local part is a reasonable length
+                    local_part = best_email.split('@')[0]
+                    if len(local_part) >= 4:
+                        break
+
+        if best_email:
+            emails.append(best_email)
+            for j in range(max(0, idx - 3), right_end):
+                used.add(j)
+
+    return emails
+
+
+# ---------------------------------------------------------------------------
+# Smart text extraction — prioritise contact pages, early exit on email found
+# ---------------------------------------------------------------------------
+
+# Reusable OCR thread executor (avoid creating per-page)
+_ocr_executor = None
+_ocr_executor_lock = threading.Lock()
+
+
+def _get_ocr_executor():
+    global _ocr_executor
+    if _ocr_executor is None:
+        with _ocr_executor_lock:
+            if _ocr_executor is None:
+                import concurrent.futures
+                _ocr_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    return _ocr_executor
+
+
 def extract_text_from_pdf(pdf_path, on_step=None):
-    """Extract all text content from a PDF file.
-    Uses direct text extraction first, then falls back to OCR for scanned PDFs.
+    """Smart extraction: prioritise page 2 (contact page in RO/101 forms).
+    1. Text-extract all pages (fast, <50ms)
+    2. If email found in text → done
+    3. OCR page 2 first (contact page) → check for email
+    4. OCR remaining pages only if still no email
     """
     if not HAS_PYMUPDF:
         raise ImportError("PyMuPDF (fitz) is required. Install with: pip install PyMuPDF")
@@ -58,75 +176,96 @@ def extract_text_from_pdf(pdf_path, on_step=None):
     doc = fitz.open(pdf_path)
     page_count = doc.page_count
 
-    # First try: direct text extraction
-    text = ""
+    # Pass 1: Fast text extraction on all pages
+    texts = []
     for page in doc:
-        text += page.get_text() + "\n"
+        texts.append(page.get_text())
 
-    if len(text.strip()) > 50:
-        # Got meaningful text — no OCR needed
-        if on_step:
-            on_step(f"[PDF Extractor] Extracted {len(text)} chars from {page_count} pages (text-based)")
+    combined = "\n".join(texts)
+
+    # Quick email check on extracted text
+    if '@' in combined and find_emails(combined):
         doc.close()
-        return text
+        return combined
 
-    # Fallback: OCR for scanned/image PDFs
-    if on_step:
-        on_step(f"[PDF Extractor] Scanned PDF detected — running OCR on {page_count} pages...")
+    # Pass 2: OCR priority pages (page 2 first, then page 1, then rest)
+    if not HAS_WINOCR:
+        doc.close()
+        return combined
 
-    ocr_text = _ocr_pdf(doc, on_step)
+    # Order: page 2 (index 1) → page 1 (index 0) → page 3+ → only first 5 pages max
+    priority_order = []
+    if page_count > 1:
+        priority_order.append(1)  # Page 2 — contacts in RO/101
+    priority_order.append(0)      # Page 1
+    for i in range(2, min(page_count, 5)):
+        priority_order.append(i)
+
+    ocr_texts = list(texts)  # copy
+    for i in priority_order:
+        page = doc[i]
+        # Only OCR if text was sparse on this page
+        if len(texts[i].strip()) < 30:
+            ocr_result = _ocr_single_page(page, i)
+            if ocr_result:
+                ocr_texts[i] = ocr_result
+
+            # Check if we found an email after this page
+            partial = "\n".join(ocr_texts)
+            if '@' in partial and find_emails(partial):
+                doc.close()
+                return partial
+
     doc.close()
+    return "\n".join(ocr_texts)
 
-    if ocr_text:
-        if on_step:
-            on_step(f"[PDF Extractor] OCR extracted {len(ocr_text)} chars from {page_count} pages")
-        return ocr_text
 
-    if on_step:
-        on_step("[PDF Extractor] OCR produced no text")
-    return text  # Return whatever we got (might be empty)
+def _ocr_single_page(page, page_index, on_step=None):
+    """OCR a single PDF page at 200 DPI (fast).  Returns text or empty."""
+    if not HAS_WINOCR:
+        return ""
+
+    try:
+        # 200 DPI for speed (was 300) — still good enough for email extraction
+        mat = fitz.Matrix(200 / 72, 200 / 72)
+        pix = page.get_pixmap(matrix=mat)
+        img_data = pix.tobytes("png")
+
+        executor = _get_ocr_executor()
+        future = executor.submit(_ocr_page_worker, img_data)
+        return future.result(timeout=30)
+    except Exception:
+        return ""
 
 
 def _ocr_page_worker(img_data):
-    """Run OCR on a single page image. Runs in a separate thread to avoid
-    event loop conflicts with Playwright."""
+    """Run OCR on a single page image."""
     img = Image.open(io.BytesIO(img_data))
     result = winocr.recognize_pil_sync(img, "en")
     return result.get("text", "")
 
 
-def _ocr_pdf(doc, on_step=None):
-    """OCR a PDF document using Windows OCR (winocr).
-    Runs OCR in a worker thread to avoid asyncio event loop conflicts."""
-    import concurrent.futures
-
-    if not HAS_WINOCR:
-        if on_step:
-            on_step("[PDF Extractor] OCR not available — install winocr: pip install winocr Pillow")
-        return ""
-
-    all_text = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        for i, page in enumerate(doc):
-            # Render page to image at 300 DPI for good OCR quality
-            mat = fitz.Matrix(300 / 72, 300 / 72)
-            pix = page.get_pixmap(matrix=mat)
-            img_data = pix.tobytes("png")
-
-            try:
-                future = executor.submit(_ocr_page_worker, img_data)
-                page_text = future.result(timeout=60)
-                all_text.append(page_text)
-            except Exception as e:
-                if on_step:
-                    on_step(f"[PDF Extractor] OCR failed on page {i+1}: {e}")
-
-    return "\n".join(all_text)
-
-
+# ---------------------------------------------------------------------------
+# Contact finders
+# ---------------------------------------------------------------------------
 def find_emails(text):
-    """Find all email addresses in text."""
-    emails = EMAIL_PATTERN.findall(text)
+    """Find all email addresses in text, including OCR-damaged ones.
+    Uses two strategies:
+      1. Standard regex on raw text (works for clean text-based PDFs)
+      2. Window-around-@ with space stripping + validation (handles OCR
+         artefacts like "offi ce@ wi rnsberger-lerchbaum. com")
+    """
+    emails = []
+
+    # Strategy 1: Standard regex on raw text
+    for e in EMAIL_PATTERN.findall(text):
+        if _is_valid_email(e):
+            emails.append(e)
+
+    # Strategy 2: Find every @, grab surrounding window, strip spaces, match
+    emails += _extract_emails_around_at(text)
+
+    # Deduplicate, case-insensitive
     seen = set()
     unique = []
     for e in emails:
@@ -143,7 +282,6 @@ def find_phones(text):
     cleaned = []
     for p in raw_phones:
         digits = re.sub(r'[^\d]', '', p)
-        # Must be a real phone: 10+ digits, or starts with +
         if digits in PHONE_BLACKLIST:
             continue
         if p.strip().startswith('+') and len(digits) >= 9:
@@ -188,14 +326,14 @@ def find_names(text):
     return list(dict.fromkeys(names))
 
 
+# ---------------------------------------------------------------------------
+# Main extraction — multi-pass with OCR retry
+# ---------------------------------------------------------------------------
 def extract_contacts_from_pdf(pdf_path, on_step=None):
+    """Main extraction function.
+    Smart extraction already handles text + targeted OCR with early exit.
+    No redundant full-OCR retry needed.
     """
-    Main extraction function.
-    Returns dict with emails, phones, name, and status.
-    """
-    if on_step:
-        on_step(f"[PDF Extractor] Processing: {pdf_path}")
-
     try:
         text = extract_text_from_pdf(pdf_path, on_step)
     except Exception as e:

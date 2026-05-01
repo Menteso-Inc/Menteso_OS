@@ -13,6 +13,8 @@ const state = {
     lastResult: null,
     startTime: null,
     uploadedFilePath: null,
+    pipelineMode: false,
+    pipeline: null,
     browser: {
         url: "",
         event: "idle",
@@ -76,6 +78,8 @@ async function runAgent(name, params = {}) {
     state.executionLog = [];
     state.lastResult = null;
     state.startTime = Date.now();
+    state.pipelineMode = false;
+    state.pipeline = null;
     state.browser = {
         url: "", event: "idle", patent_id: "", title: "", applicant: "",
         country: "", row: 0, total: 0, pdf_url: "", emails: [], phones: [],
@@ -132,10 +136,13 @@ function handleSSEEvent(data) {
     if (data.type === "step") {
         const type = classifyMessage(data.message);
         addLogLine(data.message, type);
+    } else if (data.type === "pipeline_stats") {
+        handlePipelineStats(data);
     } else if (data.type === "browser") {
         handleBrowserEvent(data);
     } else if (data.type === "complete") {
         state.lastResult = data.result;
+        state.pipelineMode = false;
         addLogLine("Agent execution complete.", "success");
         state.browser.event = "done";
         updateBrowserPreview();
@@ -143,6 +150,12 @@ function handleSSEEvent(data) {
     } else if (data.type === "error") {
         addLogLine(`FATAL: ${data.message}`, "error");
     }
+}
+
+function handlePipelineStats(data) {
+    state.pipelineMode = true;
+    state.pipeline = data;
+    updatePipelinePanel();
 }
 
 function handleBrowserEvent(data) {
@@ -380,6 +393,94 @@ function renderBrowserProgress(b) {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline Panel — live DOM updates for parallel mode
+// ---------------------------------------------------------------------------
+function updatePipelinePanel() {
+    const panel = document.getElementById("pipeline-panel");
+    if (!panel || !state.pipeline) return;
+
+    const p = state.pipeline;
+    const pct = p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0;
+
+    panel.innerHTML = `
+        <div class="pipeline-header">
+            <span class="pipeline-mode-badge">PIPELINE MODE</span>
+            <span class="pipeline-workers">${p.browse_active || 0} browsers | ${p.ocr_active || 0} OCR</span>
+        </div>
+        <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar">
+                <div class="pipeline-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <div class="pipeline-bar-label">${p.completed} / ${p.total} (${pct}%)</div>
+        </div>
+        <div class="pipeline-metrics">
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value">${p.rows_per_minute || 0}</div>
+                <div class="pipeline-metric-label">rows/min</div>
+            </div>
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value">${formatETA(p.eta_minutes)}</div>
+                <div class="pipeline-metric-label">ETA</div>
+            </div>
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value success">${p.found || 0}</div>
+                <div class="pipeline-metric-label">Found</div>
+            </div>
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value warning">${p.not_found || 0}</div>
+                <div class="pipeline-metric-label">Not Found</div>
+            </div>
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value error">${p.errors || 0}</div>
+                <div class="pipeline-metric-label">Errors</div>
+            </div>
+            <div class="pipeline-metric">
+                <div class="pipeline-metric-value">${formatElapsed(p.elapsed_seconds)}</div>
+                <div class="pipeline-metric-label">Elapsed</div>
+            </div>
+        </div>
+        ${p.captcha_state === "cooldown" ? `
+            <div class="captcha-warning">
+                CAPTCHA cooldown — resuming in ${p.captcha_cooldown_remaining}s
+            </div>
+        ` : ""}
+        ${p.skipped > 0 ? `
+            <div class="pipeline-resume-info">${p.skipped} rows loaded from previous run (resume)</div>
+        ` : ""}
+    `;
+}
+
+function renderPipelineSection() {
+    return `
+        <div class="pipeline-section">
+            <div class="section-title">Pipeline Progress</div>
+            <div class="pipeline-panel" id="pipeline-panel">
+                <div class="pipeline-idle">Pipeline starting...</div>
+            </div>
+        </div>
+    `;
+}
+
+function formatETA(minutes) {
+    if (!minutes || minutes <= 0) return "--";
+    if (minutes < 1) return "<1m";
+    if (minutes < 60) return Math.round(minutes) + "m";
+    const h = Math.floor(minutes / 60);
+    const m = Math.round(minutes % 60);
+    return h + "h " + m + "m";
+}
+
+function formatElapsed(seconds) {
+    if (!seconds) return "0s";
+    if (seconds < 60) return Math.round(seconds) + "s";
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds % 60);
+    if (m < 60) return m + "m " + s + "s";
+    const h = Math.floor(m / 60);
+    return h + "h " + (m % 60) + "m";
+}
+
+// ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
 function render() {
@@ -501,10 +602,15 @@ function renderMain() {
         html += renderSimpleRunSection();
     }
 
+    // --- Pipeline progress panel (shown in pipeline mode) ---
+    if (state.pipelineMode || (state.isRunning && state.pipeline)) {
+        html += renderPipelineSection();
+    }
+
     // --- Execution Log + Browser Preview (side by side) ---
     html += `
         <div class="execution-split">
-            <div class="execution-log-panel">
+            <div class="execution-log-panel${state.pipelineMode ? " full-width" : ""}">
                 <div class="section-title">Execution Log</div>
                 <div class="terminal" id="terminal">
                     ${state.executionLog.length === 0 && !state.isRunning
@@ -514,6 +620,7 @@ function renderMain() {
                     ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
                 </div>
             </div>
+            ${!state.pipelineMode ? `
             <div class="browser-preview-panel">
                 <div class="section-title">Scraping Browser</div>
                 <div class="browser-frame">
@@ -536,6 +643,7 @@ function renderMain() {
                     </div>
                 </div>
             </div>
+            ` : ""}
         </div>
     `;
 

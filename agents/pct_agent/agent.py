@@ -29,8 +29,14 @@ from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
 from .browser import PatentBrowser
 from .pdf_extractor import extract_contacts_from_pdf
+from .pipeline import PipelinePCT, ProgressFile
 from .tests import tests
 
+# Pipeline config
+PIPELINE_THRESHOLD = 50     # rows >= this use parallel pipeline
+DEFAULT_BROWSER_WORKERS = 20
+DEFAULT_DOWNLOAD_WORKERS = 30
+DEFAULT_OCR_WORKERS = 8
 
 AGENT_CONFIG = {
     "name": "PCT Agent",
@@ -303,7 +309,14 @@ def run_agent(input_data=None, on_step=None):
     step(f"Ready to process {len(patent_rows)} patent entries")
     time.sleep(STEP_DELAY)
 
-    # --- Step 5: Launch browser & process each row ---
+    # --- Step 5: Choose mode — pipeline (large) or sequential (small) ---
+    if len(patent_rows) >= PIPELINE_THRESHOLD:
+        return _run_pipeline_mode(
+            patent_rows, file_path, agent_name, strategy,
+            start_time, step, browser_event,
+        )
+
+    # --- Sequential mode (< PIPELINE_THRESHOLD rows) ---
     step("Launching browser for WIPO scraping...")
     step("A Chromium window will open — solve any CAPTCHAs when prompted.")
     time.sleep(STEP_DELAY)
@@ -475,6 +488,89 @@ def run_agent(input_data=None, on_step=None):
         f"DONE — {found_count} contacts found, {not_found_count} not found, "
         f"{error_count} errors out of {total} rows"
     )
+
+    agent_result["execution_time"] = round(execution_time, 2)
+    agent_result["attempts"] = 1
+    return agent_result
+
+
+# ---------------------------------------------------------------------------
+# Pipeline mode — parallel processing for large datasets
+# ---------------------------------------------------------------------------
+def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
+                       start_time, step, browser_event):
+    """Run the parallel pipeline for 50+ rows.  No artificial delays."""
+    step(f"[Pipeline] Large dataset ({len(patent_rows)} rows) — parallel pipeline mode")
+    step(f"[Pipeline] {DEFAULT_BROWSER_WORKERS} browsers + {DEFAULT_DOWNLOAD_WORKERS} downloaders + {DEFAULT_OCR_WORKERS} OCR")
+
+    # Check for resume
+    resume_path = ProgressFile.find_latest(file_path)
+    if resume_path:
+        completed = ProgressFile.load_completed(resume_path)
+        step(f"[Pipeline] Resuming — {len(completed)}/{len(patent_rows)} already done")
+    else:
+        resume_path = None
+
+    # Build and run pipeline
+    pipeline = PipelinePCT(
+        patent_rows=patent_rows,
+        on_step=step,
+        browser_workers=DEFAULT_BROWSER_WORKERS,
+        download_workers=DEFAULT_DOWNLOAD_WORKERS,
+        ocr_workers=DEFAULT_OCR_WORKERS,
+        headless=True,
+        resume_path=resume_path,
+        input_file=file_path,
+    )
+
+    results = pipeline.run()
+
+    # Generate Work Report (no delay)
+    step("Generating Work Report Excel...")
+    output_path = generate_work_report(results, on_step=step)
+    step(f"Output saved: {Path(output_path).name}")
+
+    # Self-tests
+    step("Running self-tests...")
+    found_count = sum(1 for r in results if r["status"] == "found")
+    not_found_count = sum(1 for r in results if r["status"] == "not_found")
+    error_count = sum(1 for r in results if r["status"] not in ("found", "not_found"))
+    total = len(patent_rows)
+
+    agent_result = {
+        "status": "success",
+        "results": results,
+        "summary": {
+            "total": total,
+            "processed": len(results),
+            "found": found_count,
+            "not_found": not_found_count,
+            "errors": error_count,
+        },
+        "output_file": output_path,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    test_result = tests.run(agent_result)
+    agent_result["tests"] = test_result
+
+    if test_result["passed"]:
+        step(f"All {test_result['total']} self-tests passed!")
+    else:
+        step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
+
+    # Save learning
+    execution_time = time.time() - start_time
+    insight = (
+        f"Pipeline processed {total} rows: {found_count} contacts found, "
+        f"{not_found_count} not found, {error_count} errors"
+    )
+    save_learning(agent_name, "process_excel", "success" if found_count > 0 else "partial",
+                  insight, strategy, execution_time)
+
+    step(f"Learning saved. Total time: {execution_time:.1f}s")
+    step(f"DONE — {found_count} contacts found, {not_found_count} not found, "
+         f"{error_count} errors out of {total} rows")
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
