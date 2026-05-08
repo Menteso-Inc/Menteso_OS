@@ -27,16 +27,14 @@ except ImportError:
 from shared.memory import load_memory, save_learning, get_best_strategy
 from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
-from .browser import PatentBrowser
+from .browser import PatentBrowser, BrowserStopRequested
 from .pdf_extractor import extract_contacts_from_pdf
-from .pipeline import PipelinePCT, ProgressFile
 from .tests import tests
 
 # Pipeline config
 PIPELINE_THRESHOLD = 50     # rows >= this use parallel pipeline
-DEFAULT_BROWSER_WORKERS = 20
-DEFAULT_DOWNLOAD_WORKERS = 30
-DEFAULT_OCR_WORKERS = 8
+DEFAULT_CHUNK_SIZE = 500
+CHUNK_COOLDOWN_SECONDS = 1.5
 
 AGENT_CONFIG = {
     "name": "PCT Agent",
@@ -228,6 +226,39 @@ def _map_columns(headers):
     return col_map
 
 
+def _stop_requested(input_data):
+    checker = (input_data or {}).get("stop_requested")
+    if callable(checker):
+        return checker
+    return lambda: False
+
+
+def _register_stop_handler(input_data, handler):
+    registrar = (input_data or {}).get("register_stop_handler")
+    if callable(registrar) and callable(handler):
+        registrar(handler)
+
+
+def _build_partial_result(status, results, total, found_count, not_found_count,
+                          error_count, output_path="", execution_time=0, tests_result=None):
+    return {
+        "status": status,
+        "results": results,
+        "summary": {
+            "total": total,
+            "processed": len(results),
+            "found": found_count,
+            "not_found": not_found_count,
+            "errors": error_count,
+        },
+        "output_file": output_path,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "execution_time": round(execution_time, 2),
+        "attempts": 1,
+        "tests": tests_result or {},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Main agent runner
 # ---------------------------------------------------------------------------
@@ -270,13 +301,16 @@ def run_agent(input_data=None, on_step=None):
 
     mode = input_data.get("mode", "upload")
     file_path = input_data.get("file_path")
+    gazette = input_data.get("gazette")
+    stop_requested = _stop_requested(input_data)
 
     if mode == "wipo_download":
-        step("[Mode: WIPO Download] Downloading Excel from PatentScope...")
+        gazette_msg = f" for week {gazette}" if gazette else ""
+        step(f"[Mode: WIPO Download] Downloading Excel from PatentScope{gazette_msg}...")
         time.sleep(STEP_DELAY)
 
         def do_download():
-            return download_wipo_excel(on_step=on_step)
+            return download_wipo_excel(gazette=gazette, on_step=on_step)
 
         dl_result = run_with_self_debug(do_download, max_retries=2, on_step=on_step)
         if dl_result["status"] == "success" and dl_result["result"]:
@@ -309,11 +343,16 @@ def run_agent(input_data=None, on_step=None):
     step(f"Ready to process {len(patent_rows)} patent entries")
     time.sleep(STEP_DELAY)
 
+    if stop_requested():
+        step("Stop requested before processing started")
+        return _build_partial_result("stopped", [], len(patent_rows), 0, 0, 0)
+
     # --- Step 5: Choose mode — pipeline (large) or sequential (small) ---
     if len(patent_rows) >= PIPELINE_THRESHOLD:
         return _run_pipeline_mode(
             patent_rows, file_path, agent_name, strategy,
-            start_time, step, browser_event,
+            start_time, step, browser_event, stop_requested,
+            (input_data or {}).get("register_stop_handler"),
         )
 
     # --- Sequential mode (< PIPELINE_THRESHOLD rows) ---
@@ -327,7 +366,8 @@ def run_agent(input_data=None, on_step=None):
     error_count = 0
     total = len(patent_rows)
 
-    patent_browser = PatentBrowser(headless=False, on_step=on_step)
+    patent_browser = PatentBrowser(headless=False, on_step=on_step, stop_requested=stop_requested)
+    _register_stop_handler(input_data, patent_browser.force_stop)
     try:
         patent_browser.start()
     except Exception as e:
@@ -336,6 +376,10 @@ def run_agent(input_data=None, on_step=None):
 
     try:
         for idx, row_data in enumerate(patent_rows, start=1):
+            if stop_requested():
+                step(f"Stop requested - finishing with {len(results)} processed row(s)")
+                break
+
             patent_id = row_data["id"]
             title = row_data["title"]
             url = id_to_url(patent_id)
@@ -358,7 +402,11 @@ def run_agent(input_data=None, on_step=None):
 
             # Use Playwright browser to scrape patent & download RO/101 PDF
             step(f"[Row {idx}] [Browser] Opening patent page & searching for RO/101 PDF...")
-            pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=on_step)
+            try:
+                pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=on_step)
+            except BrowserStopRequested:
+                step(f"[Row {idx}] Stop requested - ending run immediately and saving partial output")
+                break
 
             if not pdf_path:
                 browser_event({
@@ -438,28 +486,24 @@ def run_agent(input_data=None, on_step=None):
     step("Generating Work Report Excel...")
     time.sleep(STEP_DELAY)
 
-    output_path = generate_work_report(results, on_step=step)
-    step(f"Output saved: {Path(output_path).name}")
+    run_status = "stopped" if stop_requested() else "success"
+    output_path = ""
+    if results:
+        output_path = generate_work_report(results, on_step=step)
+        step(f"Output saved: {Path(output_path).name}")
+    else:
+        step("No processed rows available to write into Work Report")
     time.sleep(STEP_DELAY)
 
     # --- Step 7: Self-test ---
     step("Running self-tests...")
     time.sleep(STEP_DELAY)
 
-    agent_result = {
-        "status": "success",
-        "results": results,
-        "summary": {
-            "total": total,
-            "processed": len(results),
-            "found": found_count,
-            "not_found": not_found_count,
-            "errors": error_count,
-            "skipped": len([r for r in results if r["status"] == "skipped"]),
-        },
-        "output_file": output_path,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    agent_result = _build_partial_result(
+        run_status, results, total, found_count, not_found_count,
+        error_count, output_path=output_path,
+    )
+    agent_result["summary"]["skipped"] = len([r for r in results if r["status"] == "skipped"])
 
     test_result = tests.run(agent_result)
     agent_result["tests"] = test_result
@@ -477,12 +521,27 @@ def run_agent(input_data=None, on_step=None):
     )
     save_learning(
         agent_name, "process_excel",
-        "success" if found_count > 0 or not_found_count > 0 else "partial",
+        run_status if run_status == "stopped" else ("success" if found_count > 0 or not_found_count > 0 else "partial"),
         insight, strategy, execution_time,
     )
 
     step(f"Learning saved. Total time: {execution_time:.1f}s")
     time.sleep(STEP_DELAY)
+
+    if run_status == "stopped":
+        step(
+            f"STOPPED - partial output created with {len(results)} processed rows "
+            f"({found_count} found, {not_found_count} not found, {error_count} errors)"
+        )
+    else:
+        step(
+            f"DONE - {found_count} contacts found, {not_found_count} not found, "
+            f"{error_count} errors out of {total} rows"
+        )
+
+    agent_result["execution_time"] = round(execution_time, 2)
+    agent_result["attempts"] = 1
+    return agent_result
 
     step(
         f"DONE — {found_count} contacts found, {not_found_count} not found, "
@@ -498,7 +557,8 @@ def run_agent(input_data=None, on_step=None):
 # Pipeline mode — parallel processing for large datasets
 # ---------------------------------------------------------------------------
 def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
-                       start_time, step, browser_event):
+                       start_time, step, browser_event, stop_requested=lambda: False,
+                       register_stop_handler=None):
     """Run the parallel pipeline for 50+ rows.  No artificial delays."""
     step(f"[Pipeline] Large dataset ({len(patent_rows)} rows) — parallel pipeline mode")
     step(f"[Pipeline] {DEFAULT_BROWSER_WORKERS} browsers + {DEFAULT_DOWNLOAD_WORKERS} downloaders + {DEFAULT_OCR_WORKERS} OCR")
@@ -512,7 +572,7 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
         resume_path = None
 
     # Build and run pipeline
-    pipeline = PipelinePCT(
+    pipeline = ChunkedPipelineManager(
         patent_rows=patent_rows,
         on_step=step,
         browser_workers=DEFAULT_BROWSER_WORKERS,
@@ -580,6 +640,248 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
 # ---------------------------------------------------------------------------
 # Output generator — Work Report format
 # ---------------------------------------------------------------------------
+def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
+                       start_time, step, browser_event, stop_requested=lambda: False,
+                       register_stop_handler=None):
+    """Run large datasets in stable sequential chunks."""
+    total = len(patent_rows)
+    total_chunks = max(1, (total + DEFAULT_CHUNK_SIZE - 1) // DEFAULT_CHUNK_SIZE)
+
+    step(f"[Pipeline] Large dataset ({total} rows) - sequential chunk mode")
+    step(f"[Pipeline] Splitting into {total_chunks} chunk(s) of up to {DEFAULT_CHUNK_SIZE} rows")
+    step("[Pipeline] Processing chunks strictly one by one for stability")
+
+    for idx, row in enumerate(patent_rows, start=1):
+        row["_row_idx"] = idx
+
+    results = []
+    processed_rows = set()
+    found_count = 0
+    not_found_count = 0
+    error_count = 0
+
+    step("Launching browser for chunked WIPO scraping...")
+    step("A Chromium window will open - solve any CAPTCHAs when prompted.")
+
+    patent_browser = PatentBrowser(headless=False, on_step=step, stop_requested=stop_requested)
+    if callable(register_stop_handler):
+        register_stop_handler(patent_browser.force_stop)
+    try:
+        patent_browser.start()
+    except Exception as e:
+        step(f"ERROR: Could not launch browser: {e}")
+        return _failure(f"Browser launch failed: {e}")
+
+    try:
+        for chunk_index in range(total_chunks):
+            if stop_requested():
+                step(f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested before next chunk")
+                break
+
+            chunk_start = chunk_index * DEFAULT_CHUNK_SIZE
+            chunk_rows = patent_rows[chunk_start:chunk_start + DEFAULT_CHUNK_SIZE]
+            if not chunk_rows:
+                continue
+
+            first_row = chunk_rows[0]["_row_idx"]
+            last_row = chunk_rows[-1]["_row_idx"]
+            step(
+                f"[Chunk {chunk_index + 1}/{total_chunks}] Starting rows "
+                f"{first_row}-{last_row} ({len(chunk_rows)} rows)"
+            )
+
+            chunk_results = 0
+            for row_data in chunk_rows:
+                if stop_requested():
+                    step(
+                        f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
+                        f"finishing with {len(results)} processed row(s)"
+                    )
+                    break
+
+                row_no = row_data["_row_idx"]
+                if row_no in processed_rows:
+                    step(f"[Chunk {chunk_index + 1}/{total_chunks}] Skipping duplicate row {row_no}")
+                    continue
+
+                patent_id = row_data["id"]
+                title = row_data["title"]
+                url = id_to_url(patent_id)
+                country = extract_country(row_data["appl_no"])
+                doc_id = patent_id.replace("/", "_")
+
+                step(f"[Row {row_no}/{total}] Processing: {patent_id}")
+
+                browser_event({
+                    "event": "navigate",
+                    "url": url,
+                    "row": row_no,
+                    "total": total,
+                    "patent_id": patent_id,
+                    "title": title,
+                    "applicant": row_data["applicant"],
+                    "country": country,
+                })
+
+                step(f"[Row {row_no}] [Browser] Opening patent page & searching for RO/101 PDF...")
+                try:
+                    pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=step)
+                except BrowserStopRequested:
+                    step(
+                        f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
+                        "ending run immediately and saving partial output"
+                    )
+                    break
+
+                if not pdf_path:
+                    browser_event({
+                        "event": "no_pdf",
+                        "url": url,
+                        "row": row_no,
+                        "total": total,
+                        "patent_id": patent_id,
+                    })
+                    step(f"[Row {row_no}] No RO/101 PDF found")
+                    results.append(_row_result(
+                        row_no, row_data, url, country, "not_found",
+                        reason="No RO/101 PDF found on patent page",
+                    ))
+                    processed_rows.add(row_no)
+                    not_found_count += 1
+                    chunk_results += 1
+                    continue
+
+                browser_event({
+                    "event": "extracting",
+                    "url": url,
+                    "row": row_no,
+                    "total": total,
+                    "patent_id": patent_id,
+                })
+                step(f"[Row {row_no}] [PDF Extractor] Extracting contacts...")
+                contacts = extract_contacts_from_pdf(pdf_path, on_step=step)
+
+                emails = contacts.get("emails", [])
+                phones = contacts.get("phones", [])
+                name = contacts.get("name", "")
+                status = contacts["status"]
+
+                if status == "found":
+                    found_count += 1
+                    step(
+                        f"[Row {row_no}] FOUND: "
+                        f"{', '.join(emails[:2]) if emails else 'no email'} | "
+                        f"{', '.join(phones[:2]) if phones else 'no phone'}"
+                    )
+                elif status == "not_found":
+                    not_found_count += 1
+                    step(f"[Row {row_no}] No contact info found in PDF")
+                else:
+                    error_count += 1
+                    step(f"[Row {row_no}] Error: {contacts.get('error', 'Unknown')}")
+
+                browser_event({
+                    "event": "contacts",
+                    "url": url,
+                    "row": row_no,
+                    "total": total,
+                    "patent_id": patent_id,
+                    "title": title,
+                    "emails": emails,
+                    "phones": phones,
+                    "name": name,
+                    "status": status,
+                    "found_count": found_count,
+                    "not_found_count": not_found_count,
+                    "error_count": error_count,
+                })
+
+                results.append(_row_result(
+                    row_no, row_data, url, country, status,
+                    emails=emails, phones=phones, name=name,
+                ))
+                processed_rows.add(row_no)
+                chunk_results += 1
+
+                time.sleep(0.5)
+
+            step(
+                f"[Chunk {chunk_index + 1}/{total_chunks}] Finished rows "
+                f"{first_row}-{last_row} - appended {chunk_results} result row(s); "
+                f"combined dataset now has {len(results)} row(s)"
+            )
+
+            if stop_requested():
+                break
+
+            if chunk_index < total_chunks - 1:
+                step(
+                    f"[Chunk {chunk_index + 1}/{total_chunks}] Cooling down "
+                    f"{CHUNK_COOLDOWN_SECONDS:.1f}s before next chunk"
+                )
+                time.sleep(CHUNK_COOLDOWN_SECONDS)
+    finally:
+        step("[Browser] Closing browser...")
+        patent_browser.close()
+
+    results = sorted(results, key=lambda item: item.get("row", 0))
+    if len(results) != total:
+        step(
+            f"[Pipeline] WARNING: final result count {len(results)} does not match "
+            f"input rows {total}"
+        )
+
+    step("Generating Work Report Excel...")
+    run_status = "stopped" if stop_requested() else "success"
+    output_path = ""
+    if results:
+        output_path = generate_work_report(results, on_step=step)
+        step(f"Output saved: {Path(output_path).name}")
+    else:
+        step("No processed rows available to write into Work Report")
+
+    step("Running self-tests...")
+    agent_result = _build_partial_result(
+        run_status, results, total, found_count, not_found_count,
+        error_count, output_path=output_path,
+    )
+
+    test_result = tests.run(agent_result)
+    agent_result["tests"] = test_result
+
+    if test_result["passed"]:
+        step(f"All {test_result['total']} self-tests passed!")
+    else:
+        step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
+
+    execution_time = time.time() - start_time
+    insight = (
+        f"Sequential chunk processing completed {total} rows: "
+        f"{found_count} found, {not_found_count} not found, {error_count} errors"
+    )
+    save_learning(
+        agent_name, "process_excel",
+        run_status if run_status == "stopped" else ("success" if found_count > 0 or not_found_count > 0 else "partial"),
+        insight, strategy, execution_time,
+    )
+
+    step(f"Learning saved. Total time: {execution_time:.1f}s")
+    if run_status == "stopped":
+        step(
+            f"STOPPED - partial output created with {len(results)} processed rows "
+            f"({found_count} found, {not_found_count} not found, {error_count} errors)"
+        )
+    else:
+        step(
+            f"DONE - {found_count} contacts found, {not_found_count} not found, "
+            f"{error_count} errors out of {total} rows"
+        )
+
+    agent_result["execution_time"] = round(execution_time, 2)
+    agent_result["attempts"] = 1
+    return agent_result
+
+
 WORK_REPORT_HEADERS = [
     "Publication Number", "Title", "Application No", "Applicant",
     "Url", "Cat", "Phone No", "Email", "Name", "Country",
@@ -589,6 +891,7 @@ WORK_REPORT_HEADERS = [
 
 def generate_work_report(results, on_step=None):
     """Generate a Work Report Excel matching the standard output format."""
+    results = sorted(results, key=lambda item: item.get("row", 0))
     wb = openpyxl.Workbook()
     ws = wb.active
 

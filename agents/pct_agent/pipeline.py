@@ -23,6 +23,11 @@ from .pdf_extractor import extract_contacts_from_pdf
 
 PROJECT_DIR = Path(__file__).parent.parent.parent
 OUTPUTS_DIR = PROJECT_DIR / "outputs"
+RESULT_STATUS_PRIORITY = {
+    "found": 3,
+    "not_found": 2,
+    "error": 1,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +259,34 @@ def _make_result(row_data, url, country, status, emails=None, phones=None, name=
     }
 
 
+def dedupe_results_by_row(results):
+    """
+    Keep exactly one result per original row number.
+    If a row appears more than once, prefer found > not_found > error.
+    """
+    merged = {}
+    duplicates_resolved = 0
+
+    for result in results:
+        row_no = result.get("row")
+        if row_no is None:
+            continue
+
+        current = merged.get(row_no)
+        if current is None:
+            merged[row_no] = result
+            continue
+
+        duplicates_resolved += 1
+        current_score = RESULT_STATUS_PRIORITY.get(current.get("status"), 0)
+        candidate_score = RESULT_STATUS_PRIORITY.get(result.get("status"), 0)
+        if candidate_score > current_score:
+            merged[row_no] = result
+
+    ordered = [merged[row_no] for row_no in sorted(merged)]
+    return ordered, duplicates_resolved
+
+
 # ---------------------------------------------------------------------------
 # 3-Stage Pipeline
 # ---------------------------------------------------------------------------
@@ -310,7 +343,7 @@ class PipelinePCT:
         queued = 0
         cache_hits = 0
         for idx, row in enumerate(self.patent_rows, start=1):
-            row["_row_idx"] = idx
+            row.setdefault("_row_idx", idx)
             if row["id"] in self._completed_ids:
                 continue
 
@@ -414,7 +447,7 @@ class PipelinePCT:
         else:
             all_results = self._results
 
-        all_results.sort(key=lambda r: r.get("row", 0))
+        all_results, duplicates_resolved = dedupe_results_by_row(all_results)
 
         snap = self.stats.snapshot()
         self.step(
@@ -422,6 +455,8 @@ class PipelinePCT:
             f"{snap['errors']} errors, {snap['cached']} cached | "
             f"{snap['elapsed_seconds']}s ({snap['rows_per_minute']} rows/min)"
         )
+        if duplicates_resolved:
+            self.step(f"[Pipeline] Resolved {duplicates_resolved} duplicate row results during merge")
         return all_results
 
     # -- Stage 1: Browser workers --
@@ -572,3 +607,234 @@ class PipelinePCT:
         except Exception:
             pass
         return results
+
+
+class ChunkedPipelineManager:
+    """
+    Split large spreadsheets into stable row chunks and assign each chunk
+    to its own pipeline worker. Final output is merged by original row number.
+    """
+
+    def __init__(
+        self,
+        patent_rows,
+        on_step,
+        input_file="",
+        chunk_size=400,
+        parallel_pipelines=2,
+        browser_workers=6,
+        download_workers=8,
+        ocr_workers=4,
+        headless=False,
+        resume_path=None,
+    ):
+        self.patent_rows = patent_rows
+        self.on_step = on_step
+        self.input_file = input_file
+        self.chunk_size = max(1, chunk_size)
+        self.parallel_pipelines = max(1, parallel_pipelines)
+        self.browser_workers = max(1, browser_workers)
+        self.download_workers = max(1, download_workers)
+        self.ocr_workers = max(1, ocr_workers)
+        self.resume_path = resume_path
+
+        for idx, row in enumerate(self.patent_rows, start=1):
+            row["_row_idx"] = idx
+
+        self.chunks = [
+            self.patent_rows[i:i + self.chunk_size]
+            for i in range(0, len(self.patent_rows), self.chunk_size)
+        ]
+        self.parallel_pipelines = min(self.parallel_pipelines, len(self.chunks)) or 1
+        self.browser_workers = max(2, self.browser_workers // self.parallel_pipelines)
+        self.download_workers = max(3, self.download_workers // self.parallel_pipelines)
+        self.ocr_workers = max(2, self.ocr_workers // self.parallel_pipelines)
+        # WIPO is significantly more reliable in headed mode for heavy runs.
+        self.headless = False if len(self.chunks) >= 1 else headless
+
+        self._lock = threading.Lock()
+        self._shutdown = threading.Event()
+        self._chunk_snapshots = {}
+        self._results_by_row = {}
+        self._chunk_queue = queue.Queue()
+        self._duplicate_rows_resolved = 0
+        self._chunk_errors = []
+        self._start_time = time.time()
+
+    def step(self, msg):
+        if self.on_step:
+            self.on_step(msg)
+
+    def run(self):
+        total_chunks = len(self.chunks)
+        if total_chunks == 0:
+            return []
+
+        self.step(
+            f"[Chunk Manager] Split {len(self.patent_rows)} rows into {total_chunks} chunk(s) "
+            f"of up to {self.chunk_size} rows"
+        )
+        self.step(
+            f"[Chunk Manager] Running up to {min(self.parallel_pipelines, total_chunks)} "
+            f"chunk pipeline(s) in parallel"
+        )
+        self.step(
+            f"[Chunk Manager] Per chunk workers: {self.browser_workers} browsers, "
+            f"{self.download_workers} downloaders, {self.ocr_workers} OCR"
+        )
+        if self.resume_path:
+            self.step("[Chunk Manager] Resume files are ignored in chunk mode to prevent duplicate merges")
+
+        for chunk_idx, chunk_rows in enumerate(self.chunks, start=1):
+            self._chunk_queue.put((chunk_idx, chunk_rows))
+        for _ in range(min(self.parallel_pipelines, total_chunks)):
+            self._chunk_queue.put(None)
+
+        workers = []
+        for worker_id in range(min(self.parallel_pipelines, total_chunks)):
+            t = threading.Thread(
+                target=self._chunk_worker,
+                args=(worker_id + 1, total_chunks),
+                daemon=True,
+            )
+            workers.append(t)
+
+        stats_t = threading.Thread(target=self._stats_reporter, daemon=True)
+        stats_t.start()
+
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+
+        self._shutdown.set()
+        stats_t.join(timeout=3)
+
+        if self._chunk_errors:
+            joined = "; ".join(self._chunk_errors[:3])
+            self.step(f"[Chunk Manager] {len(self._chunk_errors)} chunk pipeline(s) failed: {joined}")
+
+        merged_results = [self._results_by_row[row_no] for row_no in sorted(self._results_by_row)]
+        merged_results, extra_dupes = dedupe_results_by_row(merged_results)
+        total_dupes = self._duplicate_rows_resolved + extra_dupes
+        if total_dupes:
+            self.step(f"[Chunk Manager] Resolved {total_dupes} duplicate row result(s)")
+
+        self._emit_snapshot(force=True)
+        return merged_results
+
+    def _chunk_worker(self, worker_id, total_chunks):
+        while True:
+            item = self._chunk_queue.get()
+            if item is None:
+                return
+
+            chunk_idx, chunk_rows = item
+            first_row = chunk_rows[0]["_row_idx"]
+            last_row = chunk_rows[-1]["_row_idx"]
+            self.step(
+                f"[Chunk {chunk_idx}/{total_chunks}] Starting rows {first_row}-{last_row} "
+                f"({len(chunk_rows)} rows)"
+            )
+
+            def chunk_step(message):
+                if isinstance(message, dict) and message.get("type") == "pipeline_stats":
+                    with self._lock:
+                        self._chunk_snapshots[chunk_idx] = message
+                else:
+                    self.step(f"[Chunk {chunk_idx}/{total_chunks}] {message}")
+
+            pipeline = PipelinePCT(
+                patent_rows=chunk_rows,
+                on_step=chunk_step,
+                browser_workers=self.browser_workers,
+                download_workers=self.download_workers,
+                ocr_workers=self.ocr_workers,
+                headless=self.headless,
+                resume_path=None,
+                input_file=f"{self.input_file}::chunk{chunk_idx}",
+            )
+
+            try:
+                chunk_results = pipeline.run()
+                self._merge_chunk_results(chunk_idx, chunk_results)
+                self.step(
+                    f"[Chunk {chunk_idx}/{total_chunks}] Completed with {len(chunk_results)} result row(s)"
+                )
+            except Exception as exc:
+                with self._lock:
+                    self._chunk_errors.append(f"chunk {chunk_idx}: {exc}")
+                self.step(f"[Chunk {chunk_idx}/{total_chunks}] ERROR: {exc}")
+            finally:
+                with self._lock:
+                    self._chunk_snapshots.pop(chunk_idx, None)
+
+    def _merge_chunk_results(self, chunk_idx, results):
+        with self._lock:
+            for result in results:
+                row_no = result.get("row")
+                if row_no is None:
+                    continue
+                current = self._results_by_row.get(row_no)
+                if current is None:
+                    self._results_by_row[row_no] = result
+                    continue
+
+                self._duplicate_rows_resolved += 1
+                current_score = RESULT_STATUS_PRIORITY.get(current.get("status"), 0)
+                candidate_score = RESULT_STATUS_PRIORITY.get(result.get("status"), 0)
+                if candidate_score > current_score:
+                    self._results_by_row[row_no] = result
+
+    def _emit_snapshot(self, force=False):
+        with self._lock:
+            completed = sum(snap.get("completed", 0) for snap in self._chunk_snapshots.values())
+            found = sum(snap.get("found", 0) for snap in self._chunk_snapshots.values())
+            not_found = sum(snap.get("not_found", 0) for snap in self._chunk_snapshots.values())
+            errors = sum(snap.get("errors", 0) for snap in self._chunk_snapshots.values())
+            skipped = sum(snap.get("skipped", 0) for snap in self._chunk_snapshots.values())
+            browse_active = sum(snap.get("browse_active", 0) for snap in self._chunk_snapshots.values())
+            dl_active = sum(snap.get("dl_active", 0) for snap in self._chunk_snapshots.values())
+            ocr_active = sum(snap.get("ocr_active", 0) for snap in self._chunk_snapshots.values())
+
+            merged_count = len(self._results_by_row)
+            completed = max(completed, merged_count)
+            found = max(found, sum(1 for r in self._results_by_row.values() if r.get("status") == "found"))
+            not_found = max(
+                not_found,
+                sum(1 for r in self._results_by_row.values() if r.get("status") == "not_found"),
+            )
+            errors = max(
+                errors,
+                sum(1 for r in self._results_by_row.values() if r.get("status") not in ("found", "not_found")),
+            )
+
+        elapsed = max(time.time() - self._start_time, 0.1)
+        rate = (completed / elapsed) * 60 if completed else 0
+        remaining = max(len(self.patent_rows) - completed, 0)
+        eta = (remaining / rate) if rate > 0 else 0
+
+        if force or completed or browse_active or dl_active or ocr_active:
+            self.step({
+                "type": "pipeline_stats",
+                "total": len(self.patent_rows),
+                "completed": completed,
+                "found": found,
+                "not_found": not_found,
+                "errors": errors,
+                "skipped": skipped,
+                "cached": 0,
+                "rows_per_minute": round(rate, 1),
+                "eta_minutes": round(eta, 1),
+                "elapsed_seconds": round(elapsed),
+                "browse_active": browse_active,
+                "dl_active": dl_active,
+                "ocr_active": ocr_active,
+                "captcha_state": "ok",
+                "captcha_cooldown_remaining": 0,
+            })
+
+    def _stats_reporter(self):
+        while not self._shutdown.is_set():
+            self._emit_snapshot()
+            self._shutdown.wait(timeout=2)
