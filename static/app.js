@@ -9,12 +9,25 @@ const state = {
     agents: [],
     selectedAgent: null,
     isRunning: false,
+    stopRequested: false,
+    agentRunStatus: "idle",
+    inputMode: "upload",
     executionLog: [],
     lastResult: null,
     startTime: null,
     uploadedFilePath: null,
+    wipoGazettes: [],
+    wipoGazettesLoaded: false,
+    wipoGazettesLoading: false,
+    wipoGazettesError: "",
+    selectedGazette: "",
     pipelineMode: false,
     pipeline: null,
+    captcha: {
+        active: false,
+        message: "",
+        resolvedMessage: "",
+    },
     browser: {
         url: "",
         event: "idle",
@@ -34,6 +47,8 @@ const state = {
         error_count: 0,
     },
 };
+
+let alertAudioContext = null;
 
 // ---------------------------------------------------------------------------
 // Init
@@ -66,6 +81,94 @@ async function loadAgentDetail(name) {
     }
 }
 
+async function loadAgentRunStatus(name) {
+    try {
+        const res = await fetch(`/api/agents/${name}/run-status`);
+        const data = await res.json();
+        state.agentRunStatus = data.status || "idle";
+        return state.agentRunStatus;
+    } catch (e) {
+        console.error("Failed to load agent run status:", e);
+        state.agentRunStatus = "idle";
+        return "idle";
+    }
+}
+
+function resetCaptchaAlert() {
+    state.captcha.active = false;
+    state.captcha.message = "";
+    state.captcha.resolvedMessage = "";
+}
+
+function primeAlertAudio() {
+    if (alertAudioContext) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    try {
+        alertAudioContext = new AudioCtx();
+    } catch {
+        alertAudioContext = null;
+    }
+}
+
+async function playCaptchaAlertSound() {
+    primeAlertAudio();
+    if (!alertAudioContext) return;
+
+    try {
+        if (alertAudioContext.state === "suspended") {
+            await alertAudioContext.resume();
+        }
+        const start = alertAudioContext.currentTime;
+        [0, 0.22, 0.44].forEach((offset) => {
+            const osc = alertAudioContext.createOscillator();
+            const gain = alertAudioContext.createGain();
+            osc.type = "sine";
+            osc.frequency.value = 1046;
+            gain.gain.setValueAtTime(0.0001, start + offset);
+            gain.gain.exponentialRampToValueAtTime(0.18, start + offset + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.16);
+            osc.connect(gain);
+            gain.connect(alertAudioContext.destination);
+            osc.start(start + offset);
+            osc.stop(start + offset + 0.18);
+        });
+    } catch (e) {
+        console.warn("Failed to play CAPTCHA alert sound:", e);
+    }
+}
+
+async function loadWipoGazettes(force = false) {
+    if (state.wipoGazettesLoading) return;
+    if (state.wipoGazettesLoaded && !force) return;
+
+    state.wipoGazettesLoading = true;
+    state.wipoGazettesError = "";
+    renderMain();
+
+    try {
+        const res = await fetch("/api/wipo/gazettes");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load WIPO gazettes");
+
+        state.wipoGazettes = Array.isArray(data.options) ? data.options : [];
+        state.wipoGazettesLoaded = true;
+
+        const hasSelected = state.wipoGazettes.some((item) => item.value === state.selectedGazette);
+        if (!hasSelected) {
+            state.selectedGazette = state.wipoGazettes[0]?.value || "";
+        }
+    } catch (e) {
+        console.error("Failed to load WIPO gazettes:", e);
+        state.wipoGazettes = [];
+        state.wipoGazettesLoaded = false;
+        state.wipoGazettesError = e.message || "Failed to load WIPO gazettes";
+    } finally {
+        state.wipoGazettesLoading = false;
+        renderMain();
+    }
+}
+
 async function uploadFile(file) {
     const formData = new FormData();
     formData.append("file", file);
@@ -73,13 +176,21 @@ async function uploadFile(file) {
     return await res.json();
 }
 
+async function stopAgent(name) {
+    const res = await fetch(`/api/agents/${name}/stop`, { method: "POST" });
+    return await res.json();
+}
+
 async function runAgent(name, params = {}) {
     state.isRunning = true;
+    state.stopRequested = false;
+    state.agentRunStatus = "running";
     state.executionLog = [];
     state.lastResult = null;
     state.startTime = Date.now();
     state.pipelineMode = false;
     state.pipeline = null;
+    resetCaptchaAlert();
     state.browser = {
         url: "", event: "idle", patent_id: "", title: "", applicant: "",
         country: "", row: 0, total: 0, pdf_url: "", emails: [], phones: [],
@@ -90,11 +201,27 @@ async function runAgent(name, params = {}) {
     const query = new URLSearchParams();
     if (params.file_path) query.set("file_path", params.file_path);
     if (params.mode) query.set("mode", params.mode);
+    if (params.gazette) query.set("gazette", params.gazette);
     const qs = query.toString();
     const url = `/api/agents/${name}/run${qs ? "?" + qs : ""}`;
 
     try {
         const response = await fetch(url);
+        if (!response.ok) {
+            let message = `Run failed with status ${response.status}`;
+            try {
+                const data = await response.json();
+                message = data.error || message;
+                if (data.status) state.agentRunStatus = data.status;
+            } catch {}
+            addLogLine(message, "error");
+            state.isRunning = false;
+            state.stopRequested = false;
+            state.browser.event = "done";
+            updateBrowserPreview();
+            renderMain();
+            return;
+        }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -121,6 +248,8 @@ async function runAgent(name, params = {}) {
     }
 
     state.isRunning = false;
+    state.stopRequested = false;
+    state.agentRunStatus = "idle";
     state.browser.event = "done";
     updateBrowserPreview();
 
@@ -143,7 +272,12 @@ function handleSSEEvent(data) {
     } else if (data.type === "complete") {
         state.lastResult = data.result;
         state.pipelineMode = false;
-        addLogLine("Agent execution complete.", "success");
+        addLogLine(
+            data.result?.status === "stopped"
+                ? "Agent stopped. Partial results are ready below."
+                : "Agent execution complete.",
+            data.result?.status === "stopped" ? "step" : "success",
+        );
         state.browser.event = "done";
         updateBrowserPreview();
         renderMain();
@@ -160,11 +294,27 @@ function handlePipelineStats(data) {
 
 function handleBrowserEvent(data) {
     Object.assign(state.browser, data);
+    if (data.event === "captcha_detected") {
+        const wasActive = state.captcha.active;
+        state.captcha.active = true;
+        state.captcha.message = data.message || "CAPTCHA detected - action required";
+        state.captcha.resolvedMessage = "";
+        if (!wasActive) {
+            playCaptchaAlertSound();
+            renderMain();
+        }
+    } else if (data.event === "captcha_cleared") {
+        state.captcha.active = false;
+        state.captcha.resolvedMessage = data.message || "CAPTCHA cleared - resuming from the same row";
+        renderMain();
+    }
     updateBrowserPreview();
 }
 
 function classifyMessage(msg) {
     const lower = msg.toLowerCase();
+    if (lower.includes("captcha"))
+        return "warning";
     if (lower.includes("passed") || lower.includes("success") || lower.includes("saved") || lower.startsWith("done"))
         return "success";
     if (lower.includes("fail") || lower.includes("error") || lower.includes("fatal"))
@@ -209,6 +359,10 @@ function updateBrowserPreview() {
         const ev = b.event;
         if (ev === "navigate" || ev === "downloading" || ev === "extracting") {
             statusEl.innerHTML = '<span class="browser-status-dot loading"></span> Loading';
+        } else if (ev === "captcha_detected") {
+            statusEl.innerHTML = '<span class="browser-status-dot warning"></span> CAPTCHA';
+        } else if (ev === "captcha_cleared") {
+            statusEl.innerHTML = '<span class="browser-status-dot loading"></span> Resuming';
         } else if (ev === "contacts" && b.status === "found") {
             statusEl.innerHTML = '<span class="browser-status-dot found"></span> Found';
         } else if (ev === "no_pdf" || (ev === "contacts" && b.status !== "found")) {
@@ -228,6 +382,24 @@ function updateBrowserPreview() {
             <div class="browser-idle-state">
                 <div class="browser-idle-icon">&#x1F310;</div>
                 <div class="browser-idle-text">Waiting for agent to start scraping...</div>
+            </div>
+        `;
+    } else if (b.event === "captcha_detected") {
+        content.innerHTML = `
+            <div class="browser-page captcha-browser-state">
+                <div class="captcha-browser-icon">&#9888;</div>
+                <div class="captcha-browser-title">CAPTCHA detected</div>
+                <div class="captcha-browser-text">Solve the challenge in the opened WIPO browser window. The agent will resume automatically from the same row.</div>
+                <div class="captcha-browser-meta">Row ${esc(String(b.row || 0))}${b.patent_id ? ` • ${esc(b.patent_id)}` : ""}</div>
+            </div>
+        `;
+    } else if (b.event === "captcha_cleared") {
+        content.innerHTML = `
+            <div class="browser-page captcha-browser-state">
+                <div class="captcha-browser-icon">&#10003;</div>
+                <div class="captcha-browser-title">CAPTCHA cleared</div>
+                <div class="captcha-browser-text">Resume detected. The agent is continuing from the same row now.</div>
+                <div class="captcha-browser-meta">Row ${esc(String(b.row || 0))}${b.patent_id ? ` • ${esc(b.patent_id)}` : ""}</div>
             </div>
         `;
     } else if (b.event === "navigate") {
@@ -521,7 +693,9 @@ function renderSidebar() {
             state.selectedAgent = detail || agent;
             state.executionLog = [];
             state.lastResult = null;
+            state.inputMode = "upload";
             state.uploadedFilePath = null;
+            await loadAgentRunStatus(agent.module_name);
             render();
         };
         listEl.appendChild(item);
@@ -559,6 +733,8 @@ function renderMain() {
                 <span class="badge badge-role">${esc(agent.role || "Agent")}</span>
                 <span class="badge badge-version">v${esc(agent.version || "1.0")}</span>
                 ${agent.status === "active" ? '<span class="badge badge-active">Active</span>' : ""}
+                ${state.agentRunStatus === "running" ? '<span class="badge badge-running">Running</span>' : ""}
+                ${state.agentRunStatus === "stopping" ? '<span class="badge badge-warning">Stopping</span>' : ""}
                 ${agent.requires_llm === false ? '<span class="badge badge-version">No LLM Required</span>' : ""}
                 ${agent.accepts_upload ? '<span class="badge badge-role">Accepts Upload</span>' : ""}
             </div>
@@ -594,6 +770,25 @@ function renderMain() {
             </div>
         </div>
     `;
+
+    if (state.captcha.active) {
+        html += `
+            <div class="captcha-alert-modal">
+                <div class="captcha-alert-modal-card">
+                    <div class="captcha-alert-modal-title">CAPTCHA detected</div>
+                    <div class="captcha-alert-modal-text">Action required in the WIPO browser window. The agent is paused and watching for the CAPTCHA to be cleared.</div>
+                </div>
+            </div>
+            <div class="captcha-alert-banner">
+                <div class="captcha-alert-title">CAPTCHA detected - action required</div>
+                <div class="captcha-alert-text">Solve the CAPTCHA in the opened WIPO browser window. Processing is paused and will resume automatically from the same row.</div>
+            </div>
+        `;
+    } else if (state.captcha.resolvedMessage) {
+        html += `
+            <div class="captcha-alert-resolved">${esc(state.captcha.resolvedMessage)}</div>
+        `;
+    }
 
     // --- Input section ---
     if (agent.accepts_upload) {
@@ -677,6 +872,12 @@ function renderMain() {
 function renderUploadSection(agent) {
     const uploaded = state.uploadedFilePath;
     const types = (agent.upload_types || []).join(",");
+    const isUploadMode = state.inputMode === "upload";
+    const wipoOptions = state.wipoGazettes.map((option) => `
+        <option value="${esc(option.value)}" ${option.value === state.selectedGazette ? "selected" : ""}>
+            ${esc(option.label)}
+        </option>
+    `).join("");
 
     return `
         <div class="input-section">
@@ -686,19 +887,19 @@ function renderUploadSection(agent) {
                 <div class="input-row">
                     <label class="input-label">Mode</label>
                     <div class="mode-tabs" id="mode-tabs">
-                        <button class="mode-tab active" data-mode="upload">Upload Excel</button>
-                        <button class="mode-tab" data-mode="wipo_download">Download from WIPO</button>
+                        <button type="button" class="mode-tab ${isUploadMode ? "active" : ""}" data-mode="upload">Upload Excel</button>
+                        <button type="button" class="mode-tab ${!isUploadMode ? "active" : ""}" data-mode="wipo_download">Download from WIPO</button>
                     </div>
                 </div>
 
                 <!-- Upload area -->
-                <div id="upload-area" class="upload-zone">
+                <div id="upload-area" class="upload-zone" style="display:${isUploadMode ? "block" : "none"}">
                     <div class="upload-dropzone" id="dropzone">
                         ${uploaded
                             ? `<div class="upload-done">
                                     <span class="upload-done-icon">&#x2713;</span>
                                     <span class="upload-done-name">${esc(uploaded.split(/[\\/]/).pop())}</span>
-                                    <button class="upload-clear" id="clear-upload">&#x2715;</button>
+                                    <button type="button" class="upload-clear" id="clear-upload">&#x2715;</button>
                                </div>`
                             : `<div class="upload-prompt">
                                     <span class="upload-icon">&#x1F4C4;</span>
@@ -710,8 +911,8 @@ function renderUploadSection(agent) {
                     </div>
                 </div>
 
-                <!-- WIPO area (hidden by default) -->
-                <div id="wipo-area" style="display:none">
+                <!-- WIPO area -->
+                <div id="wipo-area" style="display:${isUploadMode ? "none" : "block"}">
                     <div class="wipo-info">
                         <span class="wipo-icon">&#x1F310;</span>
                         <div>
@@ -719,14 +920,51 @@ function renderUploadSection(agent) {
                             <div class="wipo-url">patentscope.wipo.int/search/en/resultWeeklyBrowse.jsf</div>
                         </div>
                     </div>
+                    <div class="input-row">
+                        <label class="input-label" for="wipo-gazette-select">Gazette Week</label>
+                        <div class="wipo-controls">
+                            <select
+                                id="wipo-gazette-select"
+                                class="wipo-select"
+                                ${state.wipoGazettesLoading ? "disabled" : ""}
+                            >
+                                ${state.wipoGazettesLoading
+                                    ? '<option value="">Loading WIPO weeks...</option>'
+                                    : state.wipoGazettes.length
+                                        ? wipoOptions
+                                        : '<option value="">No WIPO weeks available</option>'
+                                }
+                            </select>
+                            <button
+                                type="button"
+                                class="wipo-refresh"
+                                id="refresh-wipo-gazettes"
+                                ${state.wipoGazettesLoading ? "disabled" : ""}
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                        <div class="input-help">
+                            Pick the WIPO weekly gazette you want the agent to download before processing.
+                        </div>
+                        ${state.wipoGazettesError
+                            ? `<div class="input-error">${esc(state.wipoGazettesError)}</div>`
+                            : ""
+                        }
+                    </div>
                 </div>
 
                 <!-- Run -->
-                <button class="run-btn" id="run-btn" ${state.isRunning ? "disabled" : ""}>
-                    ${state.isRunning
-                        ? '<span class="spinner"></span> Processing...'
-                        : "&#x25B6;&nbsp;&nbsp;Run PCT Agent"}
-                </button>
+                <div class="run-actions">
+                    <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                        ${state.isRunning
+                            ? '<span class="spinner"></span> Processing...'
+                            : "&#x25B6;&nbsp;&nbsp;Run PCT Agent"}
+                    </button>
+                    <button type="button" class="stop-btn" id="stop-btn" ${(state.isRunning || state.agentRunStatus === "running" || state.agentRunStatus === "stopping") ? "" : "disabled"}>
+                        ${state.stopRequested ? "Stopping..." : "Stop"}
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -735,11 +973,16 @@ function renderUploadSection(agent) {
 function renderSimpleRunSection() {
     return `
         <div class="run-section">
-            <button class="run-btn" id="run-btn" ${state.isRunning ? "disabled" : ""}>
-                ${state.isRunning
-                    ? '<span class="spinner"></span> Running...'
-                    : "&#x25B6;&nbsp;&nbsp;Run Agent"}
-            </button>
+            <div class="run-actions">
+                <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                    ${state.isRunning
+                        ? '<span class="spinner"></span> Running...'
+                        : "&#x25B6;&nbsp;&nbsp;Run Agent"}
+                </button>
+                <button type="button" class="stop-btn" id="stop-btn" ${(state.isRunning || state.agentRunStatus === "running" || state.agentRunStatus === "stopping") ? "" : "disabled"}>
+                    ${state.stopRequested ? "Stopping..." : "Stop"}
+                </button>
+            </div>
         </div>
     `;
 }
@@ -766,6 +1009,10 @@ function renderPCTResults(result) {
     let html = `
         <div class="results-section">
             <div class="section-title">Results</div>
+            ${result.status === "stopped"
+                ? '<div class="warning-banner">&#x23F9; Run stopped. Partial output was saved from the rows already processed.</div>'
+                : ""
+            }
 
             <!-- Summary cards -->
             <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr)">
@@ -895,19 +1142,38 @@ function attachHandlers(agent) {
     // Run button
     const runBtn = document.getElementById("run-btn");
     if (runBtn && !state.isRunning) {
-        runBtn.onclick = () => {
+        runBtn.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            primeAlertAudio();
+            const latestStatus = await loadAgentRunStatus(agent.module_name);
+            if (latestStatus !== "idle") {
+                addLogLine(
+                    latestStatus === "stopping"
+                        ? "Agent is still stopping. Please wait a moment and try again."
+                        : "Agent is already running.",
+                    "error",
+                );
+                renderMain();
+                return;
+            }
+
             if (agent.accepts_upload) {
-                const activeTab = document.querySelector(".mode-tab.active");
-                const mode = activeTab ? activeTab.dataset.mode : "upload";
+                const mode = state.inputMode;
 
                 if (mode === "upload" && !state.uploadedFilePath) {
                     addLogLine("Please upload an Excel file first", "error");
+                    return;
+                }
+                if (mode === "wipo_download" && !state.selectedGazette) {
+                    addLogLine("Please choose a WIPO gazette week first", "error");
                     return;
                 }
 
                 runAgent(agent.module_name, {
                     mode: mode,
                     file_path: mode === "upload" ? state.uploadedFilePath : undefined,
+                    gazette: mode === "wipo_download" ? state.selectedGazette : undefined,
                 });
             } else {
                 runAgent(agent.module_name);
@@ -918,17 +1184,12 @@ function attachHandlers(agent) {
     // Mode tabs
     const modeTabs = document.querySelectorAll(".mode-tab");
     modeTabs.forEach((tab) => {
-        tab.onclick = () => {
-            modeTabs.forEach((t) => t.classList.remove("active"));
-            tab.classList.add("active");
-            const uploadArea = document.getElementById("upload-area");
-            const wipoArea = document.getElementById("wipo-area");
-            if (tab.dataset.mode === "upload") {
-                if (uploadArea) uploadArea.style.display = "block";
-                if (wipoArea) wipoArea.style.display = "none";
-            } else {
-                if (uploadArea) uploadArea.style.display = "none";
-                if (wipoArea) wipoArea.style.display = "block";
+        tab.onclick = (e) => {
+            e.preventDefault();
+            state.inputMode = tab.dataset.mode || "upload";
+            renderMain();
+            if (state.inputMode === "wipo_download" && !state.wipoGazettesLoaded) {
+                loadWipoGazettes();
             }
         };
     });
@@ -973,9 +1234,48 @@ function attachHandlers(agent) {
     const clearBtn = document.getElementById("clear-upload");
     if (clearBtn) {
         clearBtn.onclick = (e) => {
+            e.preventDefault();
             e.stopPropagation();
             state.uploadedFilePath = null;
             renderMain();
+        };
+    }
+
+    const stopBtn = document.getElementById("stop-btn");
+    if (stopBtn && state.isRunning && !state.stopRequested) {
+        stopBtn.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                state.stopRequested = true;
+                state.agentRunStatus = "stopping";
+                addLogLine("Stop requested. Interrupting the active browser step and saving partial results now.", "step");
+                renderMain();
+                const response = await stopAgent(agent.module_name);
+                if (response.status !== "stop_requested") {
+                    throw new Error(response.error || "Stop request failed");
+                }
+            } catch (err) {
+                state.stopRequested = false;
+                state.agentRunStatus = "running";
+                addLogLine(`Stop request failed: ${err.message}`, "error");
+                renderMain();
+            }
+        };
+    }
+
+    const gazetteSelect = document.getElementById("wipo-gazette-select");
+    if (gazetteSelect) {
+        gazetteSelect.onchange = (e) => {
+            state.selectedGazette = e.target.value || "";
+        };
+    }
+
+    const refreshGazettesBtn = document.getElementById("refresh-wipo-gazettes");
+    if (refreshGazettesBtn) {
+        refreshGazettesBtn.onclick = (e) => {
+            e.preventDefault();
+            loadWipoGazettes(true);
         };
     }
 }

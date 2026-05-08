@@ -28,5 +28,23 @@ tests = SelfTest(
             "check": lambda r: isinstance(r.get("results", []), list),
             "message": "Results field is not a list",
         },
+        {
+            "name": "rows_are_unique",
+            "check": lambda r: len([item.get("row") for item in r.get("results", [])])
+            == len(set(item.get("row") for item in r.get("results", []))),
+            "message": "Duplicate output rows detected after pipeline merge",
+        },
+        {
+            "name": "rows_are_sorted",
+            "check": lambda r: [item.get("row") for item in r.get("results", [])]
+            == sorted(item.get("row") for item in r.get("results", [])),
+            "message": "Output rows are not sorted back into original Excel order",
+        },
+        {
+            "name": "summary_matches_results",
+            "check": lambda r: r.get("summary", {}).get("processed", len(r.get("results", [])))
+            == len(r.get("results", [])),
+            "message": "Summary processed count does not match merged result count",
+        },
     ],
 )
