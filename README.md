@@ -32,6 +32,7 @@ Agents are general-purpose and not tied to any single sub-company. They are buil
 |-------|------|-------------|
 | **Test Agent** | System Reporter | Collects system/environment info. Used to verify the framework works. |
 | **PCT Agent** | Patent Data Processor | Processes WIPO PatentScope Excel sheets — scrapes patent pages, downloads RO/101 or 306 PDFs, extracts email/phone contacts. |
+| **SEO Posting Agent** | Daily SEO Publisher | Researches patent-law blog topics, generates SEO articles with OpenAI, and publishes WordPress drafts or posts for PatentZoom. |
 
 ## Agent Lifecycle
 
@@ -118,3 +119,56 @@ Features:
 - Upload files (Excel) for agents that accept input
 - Download agent output files
 - View agent memory and learning history
+
+PatentZoom setup guide:
+- [PatentZoom SEO Posting Agent README](/C:/Users/New/Desktop/Menteso_OS/agents/patentzoom_seo_agent/README.md)
+
+## PatentZoom AI SEO Dashboard
+
+The repo now also includes a dedicated internal PatentZoom SEO operations platform:
+
+- [Next.js dashboard](C:/Users/New/Desktop/Menteso_OS/apps/patentzoom-dashboard)
+- [FastAPI control API](C:/Users/New/Desktop/Menteso_OS/services/seo-control-api)
+- [BullMQ worker service](C:/Users/New/Desktop/Menteso_OS/services/seo-worker)
+- [Shared SEO types](C:/Users/New/Desktop/Menteso_OS/packages/seo-types)
+
+### What It Covers
+
+- keyword discovery and editorial planning
+- AI article generation
+- WordPress publishing
+- indexing requests
+- automation/job visibility
+- Search Console and analytics placeholders for phased expansion
+
+### Local Run Order
+
+```bash
+# Python control API
+pip install -r services/seo-control-api/requirements.txt
+uvicorn app.main:app --app-dir services/seo-control-api --host 127.0.0.1 --port 8100
+
+# Node workspace install
+npm install
+
+# Build shared packages and worker runtime dependencies
+npm run seo-agent:build
+npm run worker:build
+
+# Start worker
+npm --workspace @patentzoom/seo-worker run start
+
+# Start dashboard
+npm run dashboard:dev
+```
+
+Open:
+
+- dashboard: [http://127.0.0.1:3000](http://127.0.0.1:3000)
+- control API: [http://127.0.0.1:8100/health](http://127.0.0.1:8100/health)
+
+### Notes
+
+- The new platform is internal and single-tenant for PatentZoom.
+- The legacy `server.py` dashboard remains in the repo for current PCT tooling while the new UI becomes the main SEO workspace.
+- Build the existing PatentZoom SEO agent before starting the worker, because the worker reuses its compiled TypeScript publishing pipeline.

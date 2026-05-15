@@ -1,0 +1,27 @@
+{
+  "name": "patentzoom-seo-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PatentZoom daily SEO blog automation workflow",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "generate": "tsx src/main.ts",
+    "backfill": "tsx src/backfillSeo.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "openai": "^4.76.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1"
+  }
+}

@@ -6,6 +6,7 @@
 // State
 // ---------------------------------------------------------------------------
 const state = {
+    theme: localStorage.getItem("menteso-theme") || "dark",
     agents: [],
     selectedAgent: null,
     isRunning: false,
@@ -21,6 +22,32 @@ const state = {
     wipoGazettesLoading: false,
     wipoGazettesError: "",
     selectedGazette: "",
+    seo: {
+        topicOverride: "",
+        publishOverride: "draft",
+        enableFeaturedImage: true,
+        dryRun: false,
+        google: {
+            clientId: "",
+            clientSecret: "",
+            property: "sc-domain:patentzoom.us",
+            clientConfigured: false,
+            connected: false,
+            redirectUri: "http://127.0.0.1:8000/api/google/search-console/callback",
+        },
+    },
+    seoDashboard: {
+        loading: false,
+        error: "",
+        snapshot: null,
+        workflow: {
+            currentStage: "",
+            currentMessage: "",
+            stages: [],
+        },
+        previewArticle: null,
+        historyEntry: null,
+    },
     pipelineMode: false,
     pipeline: null,
     captcha: {
@@ -54,9 +81,29 @@ let alertAudioContext = null;
 // Init
 // ---------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
+    applyTheme(state.theme);
+    const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    if (themeToggleBtn) {
+        themeToggleBtn.onclick = () => toggleTheme();
+    }
     await loadAgents();
     render();
 });
+
+function applyTheme(theme) {
+    state.theme = theme === "light" ? "light" : "dark";
+    document.body.setAttribute("data-theme", state.theme);
+    localStorage.setItem("menteso-theme", state.theme);
+    const themeToggleBtn = document.getElementById("theme-toggle-btn");
+    if (themeToggleBtn) {
+        themeToggleBtn.textContent = state.theme === "light" ? "🌙 Dark" : "☀️ Light";
+    }
+}
+
+function toggleTheme() {
+    applyTheme(state.theme === "light" ? "dark" : "light");
+    render();
+}
 
 // ---------------------------------------------------------------------------
 // API
@@ -181,6 +228,35 @@ async function stopAgent(name) {
     return await res.json();
 }
 
+async function saveGoogleSearchConsoleConfig() {
+    const res = await fetch("/api/google/search-console/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            client_id: state.seo.google.clientId.trim(),
+            client_secret: state.seo.google.clientSecret.trim(),
+            property: state.seo.google.property.trim() || "sc-domain:patentzoom.us",
+        }),
+    });
+    return await res.json();
+}
+
+async function launchGoogleBrowserSession() {
+    const res = await fetch("/api/google/search-console/browser-session", {
+        method: "POST",
+    });
+    return await res.json();
+}
+
+async function requestGoogleIndexing(url) {
+    const res = await fetch("/api/google/search-console/request-indexing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+    });
+    return await res.json();
+}
+
 async function runAgent(name, params = {}) {
     state.isRunning = true;
     state.stopRequested = false;
@@ -196,17 +272,39 @@ async function runAgent(name, params = {}) {
         country: "", row: 0, total: 0, pdf_url: "", emails: [], phones: [],
         name: "", status: "", found_count: 0, not_found_count: 0, error_count: 0,
     };
+    if (state.selectedAgent?.ui_type === "seo_posting") {
+        resetSeoWorkflow();
+        handleSeoWorkflowEvent({
+            type: "step",
+            message: "Preparing a new PatentZoom SEO run.",
+            data: { stage: "readiness", status: "active" },
+        }, "step");
+    }
     renderMain();
 
+    const method = params.method || "GET";
+    const queryParams = params.query || {};
+    if (params.file_path) queryParams.file_path = params.file_path;
+    if (params.mode) queryParams.mode = params.mode;
+    if (params.gazette) queryParams.gazette = params.gazette;
+
     const query = new URLSearchParams();
-    if (params.file_path) query.set("file_path", params.file_path);
-    if (params.mode) query.set("mode", params.mode);
-    if (params.gazette) query.set("gazette", params.gazette);
+    Object.entries(queryParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+            query.set(key, String(value));
+        }
+    });
+
     const qs = query.toString();
-    const url = `/api/agents/${name}/run${qs ? "?" + qs : ""}`;
+    const url = `/api/agents/${name}/run${method === "GET" && qs ? "?" + qs : ""}`;
+    const fetchOptions = {
+        method,
+        headers: method === "POST" ? { "Content-Type": "application/json" } : undefined,
+        body: method === "POST" ? JSON.stringify(params.body || {}) : undefined,
+    };
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, fetchOptions);
         if (!response.ok) {
             let message = `Run failed with status ${response.status}`;
             try {
@@ -257,6 +355,9 @@ async function runAgent(name, params = {}) {
     if (state.selectedAgent) {
         const detail = await loadAgentDetail(state.selectedAgent.module_name);
         if (detail) state.selectedAgent = detail;
+        if (state.selectedAgent.ui_type === "seo_posting") {
+            await loadSeoDashboardData(state.selectedAgent.module_name);
+        }
     }
     renderMain();
 }
@@ -265,6 +366,9 @@ function handleSSEEvent(data) {
     if (data.type === "step") {
         const type = classifyMessage(data.message);
         addLogLine(data.message, type);
+        if (state.selectedAgent?.ui_type === "seo_posting") {
+            handleSeoWorkflowEvent(data, type);
+        }
     } else if (data.type === "pipeline_stats") {
         handlePipelineStats(data);
     } else if (data.type === "browser") {
@@ -278,11 +382,22 @@ function handleSSEEvent(data) {
                 : "Agent execution complete.",
             data.result?.status === "stopped" ? "step" : "success",
         );
+        if (state.selectedAgent?.ui_type === "seo_posting") {
+            finalizeSeoWorkflow(data.result || {});
+        }
         state.browser.event = "done";
         updateBrowserPreview();
         renderMain();
     } else if (data.type === "error") {
         addLogLine(`FATAL: ${data.message}`, "error");
+        if (state.selectedAgent?.ui_type === "seo_posting") {
+            handleSeoWorkflowEvent(data, "error");
+        }
+    } else if (data.type === "warning") {
+        addLogLine(data.message, "warning");
+        if (state.selectedAgent?.ui_type === "seo_posting") {
+            handleSeoWorkflowEvent(data, "warning");
+        }
     }
 }
 
@@ -322,6 +437,18 @@ function classifyMessage(msg) {
     if (lower.includes("found:"))
         return "success";
     return "step";
+}
+
+function triggerSeoRun(agent, overrides = {}) {
+    runAgent(agent.module_name, {
+        method: "POST",
+        body: {
+            topic_override: state.seo.topicOverride.trim() || undefined,
+            publish_override: overrides.publish_override || state.seo.publishOverride,
+            enable_featured_image: overrides.enable_featured_image ?? state.seo.enableFeaturedImage,
+            dry_run: overrides.dry_run ?? state.seo.dryRun,
+        },
+    });
 }
 
 function addLogLine(message, type = "step") {
@@ -671,34 +798,68 @@ function renderSidebar() {
         return;
     }
 
+    const groups = new Map();
     state.agents.forEach((agent) => {
-        const isSelected =
-            state.selectedAgent &&
-            state.selectedAgent.module_name === agent.module_name;
-        const statusClass =
-            agent.status === "active" ? "active" : agent.status === "error" ? "error" : "idle";
-        const subAgents = agent.sub_agents || [];
+        const groupName = agent.group || "Agents";
+        if (!groups.has(groupName)) groups.set(groupName, []);
+        groups.get(groupName).push(agent);
+    });
 
-        const item = document.createElement("div");
-        item.className = `agent-item ${isSelected ? "active" : ""}`;
-        item.innerHTML = `
-            <span class="agent-dot ${statusClass}"></span>
-            <div class="agent-item-info">
-                <div class="agent-item-name">${esc(agent.name || agent.module_name)}</div>
-                <div class="agent-item-role">${esc(agent.role || "")}${subAgents.length ? ` · ${subAgents.length} sub-agents` : ""}</div>
-            </div>
-        `;
-        item.onclick = async () => {
-            const detail = await loadAgentDetail(agent.module_name);
-            state.selectedAgent = detail || agent;
-            state.executionLog = [];
-            state.lastResult = null;
-            state.inputMode = "upload";
-            state.uploadedFilePath = null;
-            await loadAgentRunStatus(agent.module_name);
-            render();
-        };
-        listEl.appendChild(item);
+    groups.forEach((agents, groupName) => {
+        const groupEl = document.createElement("div");
+        groupEl.className = "agent-group";
+        groupEl.innerHTML = `<div class="agent-group-title">${esc(groupName)}</div>`;
+
+        const itemsEl = document.createElement("div");
+        itemsEl.className = "agent-group-items";
+
+        agents.forEach((agent) => {
+            const isSelected =
+                state.selectedAgent &&
+                state.selectedAgent.module_name === agent.module_name;
+            const statusClass =
+                agent.status === "active" ? "active" : agent.status === "error" ? "error" : "idle";
+            const subAgents = agent.sub_agents || [];
+
+            const item = document.createElement("div");
+            item.className = `agent-item ${isSelected ? "active" : ""}`;
+            item.innerHTML = `
+                <span class="agent-dot ${statusClass}"></span>
+                <div class="agent-item-info">
+                    <div class="agent-item-name">${esc(agent.name || agent.module_name)}</div>
+                    <div class="agent-item-role">${esc(agent.role || "")}${subAgents.length ? ` · ${subAgents.length} sub-agents` : ""}</div>
+                </div>
+            `;
+            item.onclick = async () => {
+                const detail = await loadAgentDetail(agent.module_name);
+                state.selectedAgent = detail || agent;
+                state.executionLog = [];
+                state.lastResult = null;
+                state.inputMode = "upload";
+                state.uploadedFilePath = null;
+                state.pipelineMode = false;
+                state.pipeline = null;
+                resetCaptchaAlert();
+                state.browser.event = "idle";
+                await loadAgentRunStatus(agent.module_name);
+                if ((detail || agent).ui_type === "seo_posting") {
+                    state.seoDashboard.previewArticle = null;
+                    state.seoDashboard.historyEntry = null;
+                    await loadSeoDashboardData(agent.module_name);
+                } else {
+                    state.seoDashboard.snapshot = null;
+                    state.seoDashboard.error = "";
+                    state.seoDashboard.previewArticle = null;
+                    state.seoDashboard.historyEntry = null;
+                    resetSeoWorkflow([]);
+                }
+                render();
+            };
+            itemsEl.appendChild(item);
+        });
+
+        groupEl.appendChild(itemsEl);
+        listEl.appendChild(groupEl);
     });
 }
 
@@ -723,6 +884,8 @@ function renderMain() {
     const rate = stats.success_rate || 0;
     const rateClass = rate >= 0.8 ? "success" : rate >= 0.5 ? "warning" : rate > 0 ? "error" : "";
     const subAgents = agent.sub_agents || [];
+    const isPCTAgent = agent.module_name === "pct_agent";
+    const isSeoAgent = agent.ui_type === "seo_posting";
 
     let html = `
         <!-- Agent Header -->
@@ -771,7 +934,11 @@ function renderMain() {
         </div>
     `;
 
-    if (state.captcha.active) {
+    if (isSeoAgent) {
+        html += renderSEOOverviewSection();
+    }
+
+    if (isPCTAgent && state.captcha.active) {
         html += `
             <div class="captcha-alert-modal">
                 <div class="captcha-alert-modal-card">
@@ -784,28 +951,30 @@ function renderMain() {
                 <div class="captcha-alert-text">Solve the CAPTCHA in the opened WIPO browser window. Processing is paused and will resume automatically from the same row.</div>
             </div>
         `;
-    } else if (state.captcha.resolvedMessage) {
+    } else if (isPCTAgent && state.captcha.resolvedMessage) {
         html += `
             <div class="captcha-alert-resolved">${esc(state.captcha.resolvedMessage)}</div>
         `;
     }
 
     // --- Input section ---
-    if (agent.accepts_upload) {
+    if (isSeoAgent) {
+        html += renderSEOInputSection(agent);
+    } else if (agent.accepts_upload) {
         html += renderUploadSection(agent);
     } else {
         html += renderSimpleRunSection();
     }
 
     // --- Pipeline progress panel (shown in pipeline mode) ---
-    if (state.pipelineMode || (state.isRunning && state.pipeline)) {
+    if (isPCTAgent && (state.pipelineMode || (state.isRunning && state.pipeline))) {
         html += renderPipelineSection();
     }
 
     // --- Execution Log + Browser Preview (side by side) ---
     html += `
         <div class="execution-split">
-            <div class="execution-log-panel${state.pipelineMode ? " full-width" : ""}">
+            <div class="execution-log-panel${state.pipelineMode || !isPCTAgent ? " full-width" : ""}">
                 <div class="section-title">Execution Log</div>
                 <div class="terminal" id="terminal">
                     ${state.executionLog.length === 0 && !state.isRunning
@@ -815,7 +984,7 @@ function renderMain() {
                     ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
                 </div>
             </div>
-            ${!state.pipelineMode ? `
+            ${isPCTAgent && !state.pipelineMode ? `
             <div class="browser-preview-panel">
                 <div class="section-title">Scraping Browser</div>
                 <div class="browser-frame">
@@ -844,8 +1013,10 @@ function renderMain() {
 
     // --- Results ---
     if (state.lastResult) {
-        if (agent.module_name === "pct_agent") {
+        if (isPCTAgent) {
             html += renderPCTResults(state.lastResult);
+        } else if (isSeoAgent) {
+            html += renderSEOResults(state.lastResult);
         } else if (state.lastResult.status === "failure") {
             html += renderFailureResults(state.lastResult);
         }
@@ -860,6 +1031,14 @@ function renderMain() {
             <button class="json-toggle" onclick="toggleJSON()">Show Raw JSON</button>
             <div id="json-output" class="json-block" style="display:none">${esc(JSON.stringify(state.lastResult, null, 2))}</div>
         `;
+    }
+
+    if (isSeoAgent && state.seoDashboard.previewArticle) {
+        html += renderSEOPreviewModal(state.seoDashboard.previewArticle);
+    }
+
+    if (isSeoAgent && state.seoDashboard.historyEntry) {
+        html += renderSEOHistoryModal(state.seoDashboard.historyEntry);
     }
 
     main.innerHTML = html;
@@ -965,6 +1144,649 @@ function renderUploadSection(agent) {
                         ${state.stopRequested ? "Stopping..." : "Stop"}
                     </button>
                 </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSEOInputSection(agent) {
+    const seo = state.seo;
+    const todayRun = state.seoDashboard.snapshot?.todayRun || {};
+    const selectedTopic = seo.topicOverride || todayRun.selectedTopic || "Use the daily content calendar";
+    const targetKeyword = todayRun.targetKeyword || seo.topicOverride || "Will be chosen from topic research";
+    const secondaryKeywords = todayRun.secondaryKeywords || [];
+    return `
+        <div class="input-section">
+            <div class="section-title">Today’s SEO Run</div>
+            <div class="input-card seo-input-card">
+                <div class="seo-panel-grid seo-run-summary-grid">
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Selected Topic</div>
+                        <div class="seo-run-summary-value">${esc(selectedTopic)}</div>
+                    </div>
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Target Keyword</div>
+                        <div class="seo-run-summary-value">${esc(targetKeyword)}</div>
+                    </div>
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Content Type</div>
+                        <div class="seo-run-summary-value">${esc(todayRun.contentType || "SEO Blog Article")}</div>
+                    </div>
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Target Audience</div>
+                        <div class="seo-run-summary-value">${esc(todayRun.targetAudience || "Founders, inventors, and businesses")}</div>
+                    </div>
+                </div>
+
+                <div class="input-row">
+                    <label class="input-label" for="seo-topic-override">Topic Override</label>
+                    <input
+                        id="seo-topic-override"
+                        class="text-input"
+                        type="text"
+                        placeholder="Leave blank to use the daily SEO calendar and SerpAPI research"
+                        value="${esc(seo.topicOverride)}"
+                    />
+                    <div class="input-help">
+                        Optional: force a specific topic for this run. Otherwise the agent will choose from the PatentZoom editorial calendar.
+                    </div>
+                </div>
+
+                <div class="seo-chip-list">
+                    ${secondaryKeywords.length
+                        ? secondaryKeywords.map((keyword) => `<span class="sub-agent-chip">${esc(keyword)}</span>`).join("")
+                        : '<span class="sub-agent-chip">Secondary keywords will appear after research</span>'}
+                </div>
+
+                <div class="seo-grid">
+                    <div class="input-row">
+                        <label class="input-label" for="seo-publish-override">Publish Mode</label>
+                        <select id="seo-publish-override" class="wipo-select">
+                            <option value="draft" ${seo.publishOverride === "draft" ? "selected" : ""}>Draft</option>
+                            <option value="publish" ${seo.publishOverride === "publish" ? "selected" : ""}>Publish Immediately</option>
+                        </select>
+                        <div class="input-help">
+                            Draft is safest. Publish only when you want this run to go live if validation passes.
+                        </div>
+                    </div>
+
+                    <div class="input-row seo-toggles">
+                        <label class="toggle-row">
+                            <input id="seo-featured-image" type="checkbox" ${seo.enableFeaturedImage ? "checked" : ""}>
+                            <span>Generate featured image</span>
+                        </label>
+                        <label class="toggle-row">
+                            <input id="seo-dry-run" type="checkbox" ${seo.dryRun ? "checked" : ""}>
+                            <span>Dry run only</span>
+                        </label>
+                        <div class="input-help">
+                            Dry run skips WordPress publishing and lets you validate the topic, SEO metadata, and article structure safely.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="seo-agent-note">
+                    <div class="seo-note-title">${esc(agent.name || "SEO Posting Agent")}</div>
+                    <div class="seo-note-text">Daily flow: topic research, outline, article generation, SEO validation, internal links, featured image, WordPress draft or publish, and duplicate-safe topic ledger updates.</div>
+                </div>
+
+                <div class="run-actions">
+                    <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                        ${state.isRunning
+                            ? '<span class="spinner"></span> Running SEO workflow...'
+                            : "&#x25B6;&nbsp;&nbsp;Run SEO Posting Agent"}
+                    </button>
+                    <button type="button" class="run-btn secondary-run-btn" id="seo-save-draft-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                        Save as Draft
+                    </button>
+                    <button type="button" class="run-btn secondary-run-btn" id="seo-publish-now-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                        Publish Immediately
+                    </button>
+                    <button type="button" class="stop-btn" id="stop-btn" ${(state.isRunning || state.agentRunStatus === "running" || state.agentRunStatus === "stopping") ? "" : "disabled"}>
+                        ${state.stopRequested ? "Stopping..." : "Stop"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSEOOverviewSection() {
+    const dashboard = state.seoDashboard;
+    const snapshot = dashboard.snapshot;
+    const seo = state.seo;
+
+    if (dashboard.loading && !snapshot) {
+        return `
+            <div class="result-card seo-dashboard-shell">
+                <h4>SEO Posting Agent Dashboard</h4>
+                <div class="memory-empty">Loading PatentZoom SEO control data...</div>
+            </div>
+        `;
+    }
+
+    if (dashboard.error && !snapshot) {
+        return `
+            <div class="result-card seo-dashboard-shell">
+                <h4>SEO Posting Agent Dashboard</h4>
+                <div class="error-banner">&#x26A0; ${esc(dashboard.error)}</div>
+            </div>
+        `;
+    }
+
+    if (!snapshot) return "";
+
+    const summary = snapshot.summary || {};
+    const readiness = snapshot.readiness || [];
+    const nextActions = snapshot.nextActions || [];
+    const editorial = snapshot.editorialSlot || {};
+    const slot = editorial.slot || {};
+    const recentTopics = snapshot.recentTopics || [];
+    const recentRuns = snapshot.recentRuns || [];
+    const overview = snapshot.overview || {};
+    const seoCalendar = snapshot.seoCalendar || {};
+    const articleManager = snapshot.articleManager || [];
+    const articlePreview = snapshot.articlePreview || {};
+    const seoChecklist = snapshot.seoChecklist || [];
+    const internalLinking = snapshot.internalLinking || {};
+    const automationSettings = snapshot.automationSettings || [];
+    const wordpressMonitor = snapshot.wordpressMonitor || {};
+    const seoPerformance = snapshot.seoPerformance || [];
+    const logsHistory = snapshot.logsHistory || [];
+    const topKeywords = overview.topKeywords || [];
+
+    return `
+        <div class="seo-dashboard-shell">
+            <div class="section-title">SEO Posting Agent Dashboard</div>
+
+            <div class="seo-overview-grid seo-overview-grid-wide">
+                <div class="stat-card">
+                    <div class="stat-value ${overview.publishedToday ? "success" : "warning"}">${overview.publishedToday ? "Yes" : "No"}</div>
+                    <div class="stat-label">Published Today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value warning">${overview.monthlyArticlesPublished || 0} / ${overview.monthlyTarget || 30}</div>
+                    <div class="stat-label">Monthly Articles Published</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${overview.successRate || 0}%</div>
+                    <div class="stat-label">Success Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${overview.seoScore || 0}</div>
+                    <div class="stat-label">Average SEO Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value ${String(overview.wordpressStatus || "").toLowerCase().includes("connected") ? "success" : "error"}" style="font-size:18px">${esc(overview.wordpressStatus || "Pending")}</div>
+                    <div class="stat-label">WordPress Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size:18px">${overview.lastPublishedDate ? esc(overview.lastPublishedDate) : "Pending"}</div>
+                    <div class="stat-label">Last Published Date</div>
+                </div>
+            </div>
+
+            <div class="seo-panel-grid">
+                <div class="result-card">
+                    <div class="seo-card-header">
+                        <h4>Overview</h4>
+                        <span class="seo-kicker">${esc((summary.lastRunStatus || "never").toUpperCase())}</span>
+                    </div>
+                    <div class="seo-inline-metrics">
+                        <div><strong>Tracked Topics:</strong> ${summary.totalTopics || 0}</div>
+                        <div><strong>Recent Runs:</strong> ${summary.recentRunCount || 0}</div>
+                        <div><strong>Auto Publish:</strong> ${summary.autoPublish ? "On" : "Off"}</div>
+                    </div>
+                    <div class="seo-chip-list">
+                        ${topKeywords.length
+                            ? topKeywords.map((item) => `<span class="sub-agent-chip">${esc(item.keyword)} · ${esc(String(item.count))}</span>`).join("")
+                            : '<span class="sub-agent-chip">No keyword history yet</span>'}
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <div class="seo-card-header">
+                        <h4>Service Readiness</h4>
+                        <button type="button" class="json-toggle" id="seo-refresh-overview">Refresh</button>
+                    </div>
+                    <div class="seo-status-list">
+                        ${readiness.map((item) => `
+                            <div class="seo-status-item">
+                                <div>
+                                    <div class="seo-status-name">${esc(item.label)}</div>
+                                    <div class="seo-status-detail">${esc(item.detail || "")}</div>
+                                </div>
+                                <span class="seo-status-pill ${item.ready ? "ready" : "blocked"}">${item.ready ? "Ready" : "Needs action"}</span>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            </div>
+
+            <div class="seo-panel-grid">
+                <div class="result-card">
+                    <h4>SEO Calendar</h4>
+                    <div class="seo-slot-title">${esc(slot.weekdayName || "PatentZoom Calendar")}</div>
+                    <div class="seo-slot-meta">${esc(slot.pillar || "")} - Week ${editorial.weekOfMonth || "-"}</div>
+                    <div class="seo-slot-cluster">Daily publishing schedule: ${esc(seoCalendar.publishingCadence || "Daily")}</div>
+                    <div class="seo-chip-list">
+                        ${(slot.activeAngles || []).map((angle) => `<span class="sub-agent-chip">${esc(angle)}</span>`).join("")}
+                    </div>
+                    <div class="seo-seed-list">
+                        ${(slot.seedKeywords || []).map((keyword) => `<div class="seo-seed-item">${esc(keyword)}</div>`).join("")}
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <h4>Upcoming Content Queue</h4>
+                    <div class="seo-table-wrap">
+                        <table class="results-table seo-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Topic Rotation</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${(seoCalendar.queue || []).map((item) => `
+                                    <tr>
+                                        <td>${esc(item.date || "-")}</td>
+                                        <td>
+                                            <div class="seo-table-title">${esc(item.pillar || "-")}</div>
+                                            <div class="seo-table-subtitle">${esc(item.angle || "")}</div>
+                                        </td>
+                                        <td><span class="status-pill ${String(item.status || "").toLowerCase() === "today" ? "status-found" : "status-not_found"}">${esc(item.status || "-")}</span></td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="result-card">
+                <h4>AI Content Pipeline</h4>
+                <div class="seo-stage-grid">
+                    ${(dashboard.workflow.stages || []).map((stage, index) => `
+                        <div class="seo-stage-card seo-stage-${stage.status}">
+                            <div class="seo-stage-index">0${index + 1}</div>
+                            <div class="seo-stage-name">${esc(stage.label)}</div>
+                            <div class="seo-stage-desc">${esc(stage.detail || stage.description || "")}</div>
+                        </div>
+                    `).join("")}
+                </div>
+                <div class="seo-stage-current">
+                    ${dashboard.workflow.currentMessage
+                        ? `Current activity: ${esc(dashboard.workflow.currentMessage)}`
+                        : "Current activity: waiting for a new SEO run"}
+                </div>
+            </div>
+
+            <div class="result-card">
+                <div class="seo-card-header">
+                    <h4>Article Manager</h4>
+                    <span class="seo-kicker">${articleManager.length} records</span>
+                </div>
+                ${articleManager.length
+                    ? `<div class="seo-table-wrap">
+                        <table class="results-table seo-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Article title</th>
+                                    <th>SEO score</th>
+                                    <th>Keywords</th>
+                                    <th>Slug</th>
+                                    <th>Meta description</th>
+                                    <th>Publish status</th>
+                                    <th>Indexing</th>
+                                    <th>Preview</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${articleManager.map((item) => `
+                                    <tr>
+                                        <td>${esc(item.title || "-")}</td>
+                                        <td>${item.seoScore ?? "-"}</td>
+                                        <td>${esc(item.primaryKeyword || "-")}</td>
+                                        <td>${esc(item.slug || "-")}</td>
+                                        <td title="${esc(item.metaDescription || "-")}">${esc(item.metaDescription || "-")}</td>
+                                        <td><span class="status-pill ${String(item.publishStatus || "").toLowerCase() === "publish" ? "status-found" : "status-not_found"}">${esc(item.publishStatus || "-")}</span></td>
+                                        <td>${esc(item.indexingStatus || "Pending")}</td>
+                                        <td>${item.previewHtml ? `<button type="button" class="json-toggle seo-preview-btn" data-article-id="${esc(item.id)}">Preview</button>` : "-"}</td>
+                                        <td>${String(item.publishStatus || "").toLowerCase() === "publish" && item.url ? `<button type="button" class="json-toggle seo-request-indexing-btn" data-url="${esc(item.url)}">Request Indexing</button>` : "-"}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>`
+                    : '<div class="memory-empty">No generated articles yet. Run the SEO workflow to populate this manager.</div>'}
+            </div>
+
+            <div class="seo-panel-grid seo-preview-check-grid">
+                <div class="result-card">
+                    <h4>Article Preview</h4>
+                    ${articlePreview.title
+                        ? `
+                            <div class="seo-preview-meta">
+                                <div><strong>Article Title:</strong> ${esc(articlePreview.title || "-")}</div>
+                                <div><strong>Slug:</strong> ${esc(articlePreview.slug || "-")}</div>
+                                <div><strong>Focus Keyword:</strong> ${esc(articlePreview.focusKeyword || "-")}</div>
+                                <div><strong>Word Count:</strong> ${esc(String(articlePreview.wordCount || 0))}</div>
+                                <div><strong>Category:</strong> ${esc(articlePreview.category || "-")}</div>
+                                <div><strong>Author:</strong> ${esc(articlePreview.author || "-")}</div>
+                                <div><strong>Status:</strong> ${esc(articlePreview.status || "-")}</div>
+                                <div><strong>SEO Score:</strong> ${articlePreview.seoScore ?? "-"}</div>
+                            </div>
+                            <div class="seo-featured-image-shell">
+                                <div class="seo-featured-image-label">Featured Image Preview</div>
+                                ${articlePreview.featuredImagePreview
+                                    ? `<img class="seo-featured-image-preview" src="${esc(articlePreview.featuredImagePreview)}" alt="Featured preview">`
+                                    : `<div class="seo-featured-image-placeholder">Image preview will appear here after generation and upload.</div>`}
+                            </div>
+                            <div class="seo-preview-description"><strong>Meta Title:</strong> ${esc(articlePreview.metaTitle || "-")}</div>
+                            <div class="seo-preview-description"><strong>Meta Description:</strong> ${esc(articlePreview.metaDescription || "-")}</div>
+                            ${articlePreview.wordpressUrl ? `<div class="seo-preview-description"><strong>WordPress URL:</strong> <a class="result-link" href="${esc(articlePreview.wordpressUrl)}" target="_blank" rel="noopener noreferrer">${esc(articlePreview.wordpressUrl)}</a></div>` : ""}
+                            <div class="seo-preview-body">${articlePreview.previewHtml || "<p>No preview content available.</p>"}</div>
+                        `
+                        : '<div class="memory-empty">No article generated yet. This panel will show the latest title, slug, metadata, preview, and WordPress URL.</div>'}
+                </div>
+
+                <div class="result-card">
+                    <h4>SEO Validation Checklist</h4>
+                    ${seoChecklist.length
+                        ? `<div class="seo-checklist">
+                            ${seoChecklist.map((item) => `
+                                <div class="seo-check-item ${item.passed ? "passed" : "failed"}">
+                                    <span class="seo-check-icon">${item.passed ? "✓" : "✕"}</span>
+                                    <span>${esc(item.label || "")}</span>
+                                    <span class="seo-check-status">${item.passed ? "Passed" : "Failed"}</span>
+                                </div>
+                            `).join("")}
+                        </div>`
+                        : '<div class="memory-empty">Validation checks will appear after an article is generated.</div>'}
+                </div>
+            </div>
+
+            <div class="seo-panel-grid">
+                <div class="result-card">
+                    <h4>Internal Linking Engine</h4>
+                    <div class="seo-slot-cluster">${esc(internalLinking.note || "")}</div>
+                    <div class="seo-run-list">
+                        ${(internalLinking.suggestions || []).map((item) => `
+                            <div class="seo-run-item">
+                                <div class="seo-run-title">${esc(item.title || "-")}</div>
+                                <div class="seo-run-meta">
+                                    <span>Relevance: ${esc(String(item.score ?? 0))}</span>
+                                    <span>Slug: ${esc(item.slug || "-")}</span>
+                                </div>
+                                ${item.url ? `<a class="result-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.url)}</a>` : ""}
+                            </div>
+                        `).join("") || '<div class="memory-empty">No internal link suggestions available yet.</div>'}
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <h4>Automation Settings</h4>
+                    <div class="seo-status-list">
+                        ${automationSettings.map((item) => `
+                            <div class="seo-status-item">
+                                <div>
+                                    <div class="seo-status-name">${esc(item.label)}</div>
+                                    <div class="seo-status-detail">${item.kind === "service" ? "Integration health check" : item.kind === "setting" ? "Default publishing configuration" : "Environment toggle for this automation"}</div>
+                                </div>
+                                <span class="seo-status-pill ${item.enabled ? "ready" : "blocked"}">${item.enabled ? "Enabled" : "Disabled"}</span>
+                            </div>
+                        `).join("")}
+                    </div>
+                    <div class="seo-google-connect">
+                        <div class="seo-card-header">
+                            <h4>Google Search Console</h4>
+                            <span class="seo-status-pill ${seo.google.connected ? "ready" : "blocked"}">${seo.google.connected ? "Connected" : "Not Connected"}</span>
+                        </div>
+                        <div class="input-row">
+                            <label class="input-label" for="seo-google-client-id">OAuth Client ID</label>
+                            <input id="seo-google-client-id" class="text-input" type="text" placeholder="Paste Google OAuth web client ID" value="${esc(seo.google.clientId)}" />
+                        </div>
+                        <div class="input-row">
+                            <label class="input-label" for="seo-google-client-secret">OAuth Client Secret</label>
+                            <input id="seo-google-client-secret" class="text-input" type="password" placeholder="Paste Google OAuth web client secret" value="${esc(seo.google.clientSecret)}" />
+                        </div>
+                        <div class="input-row">
+                            <label class="input-label" for="seo-google-property">Search Console Property</label>
+                            <input id="seo-google-property" class="text-input" type="text" placeholder="sc-domain:patentzoom.us" value="${esc(seo.google.property)}" />
+                            <div class="input-help">Use your existing property. For PatentZoom the best option is <code>sc-domain:patentzoom.us</code>.</div>
+                        </div>
+                        <div class="seo-preview-description"><strong>Redirect URI:</strong> ${esc(seo.google.redirectUri || "http://127.0.0.1:8000/api/google/search-console/callback")}</div>
+                        <div class="run-actions">
+                            <button type="button" class="run-btn secondary-run-btn" id="seo-google-save-btn">Save Google OAuth</button>
+                            <button type="button" class="run-btn secondary-run-btn" id="seo-google-connect-btn" ${seo.google.clientConfigured ? "" : "disabled"}>Connect Google Search Console</button>
+                            <button type="button" class="run-btn secondary-run-btn" id="seo-google-browser-btn">Connect Browser Session</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="seo-panel-grid">
+                <div class="result-card">
+                    <h4>WordPress Publishing Monitor</h4>
+                    <div class="seo-status-list">
+                        <div class="seo-status-item">
+                            <div>
+                                <div class="seo-status-name">WordPress Connection Status</div>
+                                <div class="seo-status-detail">${esc(wordpressMonitor.websiteUrl || "https://patentzoom.us")}</div>
+                            </div>
+                            <span class="seo-status-pill ${String(wordpressMonitor.connectionStatus || "").toLowerCase().includes("connected") ? "ready" : "blocked"}">${esc(wordpressMonitor.connectionStatus || "Unknown")}</span>
+                        </div>
+                        <div class="seo-status-item"><div><div class="seo-status-name">Last Published Post</div><div class="seo-status-detail">${esc(wordpressMonitor.lastPublishedPost || "No published post yet")}</div></div><span class="seo-status-pill ready">${esc(wordpressMonitor.mediaUploadStatus || "Enabled")}</span></div>
+                        <div class="seo-status-item"><div><div class="seo-status-name">Drafts Created</div><div class="seo-status-detail">Failed Publishes: ${esc(String(wordpressMonitor.failedPublishes || 0))}</div></div><span class="seo-status-pill blocked">${esc(String(wordpressMonitor.draftsCreated || 0))}</span></div>
+                        <div class="seo-status-item"><div><div class="seo-status-name">Default Category</div><div class="seo-status-detail">Default Author: ${esc(wordpressMonitor.defaultAuthor || "-")}</div></div><span class="seo-status-pill ready">${esc(wordpressMonitor.defaultCategory || "-")}</span></div>
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <h4>SEO Performance</h4>
+                    ${seoPerformance.length
+                        ? `<div class="seo-table-wrap">
+                            <table class="results-table seo-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th>Article Title</th>
+                                        <th>Published Date</th>
+                                        <th>Focus Keyword</th>
+                                        <th>Impressions</th>
+                                        <th>Clicks</th>
+                                        <th>CTR</th>
+                                        <th>Average Position</th>
+                                        <th>Indexed Status</th>
+                                        <th>Leads Generated</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${seoPerformance.map((item) => `
+                                        <tr>
+                                            <td>${esc(item.articleTitle || "-")}</td>
+                                            <td>${esc(item.publishedDate || "-")}</td>
+                                            <td>${esc(item.focusKeyword || "-")}</td>
+                                            <td>${esc(String(item.impressions || "Pending"))}</td>
+                                            <td>${esc(String(item.clicks || "Pending"))}</td>
+                                            <td>${esc(String(item.ctr || "Pending"))}</td>
+                                            <td>${esc(String(item.averagePosition || "Pending"))}</td>
+                                            <td>${esc(item.indexedStatus || "Pending")}</td>
+                                            <td>${esc(String(item.leadsGenerated || "Pending"))}</td>
+                                            <td>${item.requestIndexingEligible && item.url ? `<button type="button" class="json-toggle seo-request-indexing-btn" data-url="${esc(item.url)}">Request Indexing</button>` : "-"}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>`
+                        : '<div class="memory-empty">Performance rows are ready for future Search Console integration.</div>'}
+                </div>
+            </div>
+
+            ${nextActions.length ? `
+                <div class="result-card">
+                    <h4>What Needs Action</h4>
+                    <div class="seo-action-list">
+                        ${nextActions.map((item) => `
+                            <div class="seo-action-item tone-${esc(item.tone || "info")}">
+                                <div class="seo-action-title">${esc(item.title)}</div>
+                                <div class="seo-action-detail">${esc(item.detail || "")}</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            ` : ""}
+
+            <div class="results-grid">
+                <div class="result-card">
+                    <h4>Recent Topic Ledger</h4>
+                    ${recentTopics.length
+                        ? `<div class="seo-table-wrap">
+                            <table class="results-table seo-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Keyword</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${recentTopics.map((item) => `
+                                        <tr>
+                                            <td>${esc(item.date || "-")}</td>
+                                            <td title="${esc(item.primaryKeyword || "-")}">${esc(item.primaryKeyword || "-")}</td>
+                                            <td><span class="status-pill ${String(item.status || "").toLowerCase() === "publish" ? "status-found" : "status-not_found"}">${esc(item.status || "-")}</span></td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>`
+                        : '<div class="memory-empty">No SEO topics have been stored yet.</div>'}
+                </div>
+
+                <div class="result-card">
+                    <h4>Recent SEO Runs</h4>
+                    ${recentRuns.length
+                        ? `<div class="seo-run-list">
+                            ${recentRuns.map((run) => `
+                                <div class="seo-run-item">
+                                    <div class="seo-run-top">
+                                        <span class="seo-run-status ${esc(run.status || "unknown")}">${esc(run.status || "unknown")}</span>
+                                        <span class="memory-time">${esc(formatTimestamp(run.createdAt))}</span>
+                                    </div>
+                                    <div class="seo-run-title">${esc(run.title || run.primaryKeyword || "PatentZoom SEO run")}</div>
+                                    <div class="seo-run-meta">
+                                        <span>Keyword: ${esc(run.primaryKeyword || "-")}</span>
+                                        <span>Post: ${esc(run.postStatus || "-")}</span>
+                                        <span>Time: ${esc(String(run.executionTime || 0))}s</span>
+                                    </div>
+                                    ${run.error ? `<div class="seo-run-error">${esc(run.error)}</div>` : ""}
+                                    ${run.wordpressUrl ? `<a class="result-link" href="${esc(run.wordpressUrl)}" target="_blank" rel="noopener noreferrer">${esc(run.wordpressUrl)}</a>` : ""}
+                                </div>
+                            `).join("")}
+                        </div>`
+                        : '<div class="memory-empty">No SEO runs logged yet.</div>'}
+                </div>
+            </div>
+
+                <div class="result-card">
+                    <h4>Run History</h4>
+                ${logsHistory.length
+                    ? `<div class="seo-table-wrap">
+                        <table class="results-table seo-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Topic</th>
+                                    <th>Mode</th>
+                                    <th>Result</th>
+                                    <th>SEO score</th>
+                                    <th>Indexing</th>
+                                    <th>Time Taken</th>
+                                    <th>Failed Step</th>
+                                    <th>Error Message</th>
+                                    <th>WordPress URL</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${logsHistory.map((item, index) => `
+                                    <tr>
+                                        <td>${esc(item.publishDate || "-")}</td>
+                                        <td>${esc(item.topic || "-")}</td>
+                                        <td>${esc(item.mode || "-")}</td>
+                                        <td><span class="status-pill ${String(item.status || "").toLowerCase() === "publish" || String(item.status || "").toLowerCase() === "success" ? "status-found" : "status-not_found"}">${esc(item.status || "-")}</span></td>
+                                        <td>${item.seoScore ?? "-"}</td>
+                                        <td>${esc(item.indexingStatus || "Pending")}</td>
+                                        <td>${esc(String(item.timeTaken || 0))}s</td>
+                                        <td>${esc(item.failedStep || "-")}</td>
+                                        <td title="${esc(item.errorMessage || "-")}">${esc(item.errorMessage || "-")}</td>
+                                        <td>${item.url ? `<a class="result-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.url)}</a>` : "-"}</td>
+                                        <td>
+                                            <div class="seo-action-buttons">
+                                                <button type="button" class="json-toggle seo-history-action" data-history-action="logs" data-history-index="${index}">View Logs</button>
+                                                <button type="button" class="json-toggle seo-history-action" data-history-action="retry" data-history-index="${index}">Retry</button>
+                                                <button type="button" class="json-toggle seo-history-action" data-history-action="view" data-history-index="${index}" ${item.url ? "" : "disabled"}>View Post</button>
+                                                <button type="button" class="json-toggle seo-history-action" data-history-action="regenerate" data-history-index="${index}">Regenerate</button>
+                                                ${item.requestIndexingEligible && item.url ? `<button type="button" class="json-toggle seo-request-indexing-btn" data-url="${esc(item.url)}">Request Indexing</button>` : ""}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </div>`
+                    : '<div class="memory-empty">No SEO log history yet.</div>'}
+            </div>
+        </div>
+    `;
+}
+
+function renderSEOPreviewModal(article) {
+    return `
+        <div class="captcha-alert-modal seo-preview-modal">
+            <div class="captcha-alert-modal-card seo-preview-card">
+                <div class="seo-card-header">
+                    <div>
+                        <div class="captcha-alert-modal-title">${esc(article.title || "Article Preview")}</div>
+                        <div class="captcha-alert-modal-text">${esc(article.primaryKeyword || "")}</div>
+                    </div>
+                    <button type="button" class="json-toggle" id="close-seo-preview">Close</button>
+                </div>
+                <div class="seo-preview-meta">
+                    <div><strong>Slug:</strong> ${esc(article.slug || "-")}</div>
+                    <div><strong>Status:</strong> ${esc(article.publishStatus || "-")}</div>
+                    <div><strong>SEO Score:</strong> ${article.seoScore ?? "-"}</div>
+                </div>
+                ${article.metaDescription ? `<div class="seo-preview-description">${esc(article.metaDescription)}</div>` : ""}
+                <div class="seo-preview-body">${article.previewHtml || "<p>No preview content available.</p>"}</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSEOHistoryModal(entry) {
+    return `
+        <div class="captcha-alert-modal seo-preview-modal">
+            <div class="captcha-alert-modal-card seo-preview-card seo-history-card">
+                <div class="seo-card-header">
+                    <div>
+                        <div class="captcha-alert-modal-title">${esc(entry.topic || "SEO Run History")}</div>
+                        <div class="captcha-alert-modal-text">${esc(entry.publishDate || "-")} · ${esc(entry.mode || "-")} · ${esc(entry.status || "-")}</div>
+                    </div>
+                    <button type="button" class="json-toggle" id="close-seo-history">Close</button>
+                </div>
+                <div class="seo-preview-meta">
+                    <div><strong>SEO Score:</strong> ${entry.seoScore ?? "-"}</div>
+                    <div><strong>Time Taken:</strong> ${esc(String(entry.timeTaken || 0))}s</div>
+                    <div><strong>Failed Step:</strong> ${esc(entry.failedStep || "-")}</div>
+                </div>
+                <div class="seo-preview-description"><strong>Error Message:</strong> ${esc(entry.errorMessage || "No error recorded. This run completed or stopped without a hard failure.")}</div>
+                ${entry.url ? `<div class="seo-preview-description"><strong>WordPress URL:</strong> <a class="result-link" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer">${esc(entry.url)}</a></div>` : ""}
+                <div class="json-block seo-history-json">${esc(JSON.stringify(entry, null, 2))}</div>
             </div>
         </div>
     `;
@@ -1097,6 +1919,76 @@ function renderPCTResults(result) {
     return html;
 }
 
+function renderSEOResults(result) {
+    if (result.status === "failure") {
+        return renderFailureResults(result);
+    }
+
+    const warnings = result.warnings || [];
+    const outputLogs = result.outputLogs || [];
+    const article = result.article || {};
+    const ledger = result.ledgerEntry || {};
+    const wpUrl = result.wordpressUrl || "";
+
+    return `
+        <div class="results-section">
+            <div class="section-title">Results</div>
+            ${result.status === "stopped"
+                ? '<div class="warning-banner">&#x23F9; Run stopped. Partial logs were preserved.</div>'
+                : ""
+            }
+            <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr)">
+                <div class="stat-card">
+                    <div class="stat-value">${esc(result.postStatus || result.status || "-")}</div>
+                    <div class="stat-label">Post Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${esc(result.primaryKeyword || "-")}</div>
+                    <div class="stat-label">Primary Keyword</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${result.wordpressPostId || "-"}</div>
+                    <div class="stat-label">WordPress Post ID</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${result.executionTime || 0}s</div>
+                    <div class="stat-label">Execution Time</div>
+                </div>
+            </div>
+
+            ${warnings.length
+                ? `<div class="warning-banner">${warnings.map((warning) => esc(warning)).join("<br>")}</div>`
+                : ""
+            }
+
+            <div class="result-card" style="margin-top:16px">
+                <h4>&#x1F4DD; Article Summary</h4>
+                <div class="seo-result-grid">
+                    <div><strong>Topic:</strong> ${esc(result.topic || ledger.topicId || "-")}</div>
+                    <div><strong>Title:</strong> ${esc(article.title || result.title || "-")}</div>
+                    <div><strong>Slug:</strong> ${esc(article.slug || result.slug || "-")}</div>
+                    <div><strong>Category:</strong> ${esc(article.category || "-")}</div>
+                    <div><strong>Publish Source:</strong> ${esc(ledger.source || "-")}</div>
+                    <div><strong>Featured Image ID:</strong> ${result.featuredImageId || "-"}</div>
+                    <div class="full-span"><strong>Meta Title:</strong> ${esc(article.metaTitle || "-")}</div>
+                    <div class="full-span"><strong>Meta Description:</strong> ${esc(article.metaDescription || "-")}</div>
+                    ${wpUrl ? `<div class="full-span"><strong>WordPress URL:</strong> <a class="result-link" href="${esc(wpUrl)}" target="_blank" rel="noopener noreferrer">${esc(wpUrl)}</a></div>` : ""}
+                </div>
+            </div>
+
+            ${outputLogs.length
+                ? `<div class="result-card" style="margin-top:16px">
+                    <h4>&#x1F4CA; Workflow Highlights</h4>
+                    <div class="seo-log-list">
+                        ${outputLogs.map((entry) => `<div class="seo-log-item">${esc(entry)}</div>`).join("")}
+                    </div>
+                </div>`
+                : ""
+            }
+        </div>
+    `;
+}
+
 function renderFailureResults(result) {
     return `
         <div class="results-section">
@@ -1175,6 +2067,8 @@ function attachHandlers(agent) {
                     file_path: mode === "upload" ? state.uploadedFilePath : undefined,
                     gazette: mode === "wipo_download" ? state.selectedGazette : undefined,
                 });
+            } else if (agent.ui_type === "seo_posting") {
+                triggerSeoRun(agent);
             } else {
                 runAgent(agent.module_name);
             }
@@ -1249,7 +2143,12 @@ function attachHandlers(agent) {
             try {
                 state.stopRequested = true;
                 state.agentRunStatus = "stopping";
-                addLogLine("Stop requested. Interrupting the active browser step and saving partial results now.", "step");
+                addLogLine(
+                    agent.module_name === "pct_agent"
+                        ? "Stop requested. Interrupting the active browser step and saving partial results now."
+                        : "Stop requested. Wrapping up the active workflow step and returning the latest result.",
+                    "step",
+                );
                 renderMain();
                 const response = await stopAgent(agent.module_name);
                 if (response.status !== "stop_requested") {
@@ -1277,6 +2176,361 @@ function attachHandlers(agent) {
             e.preventDefault();
             loadWipoGazettes(true);
         };
+    }
+
+    const seoTopicOverride = document.getElementById("seo-topic-override");
+    if (seoTopicOverride) {
+        seoTopicOverride.oninput = (e) => {
+            state.seo.topicOverride = e.target.value || "";
+        };
+    }
+
+    const seoPublishOverride = document.getElementById("seo-publish-override");
+    if (seoPublishOverride) {
+        seoPublishOverride.onchange = (e) => {
+            state.seo.publishOverride = e.target.value || "draft";
+        };
+    }
+
+    const seoFeaturedImage = document.getElementById("seo-featured-image");
+    if (seoFeaturedImage) {
+        seoFeaturedImage.onchange = (e) => {
+            state.seo.enableFeaturedImage = !!e.target.checked;
+        };
+    }
+
+    const seoDryRun = document.getElementById("seo-dry-run");
+    if (seoDryRun) {
+        seoDryRun.onchange = (e) => {
+            state.seo.dryRun = !!e.target.checked;
+        };
+    }
+
+    const seoRefreshOverview = document.getElementById("seo-refresh-overview");
+    if (seoRefreshOverview && agent.ui_type === "seo_posting") {
+        seoRefreshOverview.onclick = async (e) => {
+            e.preventDefault();
+            await loadSeoDashboardData(agent.module_name);
+        };
+    }
+
+    const seoSaveDraftBtn = document.getElementById("seo-save-draft-btn");
+    if (seoSaveDraftBtn && agent.ui_type === "seo_posting" && !state.isRunning) {
+        seoSaveDraftBtn.onclick = async (e) => {
+            e.preventDefault();
+            primeAlertAudio();
+            const latestStatus = await loadAgentRunStatus(agent.module_name);
+            if (latestStatus !== "idle") return;
+            triggerSeoRun(agent, { publish_override: "draft", dry_run: false });
+        };
+    }
+
+    const seoPublishNowBtn = document.getElementById("seo-publish-now-btn");
+    if (seoPublishNowBtn && agent.ui_type === "seo_posting" && !state.isRunning) {
+        seoPublishNowBtn.onclick = async (e) => {
+            e.preventDefault();
+            primeAlertAudio();
+            const latestStatus = await loadAgentRunStatus(agent.module_name);
+            if (latestStatus !== "idle") return;
+            triggerSeoRun(agent, { publish_override: "publish", dry_run: false });
+        };
+    }
+
+    const seoGoogleClientId = document.getElementById("seo-google-client-id");
+    if (seoGoogleClientId) {
+        seoGoogleClientId.oninput = (e) => {
+            state.seo.google.clientId = e.target.value || "";
+        };
+    }
+
+    const seoGoogleClientSecret = document.getElementById("seo-google-client-secret");
+    if (seoGoogleClientSecret) {
+        seoGoogleClientSecret.oninput = (e) => {
+            state.seo.google.clientSecret = e.target.value || "";
+        };
+    }
+
+    const seoGoogleProperty = document.getElementById("seo-google-property");
+    if (seoGoogleProperty) {
+        seoGoogleProperty.oninput = (e) => {
+            state.seo.google.property = e.target.value || "";
+        };
+    }
+
+    const seoGoogleSaveBtn = document.getElementById("seo-google-save-btn");
+    if (seoGoogleSaveBtn && agent.ui_type === "seo_posting") {
+        seoGoogleSaveBtn.onclick = async (e) => {
+            e.preventDefault();
+            try {
+                const response = await saveGoogleSearchConsoleConfig();
+                if (response.error) throw new Error(response.error);
+                state.seo.google.clientConfigured = !!response.clientConfigured;
+                state.seo.google.connected = !!response.connected;
+                state.seo.google.property = response.property || state.seo.google.property;
+                addLogLine("Google Search Console OAuth settings saved.", "success");
+                await loadSeoDashboardData(agent.module_name);
+            } catch (err) {
+                addLogLine(`Google OAuth save failed: ${err.message}`, "error");
+            }
+        };
+    }
+
+    const seoGoogleConnectBtn = document.getElementById("seo-google-connect-btn");
+    if (seoGoogleConnectBtn && agent.ui_type === "seo_posting") {
+        seoGoogleConnectBtn.onclick = (e) => {
+            e.preventDefault();
+            window.open("/api/google/search-console/connect", "_blank", "noopener,noreferrer");
+        };
+    }
+
+    const seoGoogleBrowserBtn = document.getElementById("seo-google-browser-btn");
+    if (seoGoogleBrowserBtn && agent.ui_type === "seo_posting") {
+        seoGoogleBrowserBtn.onclick = async (e) => {
+            e.preventDefault();
+            try {
+                const response = await launchGoogleBrowserSession();
+                if (response.error) throw new Error(response.error);
+                addLogLine(response.message || "Google browser session opened.", "success");
+            } catch (err) {
+                addLogLine(`Google browser session failed: ${err.message || err}`, "error");
+            }
+        };
+    }
+
+    if (agent.ui_type === "seo_posting") {
+        document.querySelectorAll(".seo-preview-btn").forEach((btn) => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                const articleId = btn.dataset.articleId || "";
+                const article = (state.seoDashboard.snapshot?.articleManager || []).find((item) => item.id === articleId);
+                if (!article) return;
+                state.seoDashboard.previewArticle = article;
+                renderMain();
+            };
+        });
+
+        document.querySelectorAll(".seo-request-indexing-btn").forEach((btn) => {
+            btn.onclick = async (e) => {
+                e.preventDefault();
+                const url = btn.dataset.url || "";
+                if (!url) return;
+                btn.disabled = true;
+                addLogLine(`Requesting Google indexing fallback for ${url}`, "step");
+                try {
+                    const response = await requestGoogleIndexing(url);
+                    if (response.error) {
+                        throw new Error(response.error);
+                    }
+                    const indexing = response.indexing || {};
+                    const summary =
+                        indexing.browserFallbackSubmitted
+                            ? indexing.browserFallbackMessage || "Request Indexing clicked in Google Search Console"
+                            : indexing.browserFallbackStatus === "login_required"
+                                ? "Browser fallback needs one Google login in the automation profile"
+                                : indexing.inspection?.coverageState ||
+                                  indexing.inspection?.verdict ||
+                                  (indexing.autoSubmitSucceeded ? "Submitted to Google" : "Indexing handoff attempted");
+                    addLogLine(`Indexing request complete: ${summary}`, "success");
+                    await loadSeoDashboardData(agent.module_name);
+                } catch (err) {
+                    addLogLine(`Indexing request failed: ${err.message || err}`, "error");
+                } finally {
+                    btn.disabled = false;
+                }
+            };
+        });
+
+        const closeSeoPreview = document.getElementById("close-seo-preview");
+        if (closeSeoPreview) {
+            closeSeoPreview.onclick = (e) => {
+                e.preventDefault();
+                state.seoDashboard.previewArticle = null;
+                renderMain();
+            };
+        }
+
+        document.querySelectorAll(".seo-history-action").forEach((btn) => {
+            btn.onclick = async (e) => {
+                e.preventDefault();
+                const historyIndex = Number(btn.dataset.historyIndex || "-1");
+                const action = btn.dataset.historyAction || "";
+                const entry = (state.seoDashboard.snapshot?.logsHistory || [])[historyIndex];
+                if (!entry) return;
+
+                if (action === "logs") {
+                    state.seoDashboard.historyEntry = entry;
+                    renderMain();
+                    return;
+                }
+
+                if (action === "view" && entry.url) {
+                    window.open(entry.url, "_blank", "noopener,noreferrer");
+                    return;
+                }
+
+                if (action === "retry" || action === "regenerate") {
+                    state.seo.topicOverride = entry.topic || "";
+                    state.seo.publishOverride = entry.mode === "publish" ? "publish" : "draft";
+                    state.seo.dryRun = action === "retry" ? false : true;
+                    renderMain();
+                    const latestStatus = await loadAgentRunStatus(agent.module_name);
+                    if (latestStatus !== "idle") return;
+                    triggerSeoRun(agent, {
+                        topic_override: entry.topic || "",
+                        publish_override: state.seo.publishOverride,
+                        dry_run: state.seo.dryRun,
+                    });
+                }
+            };
+        });
+
+        const closeSeoHistory = document.getElementById("close-seo-history");
+        if (closeSeoHistory) {
+            closeSeoHistory.onclick = (e) => {
+                e.preventDefault();
+                state.seoDashboard.historyEntry = null;
+                renderMain();
+            };
+        }
+    }
+}
+
+function inferSeoStageFromMessage(message = "") {
+    const lower = String(message || "").toLowerCase();
+    if (lower.includes("preparing a new patentzoom seo run")) return { stage: "readiness", status: "active" };
+    if (lower.includes("validating local patentzoom seo setup")) return { stage: "readiness", status: "active" };
+    if (lower.includes("loading recent patentzoom posts")) return { stage: "readiness", status: "active" };
+    if (lower.includes("loaded") && lower.includes("recent patentzoom posts")) return { stage: "readiness", status: "complete" };
+    if (lower.includes("researching keywords")) return { stage: "keywords", status: "active" };
+    if (lower.includes("selected \"") || lower.includes("chosen topic:")) return { stage: "keywords", status: "complete" };
+    if (lower.includes("starting ai article generation")) return { stage: "content", status: "active" };
+    if (lower.includes("article draft completed")) return { stage: "content", status: "complete" };
+    if (lower.includes("article outline") || lower.includes("final seo article draft")) return { stage: "content", status: "active" };
+    if (lower.includes("running seo optimization")) return { stage: "optimization", status: "active" };
+    if (lower.includes("seo optimization complete")) return { stage: "optimization", status: "complete" };
+    if (lower.includes("seo optimizer") || lower.includes("internal links")) return { stage: "optimization", status: "active" };
+    if (lower.includes("starting featured image generation")) return { stage: "image", status: "active" };
+    if (lower.includes("featured image stage complete")) return { stage: "image", status: "complete" };
+    if (lower.includes("featured image stage skipped")) return { stage: "image", status: "skipped" };
+    if (lower.includes("featured image stage completed without")) return { stage: "image", status: "warning" };
+    if (lower.includes("generating featured image") || lower.includes("uploaded featured image")) return { stage: "image", status: "active" };
+    if (lower.includes("publishing article to wordpress")) return { stage: "publishing", status: "active" };
+    if (lower.includes("publishing stage complete")) return { stage: "publishing", status: "complete" };
+    if (lower.includes("publishing skipped") || lower.includes("dry run enabled")) return { stage: "publishing", status: "skipped" };
+    if (lower.includes("submitting sitemap") || lower.includes("indexing handoff")) return { stage: "indexing", status: "active" };
+    if (lower.includes("indexing handoff complete") || lower.includes("submitted indexing api request") || lower.includes("sitemap ping sent")) return { stage: "indexing", status: "complete" };
+    if (lower.includes("indexing skipped")) return { stage: "indexing", status: "skipped" };
+    return null;
+}
+
+function setSeoStageStatus(stageKey, status, detail) {
+    const workflow = state.seoDashboard.workflow;
+    const index = workflow.stages.findIndex((stage) => stage.key === stageKey);
+    if (index < 0) return;
+
+    if (status === "active") {
+        workflow.stages.forEach((stage, idx) => {
+            if (idx < index && stage.status === "pending") {
+                stage.status = "complete";
+            }
+        });
+    }
+
+    workflow.stages[index].status = status;
+    if (detail) workflow.stages[index].detail = detail;
+    workflow.currentStage = stageKey;
+    workflow.currentMessage = detail || workflow.currentMessage;
+}
+
+function handleSeoWorkflowEvent(event, fallbackType = "step") {
+    const data = event.data || {};
+    const inferred = data.stage
+        ? { stage: data.stage, status: data.status || fallbackType }
+        : inferSeoStageFromMessage(event.message);
+    if (!inferred) return;
+    const status = inferred.status === "step" ? "active" : inferred.status;
+    setSeoStageStatus(inferred.stage, status, event.message || "");
+}
+
+function finalizeSeoWorkflow(result) {
+    if (result.status === "failure") {
+        const workflow = state.seoDashboard.workflow;
+        const active = workflow.stages.find((stage) => stage.status === "active");
+        if (active) active.status = "error";
+        workflow.currentMessage = result.error || "The SEO workflow failed.";
+        return;
+    }
+
+    if (result.status === "stopped") {
+        state.seoDashboard.workflow.currentMessage = "Run stopped. Review the partial output and logs below.";
+        return;
+    }
+
+    if (result.postStatus === "dry-run") {
+        setSeoStageStatus("publishing", "skipped", "Dry run finished without publishing.");
+        setSeoStageStatus("indexing", "skipped", "Indexing was skipped because nothing was published.");
+    } else {
+        setSeoStageStatus("publishing", "complete", `WordPress status: ${result.postStatus || "saved"}`);
+        setSeoStageStatus(
+            "indexing",
+            result.postStatus === "publish" ? "complete" : "skipped",
+            result.postStatus === "publish"
+                ? "Published URL handed off for sitemap and indexing checks."
+                : "Draft saved. Indexing waits until the post is published.",
+        );
+    }
+    state.seoDashboard.workflow.currentMessage = "PatentZoom SEO workflow finished successfully.";
+}
+
+function buildSeoWorkflowState(stageDefs = []) {
+    return {
+        currentStage: "",
+        currentMessage: "",
+        stages: (stageDefs || []).map((stage) => ({
+            key: stage.key,
+            label: stage.label,
+            description: stage.description,
+            status: "pending",
+            detail: "",
+        })),
+    };
+}
+
+function resetSeoWorkflow(stageDefs = null) {
+    const defs = stageDefs || state.seoDashboard.snapshot?.workflowStages || [];
+    state.seoDashboard.workflow = buildSeoWorkflowState(defs);
+}
+
+async function loadSeoDashboardData(name) {
+    state.seoDashboard.loading = true;
+    state.seoDashboard.error = "";
+    state.seoDashboard.previewArticle = null;
+    state.seoDashboard.historyEntry = null;
+    renderMain();
+    try {
+        const res = await fetch(`/api/agents/${name}/dashboard-data`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load SEO dashboard data");
+        state.seoDashboard.snapshot = data;
+        state.seo.publishOverride = data?.todayRun?.publishMode === "publish" ? "publish" : "draft";
+        state.seo.enableFeaturedImage = data?.todayRun?.generateFeaturedImage !== false;
+        state.seo.dryRun = false;
+        state.seo.google.clientConfigured = !!data?.googleAuth?.clientConfigured;
+        state.seo.google.connected = !!data?.googleAuth?.connected;
+        state.seo.google.property = data?.googleAuth?.property || state.seo.google.property;
+        state.seo.google.redirectUri = data?.googleAuth?.redirectUri || state.seo.google.redirectUri;
+        if (!state.seo.topicOverride) {
+            state.seo.topicOverride = data?.todayRun?.selectedTopic || "";
+        }
+        resetSeoWorkflow(data.workflowStages || []);
+    } catch (e) {
+        console.error("Failed to load SEO dashboard data:", e);
+        state.seoDashboard.error = e.message || "Failed to load SEO dashboard data";
+        state.seoDashboard.snapshot = null;
+        resetSeoWorkflow([]);
+    } finally {
+        state.seoDashboard.loading = false;
+        renderMain();
     }
 }
 
