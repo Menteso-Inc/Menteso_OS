@@ -99,7 +99,7 @@ function hasExternalLinks(articleHtml: string, baseUrl: string): boolean {
 }
 
 function resolveContentCategory(topic: TopicSelection, article: GeneratedArticle): string {
-  const combined = `${topic.pillar} ${topic.cluster} ${topic.angle} ${article.title} ${article.primaryKeyword}`.toLowerCase();
+  const combined = `${topic.theme} ${topic.cluster} ${topic.angle} ${article.title} ${article.primaryKeyword}`.toLowerCase();
   const blogSignals = ["trend", "trends", "news", "update", "weekly", "monthly", "outlook", "forecast"];
   return blogSignals.some((signal) => combined.includes(signal)) ? "Blog" : "Article";
 }
@@ -269,7 +269,9 @@ async function main(): Promise<void> {
       stage: "keywords",
       status: "complete",
       keyword: topic.primaryKeyword,
-      pillar: topic.pillar,
+      theme: topic.theme,
+      intentCluster: topic.intentCluster,
+      sourceMix: topic.sourceTypes.join(", "),
     });
 
     ensureRunning();
@@ -504,6 +506,8 @@ async function main(): Promise<void> {
         topicId: topic.topicId,
         pillar: topic.pillar,
         angle: topic.angle,
+        theme: topic.theme,
+        cluster: topic.cluster,
         primaryKeyword: topic.primaryKeyword,
         secondaryKeywords: topic.secondaryKeywords,
         slug: linkedArticle.slug,
@@ -512,6 +516,11 @@ async function main(): Promise<void> {
         status: postStatus,
         source: input.source,
         fingerprint: topic.fingerprint,
+        sourceTypes: topic.sourceTypes,
+        sourceEvidence: topic.sourceEvidence,
+        demandScore: topic.demandScore,
+        freshnessScore: topic.freshnessScore,
+        intentCluster: topic.intentCluster,
       };
       ledger.generatedPosts.push(ledgerEntry);
       saveGeneratedPosts(config.paths.generatedPostsFile, ledger);

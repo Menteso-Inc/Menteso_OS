@@ -105,6 +105,7 @@ export function loadConfig() {
       stateDir,
       generatedPostsFile: resolve(stateDir, "generated-posts.json"),
       indexingStatusFile: resolve(stateDir, "indexing-status.json"),
+      topicDiscoveryFile: resolve(stateDir, "topic-discovery.json"),
       logsDir,
       imagesDir,
     },

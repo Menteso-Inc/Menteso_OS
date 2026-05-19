@@ -9,30 +9,89 @@ export interface WorkflowInput {
   strategy?: string;
 }
 
-export interface EditorialSlot {
-  weekday: number;
-  weekdayName: string;
-  pillar: string;
-  cluster: string;
-  seedKeywords: string[];
-  weekAngles: Record<number, string[]>;
+export type TopicSignalSource =
+  | "search_console_query"
+  | "search_console_page"
+  | "serp_related_search"
+  | "serp_autocomplete"
+  | "serp_related_question"
+  | "competitor_article"
+  | "adjacent_expansion"
+  | "evergreen_fallback"
+  | "manual_override";
+
+export interface TopicSignal {
+  id: string;
+  sourceType: TopicSignalSource;
+  label: string;
+  query: string;
+  title?: string;
+  url?: string;
+  snippet?: string;
+  impressions?: number;
+  clicks?: number;
+  ctr?: number;
+  position?: number;
+  freshnessDays?: number | null;
+  demandScore: number;
+  freshnessScore: number;
+  commercialRelevanceScore: number;
+  brandFitScore: number;
+  competitorGapScore: number;
+  intentCluster: string;
+  evidence: string[];
 }
 
-export interface TopicCandidate {
+export interface HotTopicCandidate {
   topicId: string;
   pillar: string;
   cluster: string;
   angle: string;
+  theme: string;
   primaryKeyword: string;
   secondaryKeywords: string[];
   serpQuestions: string[];
   relatedSearches: string[];
   score: number;
   fingerprint: string;
+  intentCluster: string;
+  sourceTypes: TopicSignalSource[];
+  sourceEvidence: string[];
+  demandScore: number;
+  freshnessScore: number;
+  commercialRelevanceScore: number;
+  brandFitScore: number;
+  competitorGapScore: number;
 }
 
-export interface TopicSelection extends TopicCandidate {
+export interface TopicSelection extends HotTopicCandidate {
   runDate: string;
+}
+
+export interface TopicRejectedCandidate {
+  topicId: string;
+  primaryKeyword: string;
+  intentCluster: string;
+  score: number;
+  reason: string;
+  sourceTypes: TopicSignalSource[];
+}
+
+export interface TopicSourceHealth {
+  source: "search_console" | "serpapi_keywords" | "competitor_search";
+  ok: boolean;
+  detail: string;
+}
+
+export interface TopicDiscoverySnapshot {
+  generatedAt: string;
+  mode: string;
+  selectedTopic: TopicSelection | null;
+  shortlist: HotTopicCandidate[];
+  rejectedTopics: TopicRejectedCandidate[];
+  liveSignals: TopicSignal[];
+  sourceHealth: TopicSourceHealth[];
+  degradedSources: string[];
 }
 
 export interface GeneratedPostRecord {
@@ -40,6 +99,8 @@ export interface GeneratedPostRecord {
   topicId: string;
   pillar: string;
   angle: string;
+  theme?: string;
+  cluster?: string;
   primaryKeyword: string;
   secondaryKeywords: string[];
   slug: string;
@@ -48,6 +109,11 @@ export interface GeneratedPostRecord {
   status: string;
   source: string;
   fingerprint: string;
+  sourceTypes?: TopicSignalSource[];
+  sourceEvidence?: string[];
+  demandScore?: number;
+  freshnessScore?: number;
+  intentCluster?: string;
 }
 
 export interface GeneratedPostsLedger {

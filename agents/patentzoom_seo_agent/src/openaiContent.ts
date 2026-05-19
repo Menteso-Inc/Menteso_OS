@@ -126,7 +126,7 @@ function normalizeOutlinePayload(raw: unknown, topic: TopicSelection, config: Ap
     ...topic.relatedSearches,
   ]).filter((item) => item.toLowerCase() !== primaryKeyword.toLowerCase());
   const tags = pickStringArray(source, ["tags", "tagList", "tag_list"], [
-    topic.pillar,
+    topic.theme,
     "Patent Strategy",
     "Startup IP",
     "Patent Filing",
@@ -334,8 +334,11 @@ export async function generateArticle(
     [
       "Create a JSON-only content brief for a PatentZoom blog article.",
       `Primary topic: ${topic.primaryKeyword}`,
-      `Pillar: ${topic.pillar}`,
-      `Angle: ${topic.angle}`,
+      `Theme: ${topic.theme}`,
+      `Intent cluster: ${topic.intentCluster}`,
+      `Opportunity angle: ${topic.angle}`,
+      `Source mix: ${topic.sourceTypes.join(", ")}`,
+      `Evidence: ${topic.sourceEvidence.join(" | ")}`,
       `Related search ideas: ${topic.relatedSearches.join("; ")}`,
       `People also ask questions: ${topic.serpQuestions.join("; ")}`,
       "Return JSON only with this exact object shape:",
@@ -370,6 +373,8 @@ export async function generateArticle(
     [
       "Write the final article as strict JSON only.",
       `Topic: ${topic.primaryKeyword}`,
+      `Theme: ${topic.theme}`,
+      `Intent cluster: ${topic.intentCluster}`,
       `Target title: ${normalizedOutline.title}`,
       `Meta title: ${normalizedOutline.metaTitle}`,
       `Meta description: ${normalizedOutline.metaDescription}`,

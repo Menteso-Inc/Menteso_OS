@@ -28,69 +28,11 @@ REQUESTS_DIR = RUNTIME_DIR / "requests"
 DIST_ENTRY = AGENT_DIR / "dist" / "main.js"
 STATE_FILE = AGENT_DIR / "state" / "generated-posts.json"
 INDEXING_STATE_FILE = AGENT_DIR / "state" / "indexing-status.json"
+TOPIC_DISCOVERY_FILE = AGENT_DIR / "state" / "topic-discovery.json"
 SCHEDULER_STATE_FILE = AGENT_DIR / "state" / "scheduler-state.json"
 LOGS_DIR = RUNTIME_DIR / "logs"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
-
-SEO_EDITORIAL_CALENDAR = [
-    {
-        "weekday": 1,
-        "weekdayName": "Monday",
-        "pillar": "Patent Filing Strategy",
-        "cluster": "startup filing playbooks",
-        "seedKeywords": ["patent filing strategy for startups", "startup patent strategy", "patent filing checklist"],
-        "weekAngles": {1: ["foundational strategy", "first-time inventor playbook"], 2: ["filing roadmap", "timing strategy"], 3: ["SaaS startup protection", "venture-backed company planning"], 4: ["advanced portfolio planning", "international filing readiness"]},
-    },
-    {
-        "weekday": 2,
-        "weekdayName": "Tuesday",
-        "pillar": "Provisional Patents",
-        "cluster": "filing checklists",
-        "seedKeywords": ["provisional patent filing checklist", "provisional vs non provisional patent", "when to file provisional patent"],
-        "weekAngles": {1: ["beginner explainer", "step-by-step checklist"], 2: ["cost and timing", "mistakes to avoid"], 3: ["software and AI use cases", "startup product launch timing"], 4: ["conversion strategy", "international bridge planning"]},
-    },
-    {
-        "weekday": 3,
-        "weekdayName": "Wednesday",
-        "pillar": "Patent Cost and USPTO Process",
-        "cluster": "budget and timeline",
-        "seedKeywords": ["how much does patent filing cost", "USPTO patent process timeline", "patent attorney fees startup"],
-        "weekAngles": {1: ["cost fundamentals", "timeline overview"], 2: ["budget planning", "USPTO milestones"], 3: ["software and AI cost scenarios", "startup budget examples"], 4: ["advanced prosecution costs", "global filing cost planning"]},
-    },
-    {
-        "weekday": 4,
-        "weekdayName": "Thursday",
-        "pillar": "Startup IP Protection",
-        "cluster": "search and office actions",
-        "seedKeywords": ["startup IP protection strategy", "patent search before filing", "office action response strategy"],
-        "weekAngles": {1: ["IP basics for founders", "pre-filing diligence"], 2: ["office action process", "response checklist"], 3: ["fundraising readiness", "SaaS moat building"], 4: ["portfolio strengthening", "cross-border risk management"]},
-    },
-    {
-        "weekday": 5,
-        "weekdayName": "Friday",
-        "pillar": "AI and Software Patents",
-        "cluster": "technology company filing strategy",
-        "seedKeywords": ["AI patent filing strategy", "software patent mistakes to avoid", "can you patent software in the US"],
-        "weekAngles": {1: ["eligibility basics", "software claim strategy"], 2: ["mistakes and risks", "office action readiness"], 3: ["AI startup positioning", "product-specific examples"], 4: ["advanced subject-matter eligibility", "global software protection"]},
-    },
-    {
-        "weekday": 6,
-        "weekdayName": "Saturday",
-        "pillar": "Patent Mistakes and Comparisons",
-        "cluster": "practical checklists",
-        "seedKeywords": ["design patent vs utility patent", "patent filing mistakes to avoid", "patent search checklist"],
-        "weekAngles": {1: ["fundamental comparisons", "checklist format"], 2: ["mistake prevention", "cost-saving decisions"], 3: ["startup-specific pitfalls", "technology product mistakes"], 4: ["global filing pitfalls", "portfolio maintenance mistakes"]},
-    },
-    {
-        "weekday": 0,
-        "weekdayName": "Sunday",
-        "pillar": "PCT Filing and Patent Trends",
-        "cluster": "international protection",
-        "seedKeywords": ["PCT filing strategy", "international patent protection", "patent trends for startups"],
-        "weekAngles": {1: ["evergreen PCT basics", "trend explainer"], 2: ["international timing", "cost and process"], 3: ["AI and software global filing", "investor-facing international strategy"], 4: ["advanced PCT timing", "jurisdiction planning"]},
-    },
-]
 
 AGENT_CONFIG = {
     "name": "SEO Posting Agent",
@@ -163,21 +105,32 @@ def _selected_content_provider(env):
     return "anthropic" if provider == "anthropic" else "openai"
 
 
-def _resolve_editorial_slot():
-    tz = timezone(timedelta(hours=5, minutes=30))
-    now = datetime.now(tz)
-    weekday_map = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 0}
-    weekday = weekday_map[now.weekday()]
-    week_of_month = min(4, max(1, (now.day + 6) // 7))
-    slot = next((entry for entry in SEO_EDITORIAL_CALENDAR if entry["weekday"] == weekday), SEO_EDITORIAL_CALENDAR[0])
-    return {
-        "isoDate": now.strftime("%Y-%m-%d"),
-        "weekOfMonth": week_of_month,
-        "slot": {
-            **slot,
-            "activeAngles": slot["weekAngles"].get(week_of_month, slot["weekAngles"].get(4, [])),
-        },
-    }
+def _load_topic_discovery():
+    if not TOPIC_DISCOVERY_FILE.exists():
+        return {
+            "generatedAt": "",
+            "mode": "mixed_signal_dynamic",
+            "selectedTopic": None,
+            "shortlist": [],
+            "rejectedTopics": [],
+            "liveSignals": [],
+            "sourceHealth": [],
+            "degradedSources": [],
+        }
+    try:
+        payload = json.loads(TOPIC_DISCOVERY_FILE.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {
+            "generatedAt": "",
+            "mode": "mixed_signal_dynamic",
+            "selectedTopic": None,
+            "shortlist": [],
+            "rejectedTopics": [],
+            "liveSignals": [],
+            "sourceHealth": [],
+            "degradedSources": [],
+        }
 
 
 def _load_generated_posts():
@@ -357,24 +310,20 @@ def _fetch_recent_patentzoom_posts(limit=8):
     return posts
 
 
-def _build_calendar_queue(days=7):
-    tz = timezone(timedelta(hours=5, minutes=30))
-    today = datetime.now(tz)
+def _build_dynamic_queue(topic_discovery):
+    shortlist = list((topic_discovery or {}).get("shortlist", []) or [])
     queue = []
-    for offset in range(days):
-        dt = today + timedelta(days=offset)
-        weekday_map = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 0}
-        weekday = weekday_map[dt.weekday()]
-        week_of_month = min(4, max(1, (dt.day + 6) // 7))
-        slot = next((entry for entry in SEO_EDITORIAL_CALENDAR if entry["weekday"] == weekday), SEO_EDITORIAL_CALENDAR[0])
-        angles = slot["weekAngles"].get(week_of_month, slot["weekAngles"].get(4, []))
+    for index, item in enumerate(shortlist[:6]):
         queue.append(
             {
-                "date": dt.strftime("%Y-%m-%d"),
-                "weekday": slot["weekdayName"],
-                "pillar": slot["pillar"],
-                "angle": angles[0] if angles else "",
-                "status": "Today" if offset == 0 else "Queued",
+                "rank": index + 1,
+                "theme": item.get("theme") or item.get("pillar") or "Patent Topic",
+                "primaryKeyword": item.get("primaryKeyword", ""),
+                "intentCluster": item.get("intentCluster", ""),
+                "score": item.get("score"),
+                "freshnessScore": item.get("freshnessScore"),
+                "status": "Selected" if index == 0 else "Queued",
+                "sourceMix": ", ".join(item.get("sourceTypes", []) or []),
             }
         )
     return queue
@@ -459,8 +408,13 @@ def _build_article_manager(recent_runs, index_cache):
     return articles
 
 
-def _build_internal_linking(recent_posts, editorial_slot):
-    keyword_roots = [str(item).split(" ")[0].lower() for item in editorial_slot.get("seedKeywords", [])]
+def _build_internal_linking(recent_posts, topic_discovery):
+    selected = (topic_discovery or {}).get("selectedTopic") or {}
+    candidate_keywords = [
+        selected.get("primaryKeyword", ""),
+        *((selected.get("secondaryKeywords") or [])[:4]),
+    ]
+    keyword_roots = [str(item).split(" ")[0].lower() for item in candidate_keywords if str(item).strip()]
     suggestions = []
     for post in recent_posts:
         haystack = f"{post.get('title', '')} {post.get('excerpt', '')}".lower()
@@ -513,19 +467,23 @@ def _build_automation_settings(env, readiness, scheduler_state=None):
     ]
 
 
-def _build_today_run(env, editorial):
-    slot = editorial.get("slot", {})
-    seed_keywords = list(slot.get("seedKeywords", []) or [])
-    active_angles = list(slot.get("activeAngles", []) or [])
+def _build_today_run(env, topic_discovery):
+    selected = (topic_discovery or {}).get("selectedTopic") or {}
+    secondary_keywords = list(selected.get("secondaryKeywords", []) or [])
+    source_mix = ", ".join(selected.get("sourceTypes", []) or [])
+    confidence = round(float(selected.get("score") or 0), 1) if selected else 0
     return {
-        "selectedTopic": f"{slot.get('pillar', 'Patent Strategy')} - {active_angles[0] if active_angles else 'daily publishing'}",
-        "targetKeyword": seed_keywords[0] if seed_keywords else "",
-        "secondaryKeywords": seed_keywords[1:4],
+        "selectedTopic": selected.get("theme") or selected.get("pillar") or "Dynamic topic discovery will choose the strongest live topic",
+        "targetKeyword": selected.get("primaryKeyword", ""),
+        "secondaryKeywords": secondary_keywords[:4],
         "contentType": "SEO Blog Article",
         "targetAudience": "Founders, inventors, startup teams, and businesses",
         "publishMode": "publish" if str(env.get("AUTO_PUBLISH", "false")).strip().lower() == "true" else "draft",
         "generateFeaturedImage": str(env.get("ENABLE_FEATURED_IMAGE", "true")).strip().lower() == "true",
         "dryRun": False,
+        "sourceMix": source_mix,
+        "confidenceScore": confidence,
+        "freshnessLevel": "High" if float(selected.get("freshnessScore") or 0) >= 12 else ("Medium" if float(selected.get("freshnessScore") or 0) >= 7 else "Low"),
     }
 
 
@@ -644,9 +602,9 @@ def get_dashboard_data():
     content_provider = _selected_content_provider(env)
     posts = _load_generated_posts()
     index_cache = _load_indexing_statuses()
+    topic_discovery = _load_topic_discovery()
     scheduler_state = _load_scheduler_state()
     recent_runs = _load_recent_runs()
-    editorial = _resolve_editorial_slot()
     recent_site_posts = _fetch_recent_patentzoom_posts()
 
     publish_statuses = {str(item.get("status", "")).lower() for item in posts}
@@ -658,7 +616,7 @@ def get_dashboard_data():
     article_manager = _build_article_manager(recent_runs, index_cache)
     wp_monitor = _build_wordpress_monitor(env, posts, recent_runs)
     latest_article_preview = _build_latest_article_preview(article_manager, wp_monitor)
-    seo_checklist = _build_seo_checklist(latest_article_preview, _build_internal_linking(recent_site_posts, editorial.get("slot", {})), posts)
+    seo_checklist = _build_seo_checklist(latest_article_preview, _build_internal_linking(recent_site_posts, topic_discovery), posts)
     logs_history = [
         {
             "topic": item.get("title") or item.get("primaryKeyword") or "PatentZoom SEO run",
@@ -683,7 +641,8 @@ def get_dashboard_data():
         )
     )
     organic_traffic = None
-    today_iso = editorial.get("isoDate", "")
+    tz = timezone(timedelta(hours=5, minutes=30))
+    today_iso = datetime.now(tz).strftime("%Y-%m-%d")
     published_today = any(str(item.get("status", "")).lower() == "publish" and str(item.get("date", "")) == str(today_iso) for item in posts)
     monthly_articles = sum(1 for item in posts if str(item.get("status", "")).lower() == "publish" and str(item.get("date", "")).startswith(str(today_iso)[:7]))
     success_rate_pct = round(
@@ -708,7 +667,7 @@ def get_dashboard_data():
             "key": "serpapi",
             "label": "SERPAPI keyword research",
             "ready": _is_configured_secret(env.get("SERPAPI_API_KEY")),
-            "detail": "Missing key falls back to the editorial calendar seeds, but live keyword discovery is better with SERPAPI.",
+            "detail": "SERPAPI powers live related searches, autocomplete demand signals, and competitor discovery.",
         },
         {
             "key": "wordpress",
@@ -744,8 +703,8 @@ def get_dashboard_data():
     if not readiness[1]["ready"]:
         next_actions.append({
             "tone": "warning",
-            "title": "Add SERPAPI_API_KEY for live keyword research",
-            "detail": "The agent can still run from the weekly editorial calendar, but it will not pull fresh autosuggest and related searches.",
+            "title": "Add SERPAPI_API_KEY for live topic discovery",
+            "detail": "Without SerpAPI, the dynamic topic engine loses autocomplete, related-search, and competitor topic signals.",
         })
     if not readiness[2]["ready"]:
         next_actions.append({
@@ -783,7 +742,7 @@ def get_dashboard_data():
 
     return {
         "readiness": readiness,
-        "editorialSlot": editorial,
+        "topicDiscovery": topic_discovery,
         "overview": {
             "articlesPublished": published_count,
             "draftsPending": draft_count,
@@ -798,18 +757,22 @@ def get_dashboard_data():
             "wordpressStatus": wp_monitor.get("connectionStatus", "Not Connected"),
             "lastPublishedDate": (posts[-1] if posts else {}).get("date", ""),
         },
-        "todayRun": _build_today_run(env, editorial),
-        "seoCalendar": {
-            "publishingCadence": "Daily",
-            "topicRotation": [entry["pillar"] for entry in SEO_EDITORIAL_CALENDAR],
-            "queue": _build_calendar_queue(),
+        "todayRun": _build_today_run(env, topic_discovery),
+        "topicRadar": {
+            "mode": topic_discovery.get("mode", "mixed_signal_dynamic"),
+            "generatedAt": topic_discovery.get("generatedAt", ""),
+            "queue": _build_dynamic_queue(topic_discovery),
+            "sourceHealth": topic_discovery.get("sourceHealth", []),
+            "degradedSources": topic_discovery.get("degradedSources", []),
         },
+        "liveSignals": topic_discovery.get("liveSignals", []),
+        "rejectedTopics": topic_discovery.get("rejectedTopics", []),
         "articleManager": article_manager,
         "articlePreview": latest_article_preview,
         "seoChecklist": seo_checklist,
         "internalLinking": {
-            "suggestions": _build_internal_linking(recent_site_posts, editorial.get("slot", {})),
-            "note": "Suggestions are based on recent PatentZoom posts and the current keyword cluster.",
+            "suggestions": _build_internal_linking(recent_site_posts, topic_discovery),
+            "note": "Suggestions are based on recent PatentZoom posts and the selected topic discovery signals.",
         },
         "automationSettings": _build_automation_settings(env, readiness, scheduler_state),
         "googleAuth": {
@@ -829,13 +792,13 @@ def get_dashboard_data():
         "seoPerformance": _build_seo_performance(posts, recent_runs, index_cache),
         "logsHistory": logs_history,
         "workflowStages": [
-            {"key": "readiness", "label": "Topic Engine", "description": "Load history, validate services, and lock today’s editorial slot."},
-            {"key": "keywords", "label": "Research", "description": "Find the best blog idea and target keyword for the current PatentZoom slot."},
+            {"key": "readiness", "label": "Topic Engine", "description": "Load history, validate services, and prepare live demand sources for dynamic discovery."},
+            {"key": "keywords", "label": "Research", "description": "Score live search, Search Console, and competitor signals to choose the strongest PatentZoom topic."},
             {"key": "content", "label": "Content Writer", "description": "Generate the outline, article, metadata, and FAQ structure."},
             {"key": "optimization", "label": "SEO Validator", "description": "Improve headings, internal links, readability, and SEO structure."},
             {"key": "image", "label": "Featured Image", "description": "Create and upload a featured image when enabled."},
             {"key": "publishing", "label": "WordPress Publisher", "description": "Create the draft or published post and update the topic ledger."},
-            {"key": "indexing", "label": "Indexing Handoff", "description": "Ping the sitemap and optionally submit indexing hints."},
+            {"key": "indexing", "label": "Indexing Handoff", "description": "Ping the sitemap, inspect the URL, and request Google indexing when needed."},
         ],
         "summary": {
             "totalTopics": len(posts),
@@ -865,15 +828,15 @@ def _npm_command():
 
 def _node_command():
     candidates = [
-        shutil.which("node"),
         Path(__file__).resolve().parents[2] / ".venv" / "Lib" / "site-packages" / "playwright" / "driver" / "node.exe",
         Path(__file__).resolve().parents[2] / ".venv" / "lib" / "site-packages" / "playwright" / "driver" / "node",
+        shutil.which("node"),
     ]
     for candidate in candidates:
         if not candidate:
             continue
         path = Path(candidate) if not isinstance(candidate, Path) else candidate
-        if path.exists():
+        if path.exists() and "WindowsApps" not in str(path):
             return str(path)
     return "node"
 
@@ -954,7 +917,9 @@ def run_agent(input_data=None, on_step=None):
     REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
 
     memory = load_memory(AGENT_NAME)
-    strategy = get_best_strategy(AGENT_NAME, "daily_seo_blog", default="serpapi_calendar")
+    strategy = get_best_strategy(AGENT_NAME, "daily_seo_blog", default="mixed_signal_dynamic")
+    if str(strategy).strip().lower() == "serpapi_calendar":
+        strategy = "mixed_signal_dynamic"
     if on_step:
         on_step("Loading PatentZoom SEO agent memory...")
         on_step(

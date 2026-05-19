@@ -1152,9 +1152,10 @@ function renderUploadSection(agent) {
 function renderSEOInputSection(agent) {
     const seo = state.seo;
     const todayRun = state.seoDashboard.snapshot?.todayRun || {};
-    const selectedTopic = seo.topicOverride || todayRun.selectedTopic || "Use the daily content calendar";
+    const selectedTopic = seo.topicOverride || todayRun.selectedTopic || "Waiting for dynamic topic discovery";
     const targetKeyword = todayRun.targetKeyword || seo.topicOverride || "Will be chosen from topic research";
     const secondaryKeywords = todayRun.secondaryKeywords || [];
+    const sourceMix = todayRun.sourceMix || [];
     return `
         <div class="input-section">
             <div class="section-title">Today’s SEO Run</div>
@@ -1176,6 +1177,14 @@ function renderSEOInputSection(agent) {
                         <div class="seo-run-summary-label">Target Audience</div>
                         <div class="seo-run-summary-value">${esc(todayRun.targetAudience || "Founders, inventors, and businesses")}</div>
                     </div>
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Source Mix</div>
+                        <div class="seo-run-summary-value">${esc(sourceMix.length ? sourceMix.join(", ") : "Live topic sources pending")}</div>
+                    </div>
+                    <div class="seo-run-summary-card">
+                        <div class="seo-run-summary-label">Confidence / Freshness</div>
+                        <div class="seo-run-summary-value">${esc(`${todayRun.confidenceScore ?? "-"} / ${todayRun.freshnessLevel || "Pending"}`)}</div>
+                    </div>
                 </div>
 
                 <div class="input-row">
@@ -1184,11 +1193,11 @@ function renderSEOInputSection(agent) {
                         id="seo-topic-override"
                         class="text-input"
                         type="text"
-                        placeholder="Leave blank to use the daily SEO calendar and SerpAPI research"
+                        placeholder="Leave blank to use live Search Console, SerpAPI, and competitor topic discovery"
                         value="${esc(seo.topicOverride)}"
                     />
                     <div class="input-help">
-                        Optional: force a specific topic for this run. Otherwise the agent will choose from the PatentZoom editorial calendar.
+                        Optional: force a specific topic for this run. Otherwise the agent will choose from live demand signals and competitor-topic discovery.
                     </div>
                 </div>
 
@@ -1279,12 +1288,11 @@ function renderSEOOverviewSection() {
     const summary = snapshot.summary || {};
     const readiness = snapshot.readiness || [];
     const nextActions = snapshot.nextActions || [];
-    const editorial = snapshot.editorialSlot || {};
-    const slot = editorial.slot || {};
+    const topicDiscovery = snapshot.topicDiscovery || {};
     const recentTopics = snapshot.recentTopics || [];
     const recentRuns = snapshot.recentRuns || [];
     const overview = snapshot.overview || {};
-    const seoCalendar = snapshot.seoCalendar || {};
+    const topicRadar = snapshot.topicRadar || {};
     const articleManager = snapshot.articleManager || [];
     const articlePreview = snapshot.articlePreview || {};
     const seoChecklist = snapshot.seoChecklist || [];
@@ -1294,6 +1302,9 @@ function renderSEOOverviewSection() {
     const seoPerformance = snapshot.seoPerformance || [];
     const logsHistory = snapshot.logsHistory || [];
     const topKeywords = overview.topKeywords || [];
+    const liveSignals = snapshot.liveSignals || [];
+    const rejectedTopics = snapshot.rejectedTopics || [];
+    const selectedTopic = topicDiscovery.selectedTopic || {};
 
     return `
         <div class="seo-dashboard-shell">
@@ -1365,40 +1376,102 @@ function renderSEOOverviewSection() {
 
             <div class="seo-panel-grid">
                 <div class="result-card">
-                    <h4>SEO Calendar</h4>
-                    <div class="seo-slot-title">${esc(slot.weekdayName || "PatentZoom Calendar")}</div>
-                    <div class="seo-slot-meta">${esc(slot.pillar || "")} - Week ${editorial.weekOfMonth || "-"}</div>
-                    <div class="seo-slot-cluster">Daily publishing schedule: ${esc(seoCalendar.publishingCadence || "Daily")}</div>
+                    <h4>Topic Radar</h4>
+                    <div class="seo-slot-title">${esc(selectedTopic.title || selectedTopic.primaryKeyword || "Dynamic discovery pending")}</div>
+                    <div class="seo-slot-meta">${esc(selectedTopic.theme || selectedTopic.intentCluster || "Patent-adjacent discovery")}</div>
+                    <div class="seo-slot-cluster">Mode: ${esc(topicRadar.mode || "mixed_signal_dynamic")} â€¢ Snapshot: ${esc(topicRadar.generatedAt || "Pending")}</div>
                     <div class="seo-chip-list">
-                        ${(slot.activeAngles || []).map((angle) => `<span class="sub-agent-chip">${esc(angle)}</span>`).join("")}
+                        ${((selectedTopic.sourceTypes || []).length
+                            ? (selectedTopic.sourceTypes || []).map((source) => `<span class="sub-agent-chip">${esc(source)}</span>`).join("")
+                            : '<span class="sub-agent-chip">Waiting for live sources</span>')}
                     </div>
                     <div class="seo-seed-list">
-                        ${(slot.seedKeywords || []).map((keyword) => `<div class="seo-seed-item">${esc(keyword)}</div>`).join("")}
+                        <div class="seo-seed-item"><strong>Primary keyword:</strong> ${esc(selectedTopic.primaryKeyword || "-")}</div>
+                        <div class="seo-seed-item"><strong>Demand / Freshness:</strong> ${esc(`${selectedTopic.demandScore ?? "-"} / ${selectedTopic.freshnessScore ?? "-"}`)}</div>
+                        <div class="seo-seed-item"><strong>Why this topic was chosen:</strong> ${esc((selectedTopic.sourceEvidence || []).slice(0, 3).join(" | ") || "Live signal evidence will appear after discovery.")}</div>
                     </div>
                 </div>
 
                 <div class="result-card">
-                    <h4>Upcoming Content Queue</h4>
+                    <h4>Dynamic Shortlist</h4>
                     <div class="seo-table-wrap">
                         <table class="results-table seo-mini-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Topic Rotation</th>
+                                    <th>Rank</th>
+                                    <th>Topic</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${(seoCalendar.queue || []).map((item) => `
+                                ${(topicRadar.queue || []).map((item) => `
                                     <tr>
-                                        <td>${esc(item.date || "-")}</td>
+                                        <td>${esc(String(item.rank || "-"))}</td>
                                         <td>
-                                            <div class="seo-table-title">${esc(item.pillar || "-")}</div>
-                                            <div class="seo-table-subtitle">${esc(item.angle || "")}</div>
+                                            <div class="seo-table-title">${esc(item.primaryKeyword || item.theme || "-")}</div>
+                                            <div class="seo-table-subtitle">${esc([item.intentCluster, item.sourceMix].filter(Boolean).join(" â€¢ "))}</div>
                                         </td>
-                                        <td><span class="status-pill ${String(item.status || "").toLowerCase() === "today" ? "status-found" : "status-not_found"}">${esc(item.status || "-")}</span></td>
+                                        <td><span class="status-pill ${String(item.status || "").toLowerCase() === "selected" ? "status-found" : "status-not_found"}">${esc(item.status || "-")}</span></td>
                                     </tr>
                                 `).join("")}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="seo-panel-grid">
+                <div class="result-card">
+                    <h4>Live Signals</h4>
+                    <div class="seo-table-wrap">
+                        <table class="results-table seo-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Source</th>
+                                    <th>Signal</th>
+                                    <th>Intent</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${liveSignals.length
+                                    ? liveSignals.slice(0, 8).map((item) => `
+                                        <tr>
+                                            <td>${esc(item.sourceType || "-")}</td>
+                                            <td>
+                                                <div class="seo-table-title">${esc(item.keyword || item.title || "-")}</div>
+                                                <div class="seo-table-subtitle">${esc(item.evidence || "")}</div>
+                                            </td>
+                                            <td>${esc(item.intentCluster || "-")}</td>
+                                        </tr>
+                                    `).join("")
+                                    : '<tr><td colspan="3">No live signals captured yet.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <h4>Rejected Topics</h4>
+                    <div class="seo-table-wrap">
+                        <table class="results-table seo-mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Topic</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rejectedTopics.length
+                                    ? rejectedTopics.slice(0, 8).map((item) => `
+                                        <tr>
+                                            <td>
+                                                <div class="seo-table-title">${esc(item.title || item.primaryKeyword || "-")}</div>
+                                                <div class="seo-table-subtitle">${esc(item.intentCluster || "")}</div>
+                                            </td>
+                                            <td>${esc(item.reason || "Filtered out")}</td>
+                                        </tr>
+                                    `).join("")
+                                    : '<tr><td colspan="2">No rejected topics in the current snapshot.</td></tr>'}
                             </tbody>
                         </table>
                     </div>

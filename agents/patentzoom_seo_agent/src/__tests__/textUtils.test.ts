@@ -1,41 +1,104 @@
 import { describe, expect, it } from "vitest";
-import { isLedgerDuplicate, slugify, topicFingerprint } from "../textUtils";
+import {
+  findModerateDuplicateReason,
+  inferIntentCluster,
+  jaccardSimilarity,
+  slugify,
+  topicFingerprint,
+} from "../textUtils";
 
-describe("textUtils", () => {
+describe("textUtils moderate duplicate logic", () => {
   it("slugifies titles safely", () => {
     expect(slugify("How Much Does Patent Filing Cost in the United States?")).toBe(
       "how-much-does-patent-filing-cost-in-the-united-states",
     );
   });
 
-  it("detects duplicate fingerprints and near-identical keywords within 180 days", () => {
-    const fingerprint = topicFingerprint("Patent Filing Strategy", "foundational strategy", "patent filing strategy for startups");
+  it("infers useful intent clusters for patent-adjacent queries", () => {
+    expect(inferIntentCluster("provisional patent filing checklist")).toBe("provisional patents");
+    expect(inferIntentCluster("software patent filing cost for saas startups")).toBe("software and ai patents");
+    expect(inferIntentCluster("office action response timeline")).toBe("office actions");
+  });
+
+  it("flags exact and same-intent recent duplicates with moderate protection", () => {
     const ledger = [
       {
         date: "2026-05-01",
-        topicId: "startup-patent-strategy",
-        pillar: "Patent Filing Strategy",
-        angle: "foundational strategy",
-        primaryKeyword: "patent filing strategy for startups",
+        topicId: "software-patent-filing-cost",
+        primaryKeyword: "software patent filing cost",
         secondaryKeywords: [],
-        slug: "startup-patent-strategy",
-        wpPostId: 10,
-        wpUrl: "https://example.com/startup-patent-strategy",
-        status: "draft",
+        slug: "software-patent-filing-cost",
+        wpPostId: 20,
+        wpUrl: "https://example.com/software-patent-filing-cost",
+        status: "publish",
         source: "dashboard",
-        fingerprint,
+        fingerprint: topicFingerprint("Software and AI Patent Protection", "cost guide", "software patent filing cost"),
+        intentCluster: "software and ai patents",
       },
     ];
 
-    expect(isLedgerDuplicate(fingerprint, "patent filing strategy for startups", ledger, new Date("2026-05-10"))).toBe(true);
-    expect(
-      isLedgerDuplicate(
-        topicFingerprint("Patent Filing Strategy", "timing strategy", "patent filing strategies for startup"),
-        "patent filing strategies for startup",
-        ledger,
-        new Date("2026-05-10"),
-      ),
-    ).toBe(true);
+    const exactReason = findModerateDuplicateReason(
+      {
+        primaryKeyword: "software patent filing cost",
+        fingerprint: topicFingerprint("Software and AI Patent Protection", "cost guide", "software patent filing cost"),
+        slug: "software-patent-filing-cost",
+        intentCluster: "software and ai patents",
+      },
+      ledger as any,
+      [],
+      new Date("2026-05-10T00:00:00Z"),
+    );
+
+    const sameIntentReason = findModerateDuplicateReason(
+      {
+        primaryKeyword: "software patent filing costs",
+        fingerprint: topicFingerprint("Software and AI Patent Protection", "pricing", "software patent filing costs"),
+        slug: "software-patent-filing-costs",
+        intentCluster: "software and ai patents",
+      },
+      ledger as any,
+      [],
+      new Date("2026-05-10T00:00:00Z"),
+    );
+
+    expect(exactReason).toBeTruthy();
+    expect(sameIntentReason).toBeTruthy();
+  });
+
+  it("allows related follow-up topics when the angle materially differs", () => {
+    const ledger = [
+      {
+        date: "2026-05-01",
+        topicId: "provisional-patent-filing-cost",
+        primaryKeyword: "provisional patent filing cost",
+        secondaryKeywords: [],
+        slug: "provisional-patent-filing-cost",
+        wpPostId: 21,
+        wpUrl: "https://example.com/provisional-patent-filing-cost",
+        status: "publish",
+        source: "dashboard",
+        fingerprint: topicFingerprint("Provisional Patent Strategy", "cost", "provisional patent filing cost"),
+        intentCluster: "provisional patents",
+      },
+    ];
+
+    const reason = findModerateDuplicateReason(
+      {
+        primaryKeyword: "provisional patent filing checklist for startups",
+        fingerprint: topicFingerprint(
+          "Provisional Patent Strategy",
+          "checklist",
+          "provisional patent filing checklist for startups",
+        ),
+        slug: "provisional-patent-filing-checklist-for-startups",
+        intentCluster: "provisional patents",
+      },
+      ledger as any,
+      [],
+      new Date("2026-05-10T00:00:00Z"),
+    );
+
+    expect(reason).toBeNull();
+    expect(jaccardSimilarity("provisional patent filing cost", "provisional patent filing checklist for startups")).toBeLessThan(0.8);
   });
 });
-

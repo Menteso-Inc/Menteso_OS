@@ -4,8 +4,8 @@ This agent generates one SEO-focused PatentZoom blog article per run, optionally
 
 ## What It Does
 
-- Rotates through a structured weekly PatentZoom editorial calendar
-- Uses SerpAPI research to avoid random or generic topics
+- Chooses fresh patent-adjacent topics from live Search Console, SerpAPI, and competitor signals
+- Uses moderate duplicate protection so exact repeats are blocked without locking the agent into weekday buckets
 - Generates a long-form article with OpenAI in two passes
 - Validates SEO basics before publishing
 - Adds natural internal links from recent WordPress posts
@@ -115,4 +115,3 @@ The workflow file is [daily-patentzoom-blog.yml](/C:/Users/New/Desktop/Menteso_O
 - If topics repeat, inspect `generated-posts.json` and confirm the workflow can commit it back on GitHub Actions.
 - If image generation fails, the workflow will continue without a featured image and log a warning.
 - If Google indexing is enabled, remember that Google officially limits the Indexing API mainly to `JobPosting` and livestream `VideoObject` pages.
-
