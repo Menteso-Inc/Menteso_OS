@@ -17,7 +17,22 @@ function stripHtml(value: string): string {
 }
 
 function toTitleCase(value: string): string {
-  return value.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+  const acronyms = new Map([
+    ["ai", "AI"],
+    ["ip", "IP"],
+    ["pct", "PCT"],
+    ["uspto", "USPTO"],
+    ["saas", "SaaS"],
+  ]);
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (acronyms.has(lower)) return acronyms.get(lower)!;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
 }
 
 function words(value: string): string[] {
@@ -81,6 +96,14 @@ function countPhrase(value: string, phrase: string): number {
   return normalizedValue.split(normalizedPhrase).length - 1;
 }
 
+function keywordIntentCovered(title: string, focusKeyword: string): boolean {
+  const titleTokens = new Set(words(title));
+  const keywordTokens = words(cleanFocusKeyword(focusKeyword));
+  if (!keywordTokens.length) return false;
+  const matches = keywordTokens.filter((token) => titleTokens.has(token)).length;
+  return matches >= Math.max(2, keywordTokens.length - 1);
+}
+
 function chooseFocusKeyword(article: GeneratedArticle): string {
   const current = String(article.primaryKeyword || "").trim();
   const currentWords = words(cleanFocusKeyword(current));
@@ -122,6 +145,7 @@ function chooseFocusKeyword(article: GeneratedArticle): string {
 function ensureTitleHasKeyword(title: string, focusKeyword: string): string {
   const keywordTitle = toTitleCase(focusKeyword);
   if (title.toLowerCase().includes(focusKeyword.toLowerCase())) return title;
+  if (keywordIntentCovered(title, focusKeyword)) return title;
   return `${keywordTitle}: ${title}`.trim();
 }
 
@@ -136,8 +160,22 @@ function repairIncompleteTitle(title: string, focusKeyword: string): string {
   const cleaned = String(title || "").trim().replace(/[,:;\-–—]+$/, "").trim();
   if (!cleaned) return `${toTitleCase(focusKeyword)} Guide for Startups and Inventors`;
   if (!/\b(for|in|to|and|or|with|of|on|at|from)$/i.test(cleaned)) return cleaned;
+  if (/provisional patent/i.test(cleaned) || /uspto/i.test(focusKeyword)) {
+    return "How to Strategically File a Provisional Patent Application with the USPTO";
+  }
   if (/india/i.test(focusKeyword)) return `${toTitleCase(focusKeyword)} Guide for Startups and Inventors`;
-  return `${cleaned} Startups and Inventors`;
+  return `${toTitleCase(focusKeyword)} Guide for Startups and Inventors`;
+}
+
+function stabilizeTrimmedTitle(title: string, focusKeyword: string): string {
+  const repaired = repairIncompleteTitle(title, focusKeyword).replace(/[,:;\-–—]+$/, "").trim();
+  if (/provisional patent/i.test(repaired) && /uspto/i.test(focusKeyword)) {
+    return "How to Strategically File a Provisional Patent Application with the USPTO";
+  }
+  if (/\b(for|in|to|and|or|with|of|on|at|from|a|an|the)$/i.test(repaired)) {
+    return `${toTitleCase(focusKeyword)} Guide for Startups and Inventors`;
+  }
+  return repaired;
 }
 
 function ensureMetaDescription(focusKeyword: string, metaDescription: string): string {
@@ -249,6 +287,11 @@ export function validateAndOptimizeArticle(article: GeneratedArticle): SeoValida
 
   if (optimized.title.length > 70) {
     optimized.title = trimAtWordBoundary(optimized.title, 68);
+    optimized.title = stabilizeTrimmedTitle(optimized.title, focusKeyword);
+    if (optimized.title.length > 68) {
+      optimized.title = trimAtWordBoundary(optimized.title, 66);
+      optimized.title = stabilizeTrimmedTitle(optimized.title, focusKeyword);
+    }
     issues.push("Trimmed long title");
   }
   if (optimized.metaTitle.length > 60) {

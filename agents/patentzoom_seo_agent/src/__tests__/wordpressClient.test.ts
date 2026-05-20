@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WordPressClient, buildPostPayload } from "../wordpressClient";
+import { WordPressClient, buildPostPayload, stripLeadingH1 } from "../wordpressClient";
 
 describe("wordpressClient", () => {
   const originalFetch = global.fetch;
@@ -54,6 +54,13 @@ describe("wordpressClient", () => {
     expect(payload.categories).toEqual([3]);
     expect(payload.tags).toEqual([9]);
     expect(payload.featured_media).toBe(12);
+    expect(payload.content).not.toContain("<h1>Patent filing strategy for startups</h1>");
+  });
+
+  it("strips the leading H1 before publishing to WordPress", () => {
+    expect(stripLeadingH1("<h1>Main title</h1><h2>Overview</h2><p>Body</p>")).toBe(
+      "<h2>Overview</h2><p>Body</p>",
+    );
   });
 
   it("creates a post through the WordPress API", async () => {
@@ -95,4 +102,3 @@ describe("wordpressClient", () => {
     expect(created.url).toBe("https://example.com/post");
   });
 });
-

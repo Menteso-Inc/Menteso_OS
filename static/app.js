@@ -27,6 +27,7 @@ const state = {
         publishOverride: "draft",
         enableFeaturedImage: true,
         dryRun: false,
+        activeWorkspaceId: "patentzoom",
         google: {
             clientId: "",
             clientSecret: "",
@@ -40,6 +41,7 @@ const state = {
         loading: false,
         error: "",
         snapshot: null,
+        expandedInsight: "overview",
         workflow: {
             currentStage: "",
             currentMessage: "",
@@ -76,6 +78,45 @@ const state = {
 };
 
 let alertAudioContext = null;
+
+const SEO_WORKSPACES = [
+    {
+        id: "patentzoom",
+        name: "PatentZoom SEO Agent",
+        kind: "live",
+        status: "active",
+        placeholderTitle: "",
+        placeholderMessage: "",
+        placeholderDetail: "",
+    },
+    {
+        id: "ip-docketers",
+        name: "IP Docketers SEO Agent",
+        kind: "placeholder",
+        status: "coming_soon",
+        placeholderTitle: "Dashboard Coming Soon",
+        placeholderMessage: "IP Docketers SEO Agent setup is in progress.",
+        placeholderDetail: "This chip is ready for future expansion. Once the IP Docketers SEO workflow is connected, its separate dashboard will appear here without changing the core layout.",
+    },
+    {
+        id: "menteso",
+        name: "Menteso SEO Agent",
+        kind: "placeholder",
+        status: "coming_soon",
+        placeholderTitle: "Dashboard Coming Soon",
+        placeholderMessage: "Menteso SEO Agent setup is in progress.",
+        placeholderDetail: "The shared SEO Posting Agent architecture is ready. This area is reserved for the future Menteso SEO dashboard.",
+    },
+    {
+        id: "patent-drawing-experts",
+        name: "Patent Drawing Experts SEO Agent",
+        kind: "placeholder",
+        status: "coming_soon",
+        placeholderTitle: "Dashboard Coming Soon",
+        placeholderMessage: "Patent Drawing Experts SEO Agent setup is in progress.",
+        placeholderDetail: "This workspace is ready for the future Patent Drawing Experts SEO dashboard without changing the SEO Posting Agent layout.",
+    },
+];
 
 // ---------------------------------------------------------------------------
 // Init
@@ -783,8 +824,59 @@ function formatElapsed(seconds) {
 // Render
 // ---------------------------------------------------------------------------
 function render() {
-    renderSidebar();
+    renderSidebarFlat();
     renderMain();
+}
+
+function getActiveSeoWorkspace() {
+    const workspace =
+        SEO_WORKSPACES.find((item) => item.id === state.seo.activeWorkspaceId) ||
+        SEO_WORKSPACES[0];
+    if (state.seo.activeWorkspaceId !== workspace.id) {
+        state.seo.activeWorkspaceId = workspace.id;
+    }
+    return workspace;
+}
+
+function renderSeoWorkspaceTabs() {
+    const activeWorkspace = getActiveSeoWorkspace();
+    return `
+        <div class="seo-workspace-switcher">
+            <div class="seo-workspace-tabs">
+                ${SEO_WORKSPACES.map((workspace) => `
+                    <button
+                        type="button"
+                        class="seo-workspace-chip ${workspace.id === activeWorkspace.id ? "active" : ""}"
+                        data-seo-workspace="${esc(workspace.id)}"
+                        aria-pressed="${workspace.id === activeWorkspace.id ? "true" : "false"}"
+                    >
+                        ${esc(workspace.name)}
+                    </button>
+                `).join("")}
+            </div>
+        </div>
+    `;
+}
+
+function renderSeoWorkspacePlaceholder(workspace) {
+    return `
+        <div class="seo-dashboard-shell">
+            <div class="section-title">SEO Posting Agent Dashboard</div>
+            <div class="seo-panel-grid">
+                <div class="result-card seo-workspace-placeholder-card">
+                    <div class="seo-card-header">
+                        <h4>${esc(workspace.name)}</h4>
+                        <span class="seo-status-pill blocked">Setup in progress</span>
+                    </div>
+                    <div class="seo-slot-title">${esc(workspace.placeholderTitle || "Dashboard Coming Soon")}</div>
+                    <div class="seo-slot-meta">${esc(workspace.placeholderMessage || "Agent setup in progress.")}</div>
+                    <div class="memory-empty seo-workspace-placeholder-copy">
+                        ${esc(workspace.placeholderDetail || "This dashboard will appear here once the workflow is connected.")}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function renderSidebar() {
@@ -863,6 +955,64 @@ function renderSidebar() {
     });
 }
 
+function renderSidebarFlat() {
+    const countEl = document.getElementById("agent-count");
+    const listEl = document.getElementById("agent-list");
+    countEl.textContent = state.agents.length;
+
+    listEl.innerHTML = "";
+    if (state.agents.length === 0) {
+        listEl.innerHTML = `<p style="padding:20px;color:var(--text-muted);font-size:13px;text-align:center">No agents found</p>`;
+        return;
+    }
+
+    state.agents.forEach((agent) => {
+        const isSelected =
+            state.selectedAgent &&
+            state.selectedAgent.module_name === agent.module_name;
+        const statusClass =
+            agent.status === "active" ? "active" : agent.status === "error" ? "error" : "idle";
+        const subAgents = agent.sub_agents || [];
+
+        const item = document.createElement("div");
+        item.className = `agent-item ${isSelected ? "active" : ""}`;
+        item.innerHTML = `
+            <span class="agent-dot ${statusClass}"></span>
+            <div class="agent-item-info">
+                <div class="agent-item-name">${esc(agent.name || agent.module_name)}</div>
+                <div class="agent-item-role">${esc(agent.role || "")}${subAgents.length ? ` · ${subAgents.length} sub-agents` : ""}</div>
+            </div>
+        `;
+        item.onclick = async () => {
+            const detail = await loadAgentDetail(agent.module_name);
+            state.selectedAgent = detail || agent;
+            state.executionLog = [];
+            state.lastResult = null;
+            state.inputMode = "upload";
+            state.uploadedFilePath = null;
+            state.pipelineMode = false;
+            state.pipeline = null;
+            resetCaptchaAlert();
+            state.browser.event = "idle";
+            await loadAgentRunStatus(agent.module_name);
+            if ((detail || agent).ui_type === "seo_posting") {
+                state.seo.activeWorkspaceId = "patentzoom";
+                state.seoDashboard.previewArticle = null;
+                state.seoDashboard.historyEntry = null;
+                await loadSeoDashboardData(agent.module_name);
+            } else {
+                state.seoDashboard.snapshot = null;
+                state.seoDashboard.error = "";
+                state.seoDashboard.previewArticle = null;
+                state.seoDashboard.historyEntry = null;
+                resetSeoWorkflow([]);
+            }
+            render();
+        };
+        listEl.appendChild(item);
+    });
+}
+
 function renderMain() {
     const main = document.getElementById("main-content");
 
@@ -886,6 +1036,8 @@ function renderMain() {
     const subAgents = agent.sub_agents || [];
     const isPCTAgent = agent.module_name === "pct_agent";
     const isSeoAgent = agent.ui_type === "seo_posting";
+    const activeSeoWorkspace = isSeoAgent ? getActiveSeoWorkspace() : null;
+    const isLiveSeoWorkspace = !!activeSeoWorkspace && activeSeoWorkspace.kind === "live";
 
     let html = `
         <!-- Agent Header -->
@@ -901,6 +1053,7 @@ function renderMain() {
                 ${agent.requires_llm === false ? '<span class="badge badge-version">No LLM Required</span>' : ""}
                 ${agent.accepts_upload ? '<span class="badge badge-role">Accepts Upload</span>' : ""}
             </div>
+            ${isSeoAgent ? renderSeoWorkspaceTabs() : ""}
         </div>
 
         <!-- Sub-agents -->
@@ -934,8 +1087,10 @@ function renderMain() {
         </div>
     `;
 
-    if (isSeoAgent) {
+    if (isSeoAgent && isLiveSeoWorkspace) {
         html += renderSEOOverviewSection();
+    } else if (isSeoAgent) {
+        html += renderSeoWorkspacePlaceholder(activeSeoWorkspace);
     }
 
     if (isPCTAgent && state.captcha.active) {
@@ -958,8 +1113,17 @@ function renderMain() {
     }
 
     // --- Input section ---
-    if (isSeoAgent) {
+    if (isSeoAgent && isLiveSeoWorkspace) {
         html += renderSEOInputSection(agent);
+    } else if (isSeoAgent) {
+        html += `
+            <div class="input-section">
+                <div class="input-card seo-input-card seo-placeholder-input-card">
+                    <div class="seo-note-title">${esc(activeSeoWorkspace?.name || "SEO Agent")}</div>
+                    <div class="seo-note-text">This SEO agent dashboard is reserved for future setup. PatentZoom SEO Agent is currently the active live dashboard.</div>
+                </div>
+            </div>
+        `;
     } else if (agent.accepts_upload) {
         html += renderUploadSection(agent);
     } else {
@@ -972,50 +1136,52 @@ function renderMain() {
     }
 
     // --- Execution Log + Browser Preview (side by side) ---
-    html += `
-        <div class="execution-split">
-            <div class="execution-log-panel${state.pipelineMode || !isPCTAgent ? " full-width" : ""}">
-                <div class="section-title">Execution Log</div>
-                <div class="terminal" id="terminal">
-                    ${state.executionLog.length === 0 && !state.isRunning
-                        ? '<span class="terminal-empty">Configure input above and click "Run Agent" to start...</span>'
-                        : ""}
-                    ${state.executionLog.map((l) => createTerminalLineHTML(l)).join("")}
-                    ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
-                </div>
-            </div>
-            ${isPCTAgent && !state.pipelineMode ? `
-            <div class="browser-preview-panel">
-                <div class="section-title">Scraping Browser</div>
-                <div class="browser-frame">
-                    <div class="browser-toolbar">
-                        <div class="browser-dots">
-                            <span class="dot red"></span>
-                            <span class="dot yellow"></span>
-                            <span class="dot green"></span>
-                        </div>
-                        <div class="browser-url-bar" id="browser-url">about:blank</div>
-                        <div class="browser-status-indicator" id="browser-status">
-                            <span class="browser-status-dot idle"></span> Idle
-                        </div>
-                    </div>
-                    <div class="browser-content" id="browser-content">
-                        <div class="browser-idle-state">
-                            <div class="browser-idle-icon">&#x1F310;</div>
-                            <div class="browser-idle-text">Waiting for agent to start scraping...</div>
-                        </div>
+    if (!isSeoAgent || isLiveSeoWorkspace) {
+        html += `
+            <div class="execution-split">
+                <div class="execution-log-panel${state.pipelineMode || !isPCTAgent ? " full-width" : ""}">
+                    <div class="section-title">Execution Log</div>
+                    <div class="terminal" id="terminal">
+                        ${state.executionLog.length === 0 && !state.isRunning
+                            ? '<span class="terminal-empty">Configure input above and click "Run Agent" to start...</span>'
+                            : ""}
+                        ${state.executionLog.map((l) => createTerminalLineHTML(l)).join("")}
+                        ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
                     </div>
                 </div>
+                ${isPCTAgent && !state.pipelineMode ? `
+                <div class="browser-preview-panel">
+                    <div class="section-title">Scraping Browser</div>
+                    <div class="browser-frame">
+                        <div class="browser-toolbar">
+                            <div class="browser-dots">
+                                <span class="dot red"></span>
+                                <span class="dot yellow"></span>
+                                <span class="dot green"></span>
+                            </div>
+                            <div class="browser-url-bar" id="browser-url">about:blank</div>
+                            <div class="browser-status-indicator" id="browser-status">
+                                <span class="browser-status-dot idle"></span> Idle
+                            </div>
+                        </div>
+                        <div class="browser-content" id="browser-content">
+                            <div class="browser-idle-state">
+                                <div class="browser-idle-icon">&#x1F310;</div>
+                                <div class="browser-idle-text">Waiting for agent to start scraping...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ""}
             </div>
-            ` : ""}
-        </div>
-    `;
+        `;
+    }
 
     // --- Results ---
     if (state.lastResult) {
         if (isPCTAgent) {
             html += renderPCTResults(state.lastResult);
-        } else if (isSeoAgent) {
+        } else if (isSeoAgent && isLiveSeoWorkspace) {
             html += renderSEOResults(state.lastResult);
         } else if (state.lastResult.status === "failure") {
             html += renderFailureResults(state.lastResult);
@@ -1023,10 +1189,12 @@ function renderMain() {
     }
 
     // --- Memory ---
-    html += renderMemorySection(learnings);
+    if (!isSeoAgent || isLiveSeoWorkspace) {
+        html += renderMemorySection(learnings);
+    }
 
     // --- Raw JSON ---
-    if (state.lastResult) {
+    if (state.lastResult && (!isSeoAgent || isLiveSeoWorkspace)) {
         html += `
             <button class="json-toggle" onclick="toggleJSON()">Show Raw JSON</button>
             <div id="json-output" class="json-block" style="display:none">${esc(JSON.stringify(state.lastResult, null, 2))}</div>
@@ -1042,6 +1210,9 @@ function renderMain() {
     }
 
     main.innerHTML = html;
+    if (isSeoAgent && isLiveSeoWorkspace) {
+        applySeoInsightsAccordion();
+    }
     attachHandlers(agent);
 }
 
@@ -1155,7 +1326,11 @@ function renderSEOInputSection(agent) {
     const selectedTopic = seo.topicOverride || todayRun.selectedTopic || "Waiting for dynamic topic discovery";
     const targetKeyword = todayRun.targetKeyword || seo.topicOverride || "Will be chosen from topic research";
     const secondaryKeywords = todayRun.secondaryKeywords || [];
-    const sourceMix = todayRun.sourceMix || [];
+    const sourceMix = Array.isArray(todayRun.sourceMix)
+        ? todayRun.sourceMix
+        : (typeof todayRun.sourceMix === "string" && todayRun.sourceMix.trim()
+            ? todayRun.sourceMix.split(",").map((item) => item.trim()).filter(Boolean)
+            : []);
     return `
         <div class="input-section">
             <div class="section-title">Today’s SEO Run</div>
@@ -1260,6 +1435,110 @@ function renderSEOInputSection(agent) {
     `;
 }
 
+function toSeoCardKey(title) {
+    return String(title || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+function getSeoExpandedInsight() {
+    if (state.seoDashboard.expandedInsight === null) {
+        return null;
+    }
+    if (typeof state.seoDashboard.expandedInsight !== "string" || !state.seoDashboard.expandedInsight.trim()) {
+        state.seoDashboard.expandedInsight = "overview";
+    }
+    return state.seoDashboard.expandedInsight;
+}
+
+function applySeoInsightsAccordion() {
+    const shell = document.querySelector(".seo-dashboard-shell");
+    if (!shell) return;
+
+    const cards = [
+        ...shell.querySelectorAll(
+            ":scope > .result-card, :scope > .seo-panel-grid > .result-card, :scope > .results-grid > .result-card"
+        ),
+    ];
+    cards.forEach((card) => {
+        const header = card.querySelector(":scope > .seo-card-header");
+        const directHeading = card.querySelector(":scope > h4");
+        const headingNode = header?.querySelector(":scope > h4") || directHeading;
+        const title = (headingNode?.textContent || "").trim();
+        const key = toSeoCardKey(title);
+        if (!key) return;
+
+        const expanded = getSeoExpandedInsight() === key;
+        card.dataset.seoCard = key;
+        card.classList.add("seo-collapsible-card");
+        card.classList.toggle("expanded", expanded);
+        card.classList.toggle("collapsed", !expanded);
+
+        const headerEl = header || document.createElement("div");
+        headerEl.classList.add("seo-card-header", "seo-card-header-collapsible");
+        if (!header) {
+            card.insertBefore(headerEl, card.firstChild);
+        }
+
+        const existingActions = [];
+        [...headerEl.children].forEach((child) => {
+            if (child !== headingNode) existingActions.push(child);
+        });
+        if (headingNode) {
+            headingNode.remove();
+        }
+
+        const contentId = `seo-card-content-${key}`;
+
+        const titleButton = document.createElement("button");
+        titleButton.type = "button";
+        titleButton.className = "seo-card-toggle-label";
+        titleButton.dataset.seoCardToggle = key;
+        titleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+        titleButton.setAttribute("aria-controls", contentId);
+        titleButton.innerHTML = `<span class="seo-card-heading">${esc(title)}</span>`;
+
+        const actionsWrap = document.createElement("div");
+        actionsWrap.className = "seo-card-header-actions";
+        existingActions.forEach((node) => actionsWrap.appendChild(node));
+
+        const arrowButton = document.createElement("button");
+        arrowButton.type = "button";
+        arrowButton.className = "seo-card-arrow-btn";
+        arrowButton.dataset.seoCardToggle = key;
+        arrowButton.setAttribute("aria-label", `${expanded ? "Collapse" : "Expand"} ${title}`);
+        arrowButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+        arrowButton.setAttribute("aria-controls", contentId);
+        arrowButton.innerHTML = expanded ? "&#9662;" : "&#9656;";
+        actionsWrap.appendChild(arrowButton);
+
+        headerEl.innerHTML = "";
+        headerEl.appendChild(titleButton);
+        headerEl.appendChild(actionsWrap);
+
+        let content = card.querySelector(":scope > .seo-collapsible-content");
+        if (!content) {
+            content = document.createElement("div");
+            content.className = "seo-collapsible-content";
+            content.id = contentId;
+            const inner = document.createElement("div");
+            inner.className = "seo-collapsible-inner";
+
+            [...card.childNodes].forEach((node) => {
+                if (node !== headerEl) inner.appendChild(node);
+            });
+
+            content.appendChild(inner);
+            card.appendChild(content);
+        }
+
+        content.classList.toggle("expanded", expanded);
+        content.classList.toggle("collapsed", !expanded);
+    });
+}
+
 function renderSEOOverviewSection() {
     const dashboard = state.seoDashboard;
     const snapshot = dashboard.snapshot;
@@ -1311,6 +1590,10 @@ function renderSEOOverviewSection() {
             <div class="section-title">SEO Posting Agent Dashboard</div>
 
             <div class="seo-overview-grid seo-overview-grid-wide">
+                <div class="stat-card">
+                    <div class="stat-value">${overview.articlesPublished || 0}</div>
+                    <div class="stat-label">Articles Published</div>
+                </div>
                 <div class="stat-card">
                     <div class="stat-value ${overview.publishedToday ? "success" : "warning"}">${overview.publishedToday ? "Yes" : "No"}</div>
                     <div class="stat-label">Published Today</div>
@@ -2285,6 +2568,32 @@ function attachHandlers(agent) {
             e.preventDefault();
             await loadSeoDashboardData(agent.module_name);
         };
+    }
+
+    if (agent.ui_type === "seo_posting") {
+        document.querySelectorAll("[data-seo-workspace]").forEach((btn) => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                const nextId = btn.dataset.seoWorkspace || "";
+                if (!nextId || state.seo.activeWorkspaceId === nextId) return;
+                state.seo.activeWorkspaceId = nextId;
+                state.seoDashboard.previewArticle = null;
+                state.seoDashboard.historyEntry = null;
+                renderMain();
+            };
+        });
+
+        document.querySelectorAll("[data-seo-card-toggle]").forEach((btn) => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const nextKey = btn.dataset.seoCardToggle || "";
+                if (!nextKey) return;
+                state.seoDashboard.expandedInsight =
+                    state.seoDashboard.expandedInsight === nextKey ? null : nextKey;
+                renderMain();
+            };
+        });
     }
 
     const seoSaveDraftBtn = document.getElementById("seo-save-draft-btn");

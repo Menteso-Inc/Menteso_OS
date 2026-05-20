@@ -104,6 +104,21 @@ function resolveContentCategory(topic: TopicSelection, article: GeneratedArticle
   return blogSignals.some((signal) => combined.includes(signal)) ? "Blog" : "Article";
 }
 
+function isUnsafeManualOverrideTopic(topicOverride?: string): boolean {
+  const normalized = normalizeWhitespace(topicOverride || "").toLowerCase();
+  if (!normalized) return false;
+
+  const blockedPhrases = [
+    "manual override",
+    "dynamic topic discovery",
+    "strongest live topic",
+    "live topic",
+    "test topic",
+    "dummy topic",
+  ];
+  return blockedPhrases.some((phrase) => normalized.includes(phrase));
+}
+
 function findPublishedEntryForDate(entries: GeneratedPostRecord[], runDate: string): GeneratedPostRecord | undefined {
   return [...entries]
     .reverse()
@@ -295,6 +310,13 @@ async function main(): Promise<void> {
       input.publishOverride === "publish" || (config.autoPublish && input.publishOverride !== "draft")
         ? "publish"
         : "draft";
+    const unsafeManualOverride = isUnsafeManualOverrideTopic(input.topicOverride);
+    if (unsafeManualOverride) {
+      logger.warn(
+        "The supplied topic override looks like an internal instruction or test phrase. Live publishing will be blocked for this run.",
+        { stage: "keywords", status: "warning" },
+      );
+    }
 
     const optimizeArticle = (article: GeneratedArticle, logSummary = true) => {
       const validation = validateAndOptimizeArticle(article);
@@ -356,7 +378,7 @@ async function main(): Promise<void> {
         ? findPublishedEntryForDate(ledger.generatedPosts, topic.runDate)
         : undefined;
     const effectivePublishStatus =
-      requestedPublishStatus === "publish" && seoReadiness.blockers.length
+      requestedPublishStatus === "publish" && (seoReadiness.blockers.length || unsafeManualOverride)
         ? "draft"
         : requestedPublishStatus;
 
