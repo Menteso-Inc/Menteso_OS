@@ -101,4 +101,40 @@ describe("textUtils moderate duplicate logic", () => {
     expect(reason).toBeNull();
     expect(jaccardSimilarity("provisional patent filing cost", "provisional patent filing checklist for startups")).toBeLessThan(0.8);
   });
+
+  it("blocks same-cluster provisional topics that reuse the same core terms", () => {
+    const ledger = [
+      {
+        date: "2026-05-20",
+        topicId: "provisional-patents-provisional-patent-filing-uspto",
+        primaryKeyword: "Provisional patent filing USPTO",
+        secondaryKeywords: [],
+        slug: "strategic-provisional-patent-filing-uspto",
+        wpPostId: 42,
+        wpUrl: "https://example.com/strategic-provisional-patent-filing-uspto",
+        status: "publish",
+        source: "dashboard",
+        fingerprint: topicFingerprint("Provisional Patent Strategy", "search demand", "Provisional patent filing USPTO"),
+        intentCluster: "provisional patents",
+      },
+    ];
+
+    const reason = findModerateDuplicateReason(
+      {
+        primaryKeyword: "How to file a provisional patent with USPTO",
+        fingerprint: topicFingerprint(
+          "Provisional Patent Strategy",
+          "search demand",
+          "How to file a provisional patent with USPTO",
+        ),
+        slug: "how-to-file-a-provisional-patent-with-uspto",
+        intentCluster: "provisional patents",
+      },
+      ledger as any,
+      [],
+      new Date("2026-05-20T00:00:00Z"),
+    );
+
+    expect(reason).toBeTruthy();
+  });
 });

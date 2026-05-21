@@ -44,7 +44,8 @@ export function buildPostPayload(args: {
   authorId?: number | null;
 }) {
   const { article, status, categoryId, tagIds, featuredMediaId, authorId } = args;
-  const content = `${article.articleHtml}\n<script type="application/ld+json">${article.faqSchemaJsonLd}</script>`;
+  const contentHtml = stripLeadingH1(article.articleHtml);
+  const content = `${contentHtml}\n<script type="application/ld+json">${article.faqSchemaJsonLd}</script>`;
   return {
     title: article.title,
     content,
@@ -56,6 +57,11 @@ export function buildPostPayload(args: {
     ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
     ...(authorId ? { author: authorId } : {}),
   };
+}
+
+export function stripLeadingH1(articleHtml: string): string {
+  const html = String(articleHtml || "").trim();
+  return html.replace(/^\s*<h1\b[^>]*>[\s\S]*?<\/h1>\s*/i, "").trim();
 }
 
 export class WordPressClient {
