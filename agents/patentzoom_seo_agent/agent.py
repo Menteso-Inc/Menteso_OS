@@ -389,6 +389,7 @@ def _build_article_manager(recent_runs, index_cache):
     for run in recent_runs:
         article = run.get("article") or {}
         merged_indexing = _merge_indexing_status(run.get("wordpressUrl", ""), run.get("indexing"), index_cache)
+        preview_html = str(article.get("articleHtml", "") or "")
         articles.append(
             {
                 "id": run.get("runId", ""),
@@ -399,13 +400,32 @@ def _build_article_manager(recent_runs, index_cache):
                 "metaDescription": run.get("metaDescription") or article.get("metaDescription", ""),
                 "publishStatus": run.get("postStatus") or run.get("status", ""),
                 "url": run.get("wordpressUrl", ""),
-                "previewHtml": article.get("articleHtml", ""),
+                "previewHtml": preview_html[:2400] if preview_html else "",
                 "createdAt": run.get("createdAt", ""),
                 "indexingStatus": _normalize_indexing_status(merged_indexing, run.get("postStatus") or run.get("status", "")),
                 "indexing": merged_indexing,
             }
         )
     return articles
+
+
+def _build_recent_runs_summary(recent_runs):
+    summaries = []
+    for run in recent_runs:
+        summaries.append(
+            {
+                "runId": run.get("runId", ""),
+                "createdAt": run.get("createdAt", ""),
+                "status": run.get("status", ""),
+                "primaryKeyword": run.get("primaryKeyword", ""),
+                "postStatus": run.get("postStatus", ""),
+                "executionTime": run.get("executionTime", 0),
+                "title": run.get("title", ""),
+                "error": run.get("error", ""),
+                "wordpressUrl": run.get("wordpressUrl", ""),
+            }
+        )
+    return summaries
 
 
 def _build_internal_linking(recent_posts, topic_discovery):
@@ -613,7 +633,7 @@ def get_dashboard_data():
     top_keywords = _top_keywords(posts, recent_runs)
     scored_runs = [run.get("seoScore") for run in recent_runs if isinstance(run.get("seoScore"), int)]
     average_seo_score = round(sum(scored_runs) / len(scored_runs), 1) if scored_runs else 0
-    article_manager = _build_article_manager(recent_runs, index_cache)
+    article_manager = _build_article_manager(recent_runs[:8], index_cache)
     wp_monitor = _build_wordpress_monitor(env, posts, recent_runs)
     latest_article_preview = _build_latest_article_preview(article_manager, wp_monitor)
     seo_checklist = _build_seo_checklist(latest_article_preview, _build_internal_linking(recent_site_posts, topic_discovery), posts)
@@ -816,7 +836,7 @@ def get_dashboard_data():
             "lastAutoSchedulerAttempt": scheduler_state.get("last_auto_attempt_date", ""),
         },
         "recentTopics": list(reversed(posts[-8:])),
-        "recentRuns": recent_runs,
+        "recentRuns": _build_recent_runs_summary(recent_runs[:10]),
         "lastTopic": last_topic or {},
         "nextActions": next_actions,
     }
@@ -851,6 +871,21 @@ def _normalize_bool(value, default=False):
     return bool(value)
 
 
+def _extract_bypass_daily_limit(topic_override):
+    topic_text = str(topic_override or "").strip()
+    if not topic_text:
+        return "", False
+    lowered = topic_text.lower()
+    command = "/bypass-daily-limit"
+    if not lowered.startswith(command):
+        return topic_text, False
+
+    remainder = topic_text[len(command):].lstrip()
+    if remainder.startswith(":") or remainder.startswith("-"):
+        remainder = remainder[1:].lstrip()
+    return remainder.strip(), True
+
+
 def _build_payload(input_data):
     payload = dict(input_data or {})
     payload.pop("register_stop_handler", None)
@@ -864,9 +899,12 @@ def _build_payload(input_data):
         default=True,
     )
     payload["dry_run"] = _normalize_bool(payload.get("dry_run"), default=False)
+    payload["bypass_daily_limit"] = _normalize_bool(payload.get("bypass_daily_limit"), default=False)
     publish_override = str(payload.get("publish_override") or "draft").strip().lower()
     payload["publish_override"] = "publish" if publish_override == "publish" else "draft"
-    topic_override = str(payload.get("topic_override") or "").strip()
+    topic_override, command_bypass = _extract_bypass_daily_limit(payload.get("topic_override"))
+    if command_bypass:
+        payload["bypass_daily_limit"] = True
     if topic_override:
         payload["topic_override"] = topic_override
     else:

@@ -24,4 +24,24 @@ describe("seoOptimizer", () => {
     expect(result.article.articleHtml).toContain("This article is for informational purposes only and does not constitute legal advice.");
     expect(result.issues.length).toBeGreaterThan(0);
   });
+
+  it("does not leave provisional patent titles cut off mid-phrase", () => {
+    const result = validateAndOptimizeArticle({
+      title: "How to Strategically File a Provisional Patent Application with the USPTO",
+      slug: "strategic-provisional-patent-filing-uspto",
+      metaTitle: "",
+      metaDescription: "",
+      excerpt: "Guide for inventors.",
+      primaryKeyword: "Provisional patent filing USPTO",
+      secondaryKeywords: ["provisional patent filing uspto"],
+      tags: ["Patents"],
+      category: "Article",
+      articleHtml: "<p>Body copy.</p>",
+      faqSchemaJsonLd: "{\"@context\":\"https://schema.org\"}",
+      imagePrompt: "Professional USPTO filing image",
+      imageAltText: "USPTO patent filing visual",
+    });
+
+    expect(result.article.title).toBe("How to Strategically File a Provisional Patent Application with the USPTO");
+  });
 });

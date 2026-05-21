@@ -297,6 +297,41 @@ body {
     margin-top: 10px;
 }
 
+.seo-workspace-switcher {
+    margin-top: 16px;
+}
+
+.seo-workspace-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.seo-workspace-chip {
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.seo-workspace-chip:hover {
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+.seo-workspace-chip.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.12);
+}
+
 .badge {
     font-size: 11px;
     padding: 3px 10px;
@@ -1818,6 +1853,15 @@ body {
     padding: 16px 18px;
 }
 
+.seo-workspace-placeholder-card,
+.seo-placeholder-input-card {
+    min-height: 0;
+}
+
+.seo-workspace-placeholder-copy {
+    margin-top: 14px;
+}
+
 .seo-note-title {
     color: var(--text-primary);
     font-size: 14px;
@@ -1886,6 +1930,7 @@ body {
 .seo-panel-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
     gap: 16px;
     margin-bottom: 16px;
 }
@@ -1896,6 +1941,82 @@ body {
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 12px;
+}
+
+.seo-card-header-collapsible {
+    margin-bottom: 0;
+}
+
+.seo-card-toggle-label {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.seo-card-toggle-label:hover .seo-card-heading,
+.seo-card-arrow-btn:hover {
+    color: var(--accent);
+}
+
+.seo-card-heading {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.seo-card-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.seo-card-arrow-btn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.seo-collapsible-card.expanded .seo-card-arrow-btn {
+    background: rgba(90, 168, 255, 0.10);
+    border-color: rgba(90, 168, 255, 0.25);
+}
+
+.seo-collapsible-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-top: 0;
+    transition: grid-template-rows 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
+}
+
+.seo-collapsible-content.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-top: 12px;
+}
+
+.seo-collapsible-inner {
+    min-height: 0;
+    overflow: hidden;
 }
 
 .seo-kicker {
@@ -2353,6 +2474,18 @@ body {
 
     .seo-run-summary-grid {
         grid-template-columns: 1fr;
+    }
+
+    .seo-card-header-collapsible {
+        align-items: flex-start;
+    }
+
+    .seo-card-header-actions {
+        flex-shrink: 0;
+    }
+
+    .seo-card-heading {
+        font-size: 15px;
     }
 
     .header-actions {

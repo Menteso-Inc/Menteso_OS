@@ -615,7 +615,13 @@ def _inspect_url_in_search_console(access_token: str, property_name: str, url: s
 def _run_manual_indexing_request(url: str):
     env = _load_env_map()
     base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
-    access_token, property_name = _get_google_oauth_access_token()
+    property_name = str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip()
+    access_token = ""
+    oauth_error = ""
+    try:
+        access_token, property_name = _get_google_oauth_access_token()
+    except Exception as exc:
+        oauth_error = str(exc)
     sitemap_candidates = _discover_indexing_sitemaps(base_url)
     primary_sitemaps = sitemap_candidates[:2]
     pinged = []
@@ -626,9 +632,9 @@ def _run_manual_indexing_request(url: str):
         except Exception:
             continue
 
-    submitted = _submit_sitemaps_to_search_console(access_token, property_name, primary_sitemaps)
+    submitted = _submit_sitemaps_to_search_console(access_token, property_name, primary_sitemaps) if access_token else []
     indexable, issues = _verify_url_indexable(url)
-    inspection, inspect_error = _inspect_url_in_search_console(access_token, property_name, url)
+    inspection, inspect_error = _inspect_url_in_search_console(access_token, property_name, url) if access_token else (None, "")
     browser_fallback = None
     indexed_now = str((inspection or {}).get("coverageState") or "").lower().startswith("submitted and indexed") or str(
         (inspection or {}).get("coverageState") or ""
@@ -655,7 +661,7 @@ def _run_manual_indexing_request(url: str):
         "browserFallbackMessage": (browser_fallback or {}).get("message", ""),
         "browserFallbackInspectUrl": (browser_fallback or {}).get("inspectUrl", ""),
         "requestCompletedAt": _now_iso(),
-        "error": inspect_error if inspect_error else "",
+        "error": inspect_error if inspect_error else oauth_error,
     }
     _save_seo_indexing_status(status)
     return status

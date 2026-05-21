@@ -25,15 +25,32 @@ export function tokenizeTopic(value: string): string[] {
     .filter((token) => token.length > 1);
 }
 
+function stemToken(token: string): string {
+  if (token.endsWith("ies") && token.length > 3) return `${token.slice(0, -3)}y`;
+  return token.replace(/(ing|ed|es|s)$/g, "");
+}
+
 export function keywordStem(value: string): string {
   return normalizeKeyword(value)
     .split(" ")
-    .map((token) => {
-      if (token.endsWith("ies") && token.length > 3) return `${token.slice(0, -3)}y`;
-      return token.replace(/(ing|ed|es|s)$/g, "");
-    })
+    .map((token) => stemToken(token))
     .filter(Boolean)
     .join(" ");
+}
+
+export function stemmedTokens(value: string): string[] {
+  return tokenizeTopic(value).map((token) => stemToken(token)).filter(Boolean);
+}
+
+export function stemmedOverlap(left: string, right: string): number {
+  const leftSet = new Set(stemmedTokens(left));
+  const rightSet = new Set(stemmedTokens(right));
+  if (!leftSet.size || !rightSet.size) return 0;
+  let intersection = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) intersection += 1;
+  }
+  return intersection;
 }
 
 export function inferIntentCluster(value: string): string {
@@ -149,6 +166,9 @@ export function findModerateDuplicateReason(
     if (days <= 90 && entryCluster === candidateCluster) {
       const overlap = jaccardSimilarity(entryKeyword, candidateKeyword);
       if (overlap >= 0.8) return "Recent topic with the same search intent already exists";
+      if (stemmedOverlap(entryKeyword, candidateKeyword) >= 3 && overlap >= 0.6) {
+        return "Recent topic uses the same core patent-intent terms";
+      }
     }
   }
 
@@ -162,6 +182,13 @@ export function findModerateDuplicateReason(
       jaccardSimilarity(postTitle, candidateKeyword) >= 0.8
     ) {
       return "Recent WordPress post covers a near-identical intent";
+    }
+    if (
+      inferIntentCluster(postTitle) === candidateCluster &&
+      stemmedOverlap(postTitle, candidateKeyword) >= 3 &&
+      jaccardSimilarity(postTitle, candidateKeyword) >= 0.6
+    ) {
+      return "Recent WordPress post already covers the same core patent-intent terms";
     }
   }
 
