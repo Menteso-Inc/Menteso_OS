@@ -1,5 +1,7 @@
 # Environment
 .env
+node_modules/
+.next/
 
 # Python
 __pycache__/
@@ -37,3 +39,11 @@ agents/*/memory.json
 # Uploads and outputs
 uploads/
 outputs/
+
+# PatentZoom SEO agent runtime
+agents/patentzoom_seo_agent/node_modules/
+agents/patentzoom_seo_agent/dist/
+agents/patentzoom_seo_agent/runtime/
+services/seo-worker/runtime/
+services/seo-control-api/*.db
+.tools/

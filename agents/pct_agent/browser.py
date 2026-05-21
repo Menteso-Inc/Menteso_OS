@@ -10,6 +10,7 @@ Provides two modes:
 import re
 import time
 import tempfile
+import threading
 from pathlib import Path
 
 try:
@@ -17,6 +18,12 @@ try:
     HAS_PLAYWRIGHT = True
 except ImportError:
     HAS_PLAYWRIGHT = False
+
+try:
+    import winsound
+    HAS_WINSOUND = True
+except ImportError:
+    HAS_WINSOUND = False
 
 DOWNLOADS_DIR = Path(tempfile.gettempdir()) / "pct_pdfs"
 
@@ -31,12 +38,107 @@ UA = (
 _BLOCKED_TYPES = {"image", "stylesheet", "font", "media"}
 
 
+class BrowserStopRequested(RuntimeError):
+    """Raised when the current browser run is force-stopped."""
+
+
+CAPTCHA_TEXT_MARKERS = [
+    "pscaptchaform",
+    "please select",
+    "captcha",
+    "challenge",
+    "verify you are human",
+]
+
+CAPTCHA_SELECTORS = [
+    "#psCaptchaForm",
+    "form[id*='captcha']",
+    "iframe[src*='captcha']",
+    "iframe[src*='recaptcha']",
+    "iframe[title*='challenge']",
+    ".g-recaptcha",
+    ".h-captcha",
+    "[id*='captcha']",
+    "[class*='captcha']",
+]
+
+
+def _play_captcha_alert():
+    """Best-effort local alert on the host machine."""
+    if not HAS_WINSOUND:
+        return
+    try:
+        winsound.MessageBeep()
+    except Exception:
+        pass
+
+
+def _content_has_captcha_markers(content):
+    haystack = (content or "").lower()
+    return any(marker in haystack for marker in CAPTCHA_TEXT_MARKERS)
+
+
+def _page_has_captcha_selectors(page):
+    for selector in CAPTCHA_SELECTORS:
+        try:
+            if page.locator(selector).count() > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _is_captcha_present(page, content=""):
+    if _content_has_captcha_markers(content):
+        return True
+    try:
+        title = (page.title() or "").lower()
+    except Exception:
+        title = ""
+    if "captcha" in title or "challenge" in title:
+        return True
+    return _page_has_captcha_selectors(page)
+
+
 def _route_handler(route):
     """Abort non-essential resources to speed up page loads."""
     if route.request.resource_type in _BLOCKED_TYPES:
         route.abort()
     else:
         route.continue_()
+
+
+def _launch_browser(playwright, headless=True):
+    """
+    Launch a browser that WIPO is more likely to accept.
+    Headed mode prefers real installed browser channels.
+    """
+    attempts = []
+    if headless:
+        attempts.append({"headless": True})
+    else:
+        attempts.extend([
+            {"channel": "chrome", "headless": False},
+            {"channel": "msedge", "headless": False},
+            {"headless": False},
+        ])
+
+    last_error = None
+    for launch_kwargs in attempts:
+        try:
+            return playwright.chromium.launch(
+                **launch_kwargs,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ],
+            )
+        except Exception as exc:
+            last_error = exc
+
+    raise RuntimeError(f"Could not launch Chromium for WIPO: {last_error}")
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +157,7 @@ def create_browser_pool(n_pages=20, headless=True):
     DOWNLOADS_DIR.mkdir(exist_ok=True)
 
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(
-        headless=headless,
-        args=[
-            "--disable-blink-features=AutomationControlled",
-            "--disable-gpu",
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-        ],
-    )
+    browser = _launch_browser(pw, headless=headless)
 
     pages = []
     for _ in range(n_pages):
@@ -201,7 +295,7 @@ def wait_for_content_fast(page, timeout=20):
 
         if "PCT Biblio" in content or "detailMainForm" in content:
             return True, False
-        if "psCaptchaForm" in content or "Please select" in content:
+        if _is_captcha_present(page, content):
             return False, True
         if "403" in (page.title() or ""):
             try:
@@ -271,9 +365,11 @@ def download_pdf_fast(page, pdf_url, doc_id):
 class PatentBrowser:
     """Manages a Playwright browser session for WIPO PatentScope scraping."""
 
-    def __init__(self, headless=False, on_step=None):
+    def __init__(self, headless=False, on_step=None, stop_requested=None):
         self.headless = headless
         self.on_step = on_step
+        self.stop_requested = stop_requested or (lambda: False)
+        self._force_stop = threading.Event()
         self._pw = None
         self._browser = None
         self._context = None
@@ -286,8 +382,16 @@ class PatentBrowser:
     def __exit__(self, *args):
         self.close()
 
+    def is_stop_requested(self):
+        return self._force_stop.is_set() or bool(self.stop_requested())
+
+    def _check_stop(self):
+        if self.is_stop_requested():
+            raise BrowserStopRequested("Stop requested")
+
     def start(self):
         """Launch browser and create a page."""
+        self._check_stop()
         if not HAS_PLAYWRIGHT:
             raise ImportError(
                 "Playwright is required for WIPO scraping. "
@@ -296,10 +400,7 @@ class PatentBrowser:
         DOWNLOADS_DIR.mkdir(exist_ok=True)
 
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
-            headless=self.headless,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        self._browser = _launch_browser(self._pw, headless=self.headless)
         self._context = self._browser.new_context(
             accept_downloads=True,
             viewport={"width": 1366, "height": 768},
@@ -315,8 +416,26 @@ class PatentBrowser:
         if self.on_step:
             self.on_step("[Browser] Chromium launched — WIPO browser ready")
 
+    def force_stop(self):
+        """Request that the current browser job stop at the next safe check."""
+        if self._force_stop.is_set():
+            return
+        self._force_stop.set()
+        if self.on_step:
+            self.on_step("[Browser] Stop requested - finishing the current browser call and closing safely")
+
     def close(self):
         """Close browser and cleanup."""
+        try:
+            if self._page:
+                self._page.close()
+        except Exception:
+            pass
+        try:
+            if self._context:
+                self._context.close()
+        except Exception:
+            pass
         try:
             if self._browser:
                 self._browser.close()
@@ -324,6 +443,8 @@ class PatentBrowser:
                 self._pw.stop()
         except Exception:
             pass
+        self._page = None
+        self._context = None
         self._browser = None
         self._pw = None
 
@@ -339,6 +460,7 @@ class PatentBrowser:
         """
         step = on_step or self.on_step or (lambda m: None)
         page = self._page
+        self._check_stop()
         if not page:
             step("[Browser] ERROR: Browser not started")
             return None
@@ -346,22 +468,25 @@ class PatentBrowser:
         # --- Step 1: Navigate (with retry) ---
         loaded = False
         for attempt in range(2):
+            self._check_stop()
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page.goto(url, wait_until="domcontentloaded", timeout=8000)
             except Exception as e:
+                if self.is_stop_requested():
+                    raise BrowserStopRequested("Stop requested")
                 step(f"[Browser] Navigation failed (attempt {attempt+1}): {e}")
                 if attempt == 0:
-                    time.sleep(3)
+                    time.sleep(0.5)
                     continue
                 return None
 
             # --- Step 2: Wait for content ---
-            if self._wait_for_content(timeout=90, on_step=step):
+            if self._wait_for_content(timeout=20, on_step=step):
                 loaded = True
                 break
             elif attempt == 0:
                 step("[Browser] Retrying page load...")
-                time.sleep(2)
+                time.sleep(0.5)
 
         if not loaded:
             step("[Browser] Page did not load after retries")
@@ -369,12 +494,15 @@ class PatentBrowser:
 
         # --- Step 3: Click Documents tab ---
         try:
+            self._check_stop()
             docs_tab = page.locator("a", has_text="Documents").first
-            docs_tab.wait_for(state="visible", timeout=10000)
+            docs_tab.wait_for(state="visible", timeout=3000)
             docs_tab.click()
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(750)
             step("[Browser] Documents tab opened")
         except Exception as e:
+            if self.is_stop_requested():
+                raise BrowserStopRequested("Stop requested")
             step(f"[Browser] Could not open Documents tab: {e}")
             return None
 
@@ -395,36 +523,55 @@ class PatentBrowser:
         captcha_warned = False
 
         while time.time() < deadline:
+            self._check_stop()
             try:
                 content = self._page.content()
             except Exception:
-                time.sleep(1)
+                if self.is_stop_requested():
+                    raise BrowserStopRequested("Stop requested")
+                time.sleep(0.25)
                 continue
 
             # Success: patent content loaded
             if "PCT Biblio" in content or "detailMainForm" in content:
+                if captcha_warned:
+                    step("CAPTCHA cleared - resuming from the same row")
+                    step({
+                        "type": "browser",
+                        "event": "captcha_cleared",
+                        "message": "CAPTCHA cleared - resuming from the same row",
+                        "captcha_active": False,
+                    })
                 return True
 
             # CAPTCHA detected
-            if "psCaptchaForm" in content or "Please select" in content:
+            if _is_captcha_present(self._page, content):
                 if not captcha_warned:
+                    _play_captcha_alert()
+                    step("CAPTCHA detected - action required")
+                    step({
+                        "type": "browser",
+                        "event": "captcha_detected",
+                        "message": "CAPTCHA detected - action required",
+                        "captcha_active": True,
+                    })
                     step("[Browser] CAPTCHA detected — please solve it in the browser window")
                     captcha_warned = True
-                time.sleep(2)
+                time.sleep(0.5)
                 continue
 
             # 403 error
             if "403" in (self._page.title() or ""):
                 step("[Browser] Got 403 Forbidden — retrying...")
-                time.sleep(3)
+                time.sleep(0.5)
                 try:
-                    self._page.reload(wait_until="domcontentloaded", timeout=15000)
+                    self._page.reload(wait_until="domcontentloaded", timeout=5000)
                 except Exception:
                     pass
                 continue
 
             # Page might be reloading (the setTimeout(reload) trick)
-            time.sleep(2)
+            time.sleep(0.25)
 
         return False
 
@@ -438,6 +585,7 @@ class PatentBrowser:
         search_terms = ["RO/101", "306", "Request form"]
 
         for term in search_terms:
+            self._check_stop()
             try:
                 rows = page.locator("tr", has_text=term)
                 if rows.count() > 0:
@@ -450,6 +598,8 @@ class PatentBrowser:
                             return href
                         return "__CLICK_DOWNLOAD__"
             except Exception as e:
+                if self.is_stop_requested():
+                    raise BrowserStopRequested("Stop requested")
                 step(f"[Browser] Error searching for '{term}': {e}")
 
         return None
@@ -465,10 +615,12 @@ class PatentBrowser:
         save_path = DOWNLOADS_DIR / f"{safe_name}.pdf"
 
         try:
+            self._check_stop()
             if pdf_url == "__CLICK_DOWNLOAD__":
                 # No href — try clicking and intercepting the navigation
                 ro101_rows = None
                 for term in ["RO/101", "306", "Request form"]:
+                    self._check_stop()
                     candidate = page.locator("tr", has_text=term)
                     if candidate.count() > 0:
                         ro101_rows = candidate
@@ -485,6 +637,7 @@ class PatentBrowser:
                 else:
                     # Click and try to capture download
                     try:
+                        self._check_stop()
                         with page.expect_download(timeout=15000) as dl_info:
                             pdf_link.click()
                         download = dl_info.value
@@ -492,6 +645,8 @@ class PatentBrowser:
                         step(f"[Browser] PDF saved: {save_path.name}")
                         return str(save_path)
                     except Exception:
+                        if self.is_stop_requested():
+                            raise BrowserStopRequested("Stop requested")
                         step("[Browser] Click-download failed, trying direct fetch")
                         return None
 
@@ -502,22 +657,36 @@ class PatentBrowser:
             # Download using requests with browser cookies
             session = req.Session()
             for cookie in self._context.cookies():
+                self._check_stop()
                 session.cookies.set(
                     cookie["name"], cookie["value"],
                     domain=cookie.get("domain", ""),
                 )
             session.headers.update({"User-Agent": UA, "Referer": page.url})
 
-            resp = session.get(pdf_url, timeout=30)
-            if resp.status_code == 200 and len(resp.content) > 500:
+            self._check_stop()
+            resp = session.get(pdf_url, timeout=(10, 10), stream=True)
+            self._check_stop()
+            if resp.status_code == 200:
+                total_bytes = 0
                 with open(save_path, "wb") as f:
-                    f.write(resp.content)
-                step(f"[Browser] PDF saved: {save_path.name} ({len(resp.content)} bytes)")
-                return str(save_path)
+                    for chunk in resp.iter_content(chunk_size=65536):
+                        self._check_stop()
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        total_bytes += len(chunk)
+                if total_bytes > 500:
+                    step(f"[Browser] PDF saved: {save_path.name} ({total_bytes} bytes)")
+                    return str(save_path)
+                step(f"[Browser] PDF download returned too little data ({total_bytes} bytes)")
+                return None
             else:
-                step(f"[Browser] PDF download returned {resp.status_code} ({len(resp.content)} bytes)")
+                step(f"[Browser] PDF download returned {resp.status_code}")
                 return None
 
         except Exception as e:
+            if self.is_stop_requested():
+                raise BrowserStopRequested("Stop requested")
             step(f"[Browser] PDF download failed: {e}")
             return None

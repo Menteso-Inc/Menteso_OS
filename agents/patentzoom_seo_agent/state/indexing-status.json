@@ -1,0 +1,156 @@
+{
+  "urls": {
+    "https://patentzoom.us/provisional-patent-filing-cost-timing-saas-startups/": {
+      "postUrl": "https://patentzoom.us/provisional-patent-filing-cost-timing-saas-startups/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "requestCompletedAt": "2026-05-12T14:15:14.668398Z",
+      "error": ""
+    },
+    "https://patentzoom.us/software-startup-provisional-patent-timeline-cost/": {
+      "postUrl": "https://patentzoom.us/software-startup-provisional-patent-timeline-cost/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "requestCompletedAt": "2026-05-12T14:17:02.458120Z",
+      "error": ""
+    },
+    "https://patentzoom.us/how-much-does-patent-filing-cost-in-india/": {
+      "postUrl": "https://patentzoom.us/how-much-does-patent-filing-cost-in-india/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Crawled - currently not indexed",
+        "indexingState": "INDEXING_ALLOWED",
+        "lastCrawlTime": "2026-05-13T12:09:18Z",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=20XCs8tBqSM_lBFopwMl5A",
+      "requestCompletedAt": "2026-05-13T12:11:48.032089Z",
+      "error": ""
+    },
+    "https://patentzoom.us/ip-strategy-startups-mastering-office-action-process/": {
+      "postUrl": "https://patentzoom.us/ip-strategy-startups-mastering-office-action-process/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=4BFcAMDMpg20NA3EqC8-DQ",
+      "requestCompletedAt": "2026-05-14T05:12:19.824087Z",
+      "error": ""
+    }
+  }
+}
