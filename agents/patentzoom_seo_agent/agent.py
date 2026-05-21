@@ -871,6 +871,21 @@ def _normalize_bool(value, default=False):
     return bool(value)
 
 
+def _extract_bypass_daily_limit(topic_override):
+    topic_text = str(topic_override or "").strip()
+    if not topic_text:
+        return "", False
+    lowered = topic_text.lower()
+    command = "/bypass-daily-limit"
+    if not lowered.startswith(command):
+        return topic_text, False
+
+    remainder = topic_text[len(command):].lstrip()
+    if remainder.startswith(":") or remainder.startswith("-"):
+        remainder = remainder[1:].lstrip()
+    return remainder.strip(), True
+
+
 def _build_payload(input_data):
     payload = dict(input_data or {})
     payload.pop("register_stop_handler", None)
@@ -884,9 +899,12 @@ def _build_payload(input_data):
         default=True,
     )
     payload["dry_run"] = _normalize_bool(payload.get("dry_run"), default=False)
+    payload["bypass_daily_limit"] = _normalize_bool(payload.get("bypass_daily_limit"), default=False)
     publish_override = str(payload.get("publish_override") or "draft").strip().lower()
     payload["publish_override"] = "publish" if publish_override == "publish" else "draft"
-    topic_override = str(payload.get("topic_override") or "").strip()
+    topic_override, command_bypass = _extract_bypass_daily_limit(payload.get("topic_override"))
+    if command_bypass:
+        payload["bypass_daily_limit"] = True
     if topic_override:
         payload["topic_override"] = topic_override
     else:

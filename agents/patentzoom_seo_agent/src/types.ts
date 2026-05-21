@@ -5,6 +5,7 @@ export interface WorkflowInput {
   publishOverride: PublishOverride;
   enableFeaturedImage: boolean;
   dryRun: boolean;
+  bypassDailyLimit?: boolean;
   source: string;
   strategy?: string;
 }

@@ -480,14 +480,34 @@ function classifyMessage(msg) {
     return "step";
 }
 
+function parseSeoTopicOverrideCommand(rawValue) {
+    const source = String(rawValue || "").trim();
+    if (!source) {
+        return { topicOverride: undefined, bypassDailyLimit: false };
+    }
+
+    const commandPattern = /^\/bypass-daily-limit(?:\s+|:\s*|-)?/i;
+    if (!commandPattern.test(source)) {
+        return { topicOverride: source, bypassDailyLimit: false };
+    }
+
+    const stripped = source.replace(commandPattern, "").trim();
+    return {
+        topicOverride: stripped || undefined,
+        bypassDailyLimit: true,
+    };
+}
+
 function triggerSeoRun(agent, overrides = {}) {
+    const parsedTopicOverride = parseSeoTopicOverrideCommand(state.seo.topicOverride);
     runAgent(agent.module_name, {
         method: "POST",
         body: {
-            topic_override: state.seo.topicOverride.trim() || undefined,
+            topic_override: parsedTopicOverride.topicOverride,
             publish_override: overrides.publish_override || state.seo.publishOverride,
             enable_featured_image: overrides.enable_featured_image ?? state.seo.enableFeaturedImage,
             dry_run: overrides.dry_run ?? state.seo.dryRun,
+            bypass_daily_limit: parsedTopicOverride.bypassDailyLimit,
         },
     });
 }
@@ -1372,7 +1392,7 @@ function renderSEOInputSection(agent) {
                         value="${esc(seo.topicOverride)}"
                     />
                     <div class="input-help">
-                        Optional: force a specific topic for this run. Otherwise the agent will choose from live demand signals and competitor-topic discovery.
+                        Optional: force a specific topic for this run. Otherwise the agent will choose from live demand signals and competitor-topic discovery. For testing, use <code>/bypass-daily-limit</code> here to allow an extra live post today, with or without a custom topic after the command.
                     </div>
                 </div>
 

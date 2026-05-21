@@ -17,12 +17,36 @@ class StopRequestedError extends Error {
   }
 }
 
+function extractBypassDailyLimitCommand(rawTopicOverride?: string): {
+  topicOverride?: string;
+  bypassDailyLimit: boolean;
+} {
+  const source = String(rawTopicOverride || "").trim();
+  if (!source) {
+    return { topicOverride: undefined, bypassDailyLimit: false };
+  }
+
+  const commandPattern = /^\/bypass-daily-limit(?:\s+|:\s*|-)?/i;
+  if (!commandPattern.test(source)) {
+    return { topicOverride: source, bypassDailyLimit: false };
+  }
+
+  const stripped = source.replace(commandPattern, "").trim();
+  return {
+    topicOverride: stripped || undefined,
+    bypassDailyLimit: true,
+  };
+}
+
 function parseInput(): WorkflowInput {
   const argIndex = process.argv.indexOf("--input-json");
   if (argIndex >= 0 && process.argv[argIndex + 1]) {
     const payload = JSON.parse(readFileSync(process.argv[argIndex + 1], "utf-8")) as Record<string, unknown>;
+    const parsedTopicOverride = extractBypassDailyLimitCommand(
+      String(payload.topicOverride ?? payload.topic_override ?? "").trim() || undefined,
+    );
     return {
-      topicOverride: String(payload.topicOverride ?? payload.topic_override ?? "").trim() || undefined,
+      topicOverride: parsedTopicOverride.topicOverride,
       publishOverride:
         String(payload.publishOverride ?? payload.publish_override ?? "draft").trim().toLowerCase() === "publish"
           ? "publish"
@@ -39,6 +63,12 @@ function parseInput(): WorkflowInput {
           : payload.dry_run !== undefined
             ? Boolean(payload.dry_run)
             : false,
+      bypassDailyLimit:
+        payload.bypassDailyLimit !== undefined
+          ? Boolean(payload.bypassDailyLimit)
+          : payload.bypass_daily_limit !== undefined
+            ? Boolean(payload.bypass_daily_limit)
+            : parsedTopicOverride.bypassDailyLimit,
       source: String(payload.source ?? "").trim() || (process.env.GITHUB_ACTIONS ? "github_actions" : "dashboard"),
       strategy: String(payload.strategy ?? "").trim() || undefined,
     };
@@ -374,7 +404,7 @@ async function main(): Promise<void> {
     }
 
     const existingPublishedToday =
-      !input.topicOverride && !input.dryRun && requestedPublishStatus === "publish"
+      !input.dryRun && requestedPublishStatus === "publish" && !input.bypassDailyLimit
         ? findPublishedEntryForDate(ledger.generatedPosts, topic.runDate)
         : undefined;
     const effectivePublishStatus =
@@ -416,6 +446,12 @@ async function main(): Promise<void> {
         indexing: null,
       };
     } else {
+      if (input.bypassDailyLimit && requestedPublishStatus === "publish") {
+        logger.warn(
+          `Test bypass active: allowing an extra live publish for ${topic.runDate} despite the one-post-per-day rule.`,
+        );
+      }
+
       if (existingPublishedToday) {
         logger.warn(
           `A live article is already published for ${topic.runDate}. Skipping another live publish to keep the one-post-per-day rule.`,
