@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Menteso — Agent Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=20260512-1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -20,9 +20,12 @@
                     <p class="header-subtitle">Visual Observer Agent — Monitoring all systems</p>
                 </div>
             </div>
-            <div class="header-status">
-                <span class="pulse-dot"></span>
-                <span>System Online</span>
+            <div class="header-actions">
+                <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle theme">☀️ Light</button>
+                <div class="header-status">
+                    <span class="pulse-dot"></span>
+                    <span>System Online</span>
+                </div>
             </div>
         </header>
 
@@ -39,6 +42,6 @@
         <main class="main" id="main-content"></main>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260512-1"></script>
 </body>
 </html>
