@@ -195,7 +195,7 @@ def _load_recent_runs(limit=6):
                 "article": article,
                 "indexing": result.get("indexing") or {},
             })
-            if len(runs) >= limit:
+            if limit is not None and len(runs) >= limit:
                 return runs
     return runs
 
@@ -284,7 +284,7 @@ def _fetch_recent_patentzoom_posts(limit=8):
                 "per_page": limit,
                 "orderby": "date",
                 "order": "desc",
-                "_fields": "id,slug,link,title,excerpt",
+                "_fields": "id,slug,link,title,excerpt,date,status",
             }
         )
     )
@@ -303,11 +303,138 @@ def _fetch_recent_patentzoom_posts(limit=8):
                 "id": item.get("id"),
                 "slug": item.get("slug", ""),
                 "url": item.get("link", ""),
+                "date": item.get("date", ""),
+                "status": item.get("status", ""),
                 "title": title,
                 "excerpt": excerpt,
             }
         )
     return posts
+
+
+def _extract_wp_post_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_wp_post_id_from_url(url):
+    try:
+        parsed = urllib_parse.urlparse(str(url or "").strip())
+        query = urllib_parse.parse_qs(parsed.query)
+        post_id = query.get("p", [None])[0]
+        return _extract_wp_post_id(post_id)
+    except Exception:
+        return None
+
+
+def _normalize_permalink(url):
+    value = str(url or "").strip().rstrip("/")
+    return value.lower()
+
+
+def _compute_article_publication_stats(posts, all_runs, site_posts, today_iso):
+    candidates = {}
+
+    def ensure_candidate(key):
+        if key not in candidates:
+            candidates[key] = {
+                "id": None,
+                "slug": "",
+                "url": "",
+                "date": "",
+                "sourceStatus": "",
+                "wpStatus": "",
+            }
+        return candidates[key]
+
+    def register_candidate(record, *, source_status=""):
+        slug = str(record.get("slug", "")).strip()
+        url = str(record.get("wpUrl") or record.get("wordpressUrl") or record.get("url") or "").strip()
+        post_id = _extract_wp_post_id(record.get("wpPostId") or record.get("wordpressPostId"))
+        if post_id is None:
+            post_id = _extract_wp_post_id_from_url(url)
+        key = f"id:{post_id}" if post_id else (f"url:{_normalize_permalink(url)}" if url else f"slug:{slug.lower()}")
+        if not key:
+            return
+
+        candidate = ensure_candidate(key)
+        candidate["id"] = post_id or candidate["id"]
+        candidate["slug"] = slug or candidate["slug"]
+        candidate["url"] = url or candidate["url"]
+        candidate["date"] = str(record.get("date", "") or record.get("createdAt", "") or candidate["date"])
+        if source_status:
+            candidate["sourceStatus"] = source_status
+
+    for item in posts:
+        register_candidate(item, source_status=str(item.get("status", "")).lower())
+
+    for item in all_runs:
+        if item.get("wordpressUrl") or item.get("wordpressPostId") or item.get("slug"):
+            register_candidate(item, source_status=str(item.get("postStatus") or item.get("status") or "").lower())
+
+    site_by_id = {}
+    site_by_slug = {}
+    site_by_url = {}
+    for item in site_posts:
+        item_id = _extract_wp_post_id(item.get("id"))
+        if item_id is not None:
+            site_by_id[item_id] = item
+        slug = str(item.get("slug", "")).strip().lower()
+        if slug:
+            site_by_slug[slug] = item
+        normalized_url = _normalize_permalink(item.get("url", ""))
+        if normalized_url:
+            site_by_url[normalized_url] = item
+
+    published_records = []
+    seen_urls = set()
+    for candidate in candidates.values():
+        matched = None
+        if candidate["id"] is not None:
+            matched = site_by_id.get(candidate["id"])
+        if matched is None and candidate["slug"]:
+            matched = site_by_slug.get(candidate["slug"].lower())
+        if matched is None and candidate["url"]:
+            matched = site_by_url.get(_normalize_permalink(candidate["url"]))
+
+        effective_status = str((matched or {}).get("status") or candidate["sourceStatus"] or "").lower()
+        if effective_status != "publish":
+            continue
+
+        effective_url = str((matched or {}).get("url") or candidate["url"] or "").strip()
+        dedupe_key = effective_url.lower().rstrip("/") if effective_url else f"id:{candidate['id']}" if candidate["id"] is not None else candidate["slug"].lower()
+        if dedupe_key in seen_urls:
+            continue
+        seen_urls.add(dedupe_key)
+
+        published_records.append(
+            {
+                "id": (matched or {}).get("id") or candidate["id"],
+                "slug": (matched or {}).get("slug") or candidate["slug"],
+                "url": effective_url,
+                "date": str((matched or {}).get("date") or candidate["date"] or ""),
+                "status": effective_status,
+            }
+        )
+
+    published_count = len(published_records)
+    published_today = any(str(item.get("date", "")).startswith(str(today_iso)) for item in published_records)
+    monthly_articles = sum(1 for item in published_records if str(item.get("date", "")).startswith(str(today_iso)[:7]))
+    last_published_date = ""
+    if published_records:
+        dated = [str(item.get("date", "")) for item in published_records if str(item.get("date", ""))]
+        if dated:
+            last_published_date = max(dated)[:10]
+
+    return {
+        "publishedCount": published_count,
+        "publishedToday": published_today,
+        "monthlyArticles": monthly_articles,
+        "lastPublishedDate": last_published_date,
+        "publishedRecords": published_records,
+    }
 
 
 def _build_dynamic_queue(topic_discovery):
@@ -625,10 +752,11 @@ def get_dashboard_data():
     topic_discovery = _load_topic_discovery()
     scheduler_state = _load_scheduler_state()
     recent_runs = _load_recent_runs()
+    all_runs = _load_recent_runs(limit=None)
     recent_site_posts = _fetch_recent_patentzoom_posts()
+    recent_site_posts_for_stats = _fetch_recent_patentzoom_posts(limit=100)
 
     publish_statuses = {str(item.get("status", "")).lower() for item in posts}
-    published_count = sum(1 for item in posts if str(item.get("status", "")).lower() == "publish")
     draft_count = sum(1 for item in posts if str(item.get("status", "")).lower() == "draft")
     top_keywords = _top_keywords(posts, recent_runs)
     scored_runs = [run.get("seoScore") for run in recent_runs if isinstance(run.get("seoScore"), int)]
@@ -663,8 +791,11 @@ def get_dashboard_data():
     organic_traffic = None
     tz = timezone(timedelta(hours=5, minutes=30))
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
-    published_today = any(str(item.get("status", "")).lower() == "publish" and str(item.get("date", "")) == str(today_iso) for item in posts)
-    monthly_articles = sum(1 for item in posts if str(item.get("status", "")).lower() == "publish" and str(item.get("date", "")).startswith(str(today_iso)[:7]))
+    publication_stats = _compute_article_publication_stats(posts, all_runs, recent_site_posts_for_stats, today_iso)
+    published_count = publication_stats["publishedCount"]
+    published_today = publication_stats["publishedToday"]
+    monthly_articles = publication_stats["monthlyArticles"]
+    last_published_date = publication_stats["lastPublishedDate"]
     success_rate_pct = round(
         (sum(1 for item in recent_runs if str(item.get("status", "")).lower() == "success") / len(recent_runs) * 100)
         if recent_runs
@@ -775,7 +906,7 @@ def get_dashboard_data():
             "monthlyTarget": 30,
             "successRate": success_rate_pct,
             "wordpressStatus": wp_monitor.get("connectionStatus", "Not Connected"),
-            "lastPublishedDate": (posts[-1] if posts else {}).get("date", ""),
+            "lastPublishedDate": last_published_date,
         },
         "todayRun": _build_today_run(env, topic_discovery),
         "topicRadar": {
