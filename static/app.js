@@ -899,6 +899,28 @@ function renderSeoWorkspacePlaceholder(workspace) {
     `;
 }
 
+function getSeoWorkspaceStats(agent, workspace, stats, rate, rateClass) {
+    if (!workspace || workspace.kind === "live") {
+        return {
+            totalRuns: stats.total_runs || 0,
+            successRate: formatPercent(rate),
+            successRateClass: rateClass,
+            avgTime: `${(stats.avg_execution_time || 0).toFixed(2)}s`,
+            status: (agent.status || "idle").toUpperCase(),
+            statusClass: "success",
+        };
+    }
+
+    return {
+        totalRuns: "--",
+        successRate: "--",
+        successRateClass: "",
+        avgTime: "--",
+        status: "SETUP",
+        statusClass: "warning",
+    };
+}
+
 function renderSidebar() {
     const countEl = document.getElementById("agent-count");
     const listEl = document.getElementById("agent-list");
@@ -1058,6 +1080,16 @@ function renderMain() {
     const isSeoAgent = agent.ui_type === "seo_posting";
     const activeSeoWorkspace = isSeoAgent ? getActiveSeoWorkspace() : null;
     const isLiveSeoWorkspace = !!activeSeoWorkspace && activeSeoWorkspace.kind === "live";
+    const workspaceStats = isSeoAgent
+        ? getSeoWorkspaceStats(agent, activeSeoWorkspace, stats, rate, rateClass)
+        : {
+            totalRuns: stats.total_runs || 0,
+            successRate: formatPercent(rate),
+            successRateClass: rateClass,
+            avgTime: `${(stats.avg_execution_time || 0).toFixed(2)}s`,
+            status: (agent.status || "idle").toUpperCase(),
+            statusClass: "success",
+        };
 
     let html = `
         <!-- Agent Header -->
@@ -1089,19 +1121,19 @@ function renderMain() {
         <!-- Stats -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value">${stats.total_runs || 0}</div>
+                <div class="stat-value">${esc(String(workspaceStats.totalRuns))}</div>
                 <div class="stat-label">Total Runs</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value ${rateClass}">${formatPercent(rate)}</div>
+                <div class="stat-value ${workspaceStats.successRateClass}">${esc(String(workspaceStats.successRate))}</div>
                 <div class="stat-label">Success Rate</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">${(stats.avg_execution_time || 0).toFixed(2)}s</div>
+                <div class="stat-value">${esc(String(workspaceStats.avgTime))}</div>
                 <div class="stat-label">Avg Time</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" style="font-size:18px;color:var(--success)">${(agent.status || "idle").toUpperCase()}</div>
+                <div class="stat-value ${workspaceStats.statusClass}" style="font-size:18px">${esc(String(workspaceStats.status))}</div>
                 <div class="stat-label">Status</div>
             </div>
         </div>

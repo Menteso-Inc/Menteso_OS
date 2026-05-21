@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-05-21T08:47:11.955Z",
+  "mode": "mixed_signal_dynamic",
+  "selectedTopic": {
+    "topicId": "manual-ai-patent-licensing-strategy-for-startups",
+    "pillar": "Software and AI Patent Protection",
+    "cluster": "software and ai patents",
+    "angle": "manual override",
+    "theme": "Software and AI Patent Protection",
+    "primaryKeyword": "AI patent licensing strategy for startups",
+    "secondaryKeywords": [],
+    "serpQuestions": [],
+    "relatedSearches": [],
+    "score": 100,
+    "fingerprint": "software-and-ai-patent-protection::manual-override::ai patent licens strategy startup",
+    "intentCluster": "software and ai patents",
+    "sourceTypes": [
+      "manual_override"
+    ],
+    "sourceEvidence": [
+      "Operator supplied a manual topic override."
+    ],
+    "demandScore": 20,
+    "freshnessScore": 10,
+    "commercialRelevanceScore": 15,
+    "brandFitScore": 8,
+    "competitorGapScore": 8,
+    "runDate": "2026-05-21"
+  },
+  "shortlist": [
+    {
+      "topicId": "manual-ai-patent-licensing-strategy-for-startups",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "manual override",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "AI patent licensing strategy for startups",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 100,
+      "fingerprint": "software-and-ai-patent-protection::manual-override::ai patent licens strategy startup",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 8,
+      "competitorGapScore": 8,
+      "runDate": "2026-05-21"
+    }
+  ],
+  "rejectedTopics": [],
+  "liveSignals": [],
+  "sourceHealth": [],
+  "degradedSources": []
+}

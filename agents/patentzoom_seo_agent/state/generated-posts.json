@@ -193,6 +193,61 @@
       "status": "publish",
       "source": "dashboard",
       "fingerprint": "startup-ip-protection::office-action-process::ip strategy startup"
+    },
+    {
+      "date": "2026-05-21",
+      "topicId": "software-and-ai-patents-ai-patent-strategy",
+      "pillar": "Software and AI Patent Protection",
+      "angle": "search demand",
+      "theme": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "primaryKeyword": "ai patent strategy",
+      "secondaryKeywords": [
+        "ai patent strategy"
+      ],
+      "slug": "ai-patent-strategy-software-innovations",
+      "wpPostId": 8881,
+      "wpUrl": "https://patentzoom.us/ai-patent-strategy-software-innovations/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "software-and-ai-patent-protection::search-demand::ai patent strategy",
+      "sourceTypes": [
+        "serp_autocomplete",
+        "search_console_query"
+      ],
+      "sourceEvidence": [
+        "Autocomplete suggestion for \"ai patent portfolio commercialization\"",
+        "Search Console query with 7 impressions",
+        "Current traction on https://patentzoom.us/startup-guide-ai-patent-portfolio/"
+      ],
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "intentCluster": "software and ai patents"
+    },
+    {
+      "date": "2026-05-21",
+      "topicId": "manual-ai-patent-licensing-strategy-for-startups",
+      "pillar": "Software and AI Patent Protection",
+      "angle": "manual override",
+      "theme": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "primaryKeyword": "AI patent licensing strategy for startups",
+      "secondaryKeywords": [],
+      "slug": "ai-patent-licensing-strategy-for-startups",
+      "wpPostId": 8884,
+      "wpUrl": "https://patentzoom.us/ai-patent-licensing-strategy-for-startups-2/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "software-and-ai-patent-protection::manual-override::ai patent licens strategy startup",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "intentCluster": "software and ai patents"
     }
   ]
 }
