@@ -15,7 +15,7 @@ import re
 import subprocess
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
 
@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from shared.agent_registry import discover_agents, get_agent_runner
 from shared.memory import load_memory
+from shared.social_publishing import publish_article_to_social, social_status_snapshot
 from agents.pct_agent.scraper import fetch_wipo_gazettes_async
 from agents.patentzoom_seo_agent import get_dashboard_data as get_seo_dashboard_data
 
@@ -39,6 +40,18 @@ SEO_BROWSER_LOCK = threading.Lock()
 SEO_BROWSER_SESSION_THREAD = None
 SEO_BROWSER_PROCESS = None
 SEO_CHROME_DEBUG_PORT = 9222
+SEO_WORKSPACE_PROPERTY_KEYS = {
+    "patentzoom": "GOOGLE_SEARCH_CONSOLE_PROPERTY",
+    "patent-drawing-experts": "PATENT_DRAWING_EXPERTS_GOOGLE_SEARCH_CONSOLE_PROPERTY",
+    "ip-docketers": "IP_DOCKETERS_GOOGLE_SEARCH_CONSOLE_PROPERTY",
+    "menteso": "MENTESO_GOOGLE_SEARCH_CONSOLE_PROPERTY",
+}
+SEO_WORKSPACE_AUTO_PUBLISH_KEYS = {
+    "patentzoom": "AUTO_PUBLISH",
+    "patent-drawing-experts": "PATENT_DRAWING_EXPERTS_AUTO_PUBLISH",
+    "ip-docketers": "IP_DOCKETERS_AUTO_PUBLISH",
+    "menteso": "MENTESO_AUTO_PUBLISH",
+}
 
 
 def _get_run_status(name: str):
@@ -116,6 +129,37 @@ def _load_env_map():
     return data
 
 
+def _resolve_seo_workspace_id(workspace_id: str | None):
+    key = str(workspace_id or "patentzoom").strip().lower() or "patentzoom"
+    return key if key in SEO_WORKSPACE_PROPERTY_KEYS else "patentzoom"
+
+
+def _workspace_property_env_key(workspace_id: str | None):
+    return SEO_WORKSPACE_PROPERTY_KEYS[_resolve_seo_workspace_id(workspace_id)]
+
+
+def _workspace_auto_publish_env_key(workspace_id: str | None):
+    return SEO_WORKSPACE_AUTO_PUBLISH_KEYS[_resolve_seo_workspace_id(workspace_id)]
+
+
+def _seo_workspace_state_paths(workspace_id: str | None = None):
+    key = _resolve_seo_workspace_id(workspace_id)
+    base = PROJECT_DIR / "agents" / "patentzoom_seo_agent"
+    if key == "patentzoom":
+        state_dir = base / "state"
+        runtime_dir = base / "runtime"
+    else:
+        state_dir = base / "state" / "workspaces" / key
+        runtime_dir = base / "runtime" / "workspaces" / key
+    return {
+        "generated_posts": state_dir / "generated-posts.json",
+        "indexing_status": state_dir / "indexing-status.json",
+        "social_status": state_dir / "social-posting-status.json",
+        "scheduler_state": state_dir / "scheduler-state.json",
+        "runtime_dir": runtime_dir,
+    }
+
+
 def _format_env_value(value):
     if value is None:
         return ""
@@ -155,12 +199,13 @@ def _google_oauth_redirect_uri():
     return "http://127.0.0.1:8000/api/google/search-console/callback"
 
 
-def _google_search_console_status():
+def _google_search_console_status(workspace_id: str | None = None):
     env = _load_env_map()
     client_id = str(env.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     client_secret = str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
     refresh_token = str(env.get("GOOGLE_OAUTH_REFRESH_TOKEN") or "").strip()
-    property_name = str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip()
+    property_key = _workspace_property_env_key(workspace_id)
+    property_name = str(env.get(property_key) or env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip()
     return {
         "connected": bool(refresh_token and client_id and client_secret),
         "clientConfigured": bool(client_id and client_secret),
@@ -170,39 +215,43 @@ def _google_search_console_status():
     }
 
 
-def _load_seo_indexing_statuses():
-    if not SEO_INDEXING_STATE_FILE.exists():
+def _load_seo_indexing_statuses(workspace_id: str | None = None):
+    path = _seo_workspace_state_paths(workspace_id)["indexing_status"]
+    if not path.exists():
         return {}
     try:
-        payload = json.loads(SEO_INDEXING_STATE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
         urls = payload.get("urls", {})
         return urls if isinstance(urls, dict) else {}
     except Exception:
         return {}
 
 
-def _save_seo_indexing_status(status: dict):
-    payload = {"urls": _load_seo_indexing_statuses()}
+def _save_seo_indexing_status(status: dict, workspace_id: str | None = None):
+    path = _seo_workspace_state_paths(workspace_id)["indexing_status"]
+    payload = {"urls": _load_seo_indexing_statuses(workspace_id)}
     payload["urls"][status["postUrl"]] = status
-    SEO_INDEXING_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SEO_INDEXING_STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _load_seo_scheduler_state():
-    if not SEO_SCHEDULER_STATE_FILE.exists():
+def _load_seo_scheduler_state(workspace_id: str | None = None):
+    path = _seo_workspace_state_paths(workspace_id)["scheduler_state"]
+    if not path.exists():
         return {}
     try:
-        payload = json.loads(SEO_SCHEDULER_STATE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}
 
 
-def _save_seo_scheduler_state(updates: dict):
-    state = _load_seo_scheduler_state()
+def _save_seo_scheduler_state(updates: dict, workspace_id: str | None = None):
+    path = _seo_workspace_state_paths(workspace_id)["scheduler_state"]
+    state = _load_seo_scheduler_state(workspace_id)
     state.update(updates or {})
-    SEO_SCHEDULER_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SEO_SCHEDULER_STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return state
 
 
@@ -226,8 +275,8 @@ def _parse_seo_publish_time(raw_value: str):
     return hour, minute
 
 
-def _load_seo_generated_posts():
-    state_path = PROJECT_DIR / "agents" / "patentzoom_seo_agent" / "state" / "generated-posts.json"
+def _load_seo_generated_posts(workspace_id: str | None = None):
+    state_path = _seo_workspace_state_paths(workspace_id)["generated_posts"]
     if not state_path.exists():
         return []
     try:
@@ -238,8 +287,8 @@ def _load_seo_generated_posts():
         return []
 
 
-def _has_published_seo_post_for_date(date_iso: str):
-    for item in _load_seo_generated_posts():
+def _has_published_seo_post_for_date(date_iso: str, workspace_id: str | None = None):
+    for item in _load_seo_generated_posts(workspace_id):
         if str(item.get("date", "")).strip() == str(date_iso) and str(item.get("status", "")).strip().lower() == "publish":
             return True
     return False
@@ -531,7 +580,7 @@ def _launch_google_browser_session(property_name: str):
     }
 
 
-def _get_google_oauth_access_token():
+def _get_google_oauth_access_token(workspace_id: str | None = None):
     env = _load_env_map()
     client_id = str(env.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     client_secret = str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
@@ -551,7 +600,9 @@ def _get_google_oauth_access_token():
     )
     response.raise_for_status()
     payload = response.json()
-    return payload.get("access_token", ""), str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip()
+    property_key = _workspace_property_env_key(workspace_id)
+    property_name = str(env.get(property_key) or env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip()
+    return payload.get("access_token", ""), property_name
 
 
 def _verify_url_indexable(url: str):
@@ -612,14 +663,16 @@ def _inspect_url_in_search_console(access_token: str, property_name: str, url: s
     }, ""
 
 
-def _run_manual_indexing_request(url: str):
+def _run_manual_indexing_request(url: str, workspace_id: str | None = None):
     env = _load_env_map()
-    base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
-    property_name = str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip()
+    parsed_url = urlparse(url)
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}".rstrip("/") if parsed_url.scheme and parsed_url.netloc else str(env.get("WP_BASE_URL") or "").rstrip("/")
+    property_key = _workspace_property_env_key(workspace_id)
+    property_name = str(env.get(property_key) or env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip()
     access_token = ""
     oauth_error = ""
     try:
-        access_token, property_name = _get_google_oauth_access_token()
+        access_token, property_name = _get_google_oauth_access_token(workspace_id)
     except Exception as exc:
         oauth_error = str(exc)
     sitemap_candidates = _discover_indexing_sitemaps(base_url)
@@ -663,7 +716,7 @@ def _run_manual_indexing_request(url: str):
         "requestCompletedAt": _now_iso(),
         "error": inspect_error if inspect_error else oauth_error,
     }
-    _save_seo_indexing_status(status)
+    _save_seo_indexing_status(status, workspace_id)
     return status
 
 
@@ -722,6 +775,7 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
 def _seo_scheduler_completion_handler(event: dict):
     result = event.get("result", {}) if isinstance(event, dict) else {}
     status = str(result.get("status") or event.get("type") or "unknown")
+    workspace_id = result.get("workspaceId") or "patentzoom"
     _save_seo_scheduler_state(
         {
             "last_auto_finished_at": _now_iso(),
@@ -730,9 +784,11 @@ def _seo_scheduler_completion_handler(event: dict):
             "last_auto_topic": str(result.get("topic") or result.get("title") or ""),
             "last_auto_wordpress_url": str(result.get("wordpressUrl") or ""),
             "last_auto_error": str(result.get("error") or event.get("message") or ""),
-        }
+        },
+        workspace_id,
     )
     _maybe_auto_request_indexing_after_publish(result, source="scheduler")
+    _maybe_auto_share_to_social_after_publish(result, source="scheduler")
 
 
 def _should_auto_request_indexing(result: dict):
@@ -752,10 +808,11 @@ def _maybe_auto_request_indexing_after_publish(result: dict, source: str = "run"
     url = str(result.get("wordpressUrl") or "").strip()
     if not url:
         return False
+    workspace_id = result.get("workspaceId") or "patentzoom"
 
     def worker():
         try:
-            status = _run_manual_indexing_request(url)
+            status = _run_manual_indexing_request(url, workspace_id)
             if source == "scheduler":
                 _save_seo_scheduler_state(
                     {
@@ -763,7 +820,8 @@ def _maybe_auto_request_indexing_after_publish(result: dict, source: str = "run"
                         "last_auto_indexing_status": str(status.get("browserFallbackStatus") or status.get("inspection", {}).get("coverageState") or ""),
                         "last_auto_indexing_url": url,
                         "last_auto_indexing_error": str(status.get("error") or ""),
-                    }
+                    },
+                    workspace_id,
                 )
         except Exception as exc:
             if source == "scheduler":
@@ -773,7 +831,8 @@ def _maybe_auto_request_indexing_after_publish(result: dict, source: str = "run"
                         "last_auto_indexing_status": "failed",
                         "last_auto_indexing_url": url,
                         "last_auto_indexing_error": str(exc),
-                    }
+                    },
+                    workspace_id,
                 )
 
     threading.Thread(
@@ -784,9 +843,68 @@ def _maybe_auto_request_indexing_after_publish(result: dict, source: str = "run"
     return True
 
 
-def _maybe_schedule_daily_seo_run():
+def _social_status_for_workspace(workspace_id: str | None = None):
+    return social_status_snapshot(
+        _resolve_seo_workspace_id(workspace_id),
+        _load_env_map(),
+        _seo_workspace_state_paths(workspace_id)["social_status"],
+    )
+
+
+def _should_auto_share_to_social(result: dict):
+    if not _should_auto_request_indexing(result):
+        return False
+    workspace_id = result.get("workspaceId") or "patentzoom"
+    status = _social_status_for_workspace(workspace_id)
+    return bool(status.get("autoPostEnabled")) and int(status.get("configuredPlatformCount") or 0) > 0
+
+
+def _maybe_auto_share_to_social_after_publish(result: dict, source: str = "run"):
+    if not _should_auto_share_to_social(result):
+        return False
+
+    workspace_id = result.get("workspaceId") or "patentzoom"
     env = _load_env_map()
-    if not _is_truthy(env.get("AUTO_PUBLISH")):
+    state_path = _seo_workspace_state_paths(workspace_id)["social_status"]
+
+    def worker():
+        try:
+            social_result = publish_article_to_social(workspace_id, result, env, state_path=state_path)
+            if source == "scheduler":
+                ok = bool(social_result.get("ok"))
+                _save_seo_scheduler_state(
+                    {
+                        "last_auto_social_posted_at": _now_iso(),
+                        "last_auto_social_status": "posted" if ok else "failed",
+                        "last_auto_social_url": str(social_result.get("articleUrl") or ""),
+                        "last_auto_social_error": " | ".join(social_result.get("errors") or []),
+                    },
+                    workspace_id,
+                )
+        except Exception as exc:
+            if source == "scheduler":
+                _save_seo_scheduler_state(
+                    {
+                        "last_auto_social_posted_at": _now_iso(),
+                        "last_auto_social_status": "failed",
+                        "last_auto_social_url": str(result.get("wordpressUrl") or ""),
+                        "last_auto_social_error": str(exc),
+                    },
+                    workspace_id,
+                )
+
+    threading.Thread(
+        target=worker,
+        daemon=True,
+        name=f"seo-social-{int(time.time())}",
+    ).start()
+    return True
+
+
+def _maybe_schedule_daily_seo_run_for_workspace(workspace_id: str | None = None):
+    workspace_id = _resolve_seo_workspace_id(workspace_id)
+    env = _load_env_map()
+    if not _is_truthy(env.get(_workspace_auto_publish_env_key(workspace_id))):
         return
 
     now_ist = _ist_now()
@@ -798,23 +916,25 @@ def _maybe_schedule_daily_seo_run():
     if current_minutes < scheduled_minutes:
         return
 
-    if _has_published_seo_post_for_date(today_iso):
+    if _has_published_seo_post_for_date(today_iso, workspace_id):
         _save_seo_scheduler_state(
             {
                 "last_checked_at": _now_iso(),
                 "last_skip_reason": "Published SEO article already exists for today.",
                 "last_skip_date": today_iso,
-            }
+            },
+            workspace_id,
         )
         return
 
-    state = _load_seo_scheduler_state()
+    state = _load_seo_scheduler_state(workspace_id)
     if str(state.get("last_auto_attempt_date") or "").strip() == today_iso:
         return
 
     launch_result = _launch_agent_run(
         "patentzoom_seo_agent",
         {
+            "workspace_id": workspace_id,
             "publish_override": "publish",
             "enable_featured_image": True,
             "dry_run": False,
@@ -829,7 +949,8 @@ def _maybe_schedule_daily_seo_run():
                 "last_checked_at": _now_iso(),
                 "last_skip_reason": "Scheduler could not start the SEO agent because it was not idle.",
                 "last_skip_date": today_iso,
-            }
+            },
+            workspace_id,
         )
         return
 
@@ -842,8 +963,14 @@ def _maybe_schedule_daily_seo_run():
             "last_auto_result_status": "running",
             "last_auto_post_status": "",
             "last_auto_error": "",
-        }
+        },
+        workspace_id,
     )
+
+
+def _maybe_schedule_daily_seo_run():
+    for workspace_id in SEO_WORKSPACE_AUTO_PUBLISH_KEYS:
+        _maybe_schedule_daily_seo_run_for_workspace(workspace_id)
 
 
 def _seo_scheduler_loop():
@@ -915,25 +1042,93 @@ async def agent_detail(name: str):
 
 
 @app.get("/api/agents/{name}/dashboard-data")
-async def agent_dashboard_data(name: str):
+async def agent_dashboard_data(name: str, workspace_id: str = "patentzoom"):
     if name == "patentzoom_seo_agent":
-        return get_seo_dashboard_data()
+        return get_seo_dashboard_data(workspace_id)
     return JSONResponse({"error": "Dashboard data is not available for this agent"}, status_code=404)
 
 
 @app.get("/api/google/search-console/status")
-async def google_search_console_status():
-    return _google_search_console_status()
+async def google_search_console_status(workspace_id: str = "patentzoom"):
+    return _google_search_console_status(workspace_id)
+
+
+@app.get("/api/social/status")
+async def social_status(workspace_id: str = "patentzoom"):
+    return _social_status_for_workspace(workspace_id)
+
+
+@app.post("/api/social/config")
+async def social_config(payload: dict = Body(...)):
+    workspace_id = _resolve_seo_workspace_id(payload.get("workspace_id") or payload.get("workspaceId"))
+    prefix = {
+        "patentzoom": "PATENTZOOM",
+        "patent-drawing-experts": "PATENT_DRAWING_EXPERTS",
+        "ip-docketers": "IP_DOCKETERS",
+        "menteso": "MENTESO",
+    }[workspace_id]
+
+    updates = {}
+    field_map = {
+        "auto_post": f"{prefix}_SOCIAL_AUTO_POST",
+        "platforms": f"{prefix}_SOCIAL_PLATFORMS",
+        "facebook_page_id": f"{prefix}_SOCIAL_FACEBOOK_PAGE_ID",
+        "meta_access_token": f"{prefix}_SOCIAL_META_ACCESS_TOKEN",
+        "instagram_business_account_id": f"{prefix}_SOCIAL_INSTAGRAM_BUSINESS_ACCOUNT_ID",
+        "linkedin_organization_urn": f"{prefix}_SOCIAL_LINKEDIN_ORGANIZATION_URN",
+        "linkedin_access_token": f"{prefix}_SOCIAL_LINKEDIN_ACCESS_TOKEN",
+    }
+
+    for input_key, env_key in field_map.items():
+        if input_key in payload:
+            updates[env_key] = payload.get(input_key)
+
+    if not updates:
+        return JSONResponse({"error": "No social configuration values were provided."}, status_code=400)
+
+    _write_env_updates(updates)
+    return {"status": "saved", "social": _social_status_for_workspace(workspace_id)}
+
+
+@app.post("/api/social/post-now")
+async def social_post_now(payload: dict = Body(...)):
+    workspace_id = _resolve_seo_workspace_id(payload.get("workspace_id") or payload.get("workspaceId"))
+    url = str(payload.get("url") or payload.get("wordpressUrl") or "").strip()
+    title = str(payload.get("title") or "").strip()
+    primary_keyword = str(payload.get("primaryKeyword") or "").strip()
+    article = payload.get("article") if isinstance(payload.get("article"), dict) else {}
+
+    if not url:
+        return JSONResponse({"error": "A published article URL is required."}, status_code=400)
+
+    try:
+        result = await asyncio.to_thread(
+            publish_article_to_social,
+            workspace_id,
+            {
+                "wordpressUrl": url,
+                "title": title,
+                "primaryKeyword": primary_keyword,
+                "article": article,
+                "excerpt": payload.get("excerpt") or article.get("excerpt") or "",
+            },
+            _load_env_map(),
+            _seo_workspace_state_paths(workspace_id)["social_status"],
+        )
+        return {"status": "ok", "social": result}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.post("/api/google/search-console/request-indexing")
 async def google_search_console_request_indexing(payload: dict = Body(...)):
     url = str(payload.get("url") or "").strip()
+    workspace_id = str(payload.get("workspace_id") or payload.get("workspaceId") or "patentzoom").strip() or "patentzoom"
     if not url:
         return JSONResponse({"error": "A published URL is required."}, status_code=400)
 
     try:
-        status = await asyncio.to_thread(_run_manual_indexing_request, url)
+        status = await asyncio.to_thread(_run_manual_indexing_request, url, workspace_id)
         return {"status": "ok", "indexing": status}
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -943,7 +1138,8 @@ async def google_search_console_request_indexing(payload: dict = Body(...)):
 async def google_search_console_config(payload: dict = Body(...)):
     client_id = str(payload.get("client_id") or "").strip()
     client_secret = str(payload.get("client_secret") or "").strip()
-    property_name = str(payload.get("property") or "sc-domain:patentzoom.us").strip()
+    workspace_id = _resolve_seo_workspace_id(payload.get("workspace_id") or payload.get("workspaceId"))
+    property_name = str(payload.get("property") or "").strip()
 
     if not client_id or not client_secret:
         return JSONResponse({"error": "Google OAuth client ID and client secret are required"}, status_code=400)
@@ -952,15 +1148,16 @@ async def google_search_console_config(payload: dict = Body(...)):
         {
             "GOOGLE_OAUTH_CLIENT_ID": client_id,
             "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
-            "GOOGLE_SEARCH_CONSOLE_PROPERTY": property_name,
+            _workspace_property_env_key(workspace_id): property_name,
         }
     )
-    return {"status": "saved", **_google_search_console_status()}
+    return {"status": "saved", **_google_search_console_status(workspace_id)}
 
 
 @app.post("/api/google/search-console/browser-session")
-async def google_search_console_browser_session():
-    property_name = str(_load_env_map().get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip()
+async def google_search_console_browser_session(workspace_id: str = "patentzoom"):
+    env = _load_env_map()
+    property_name = str(env.get(_workspace_property_env_key(workspace_id)) or env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip()
     try:
         result = await asyncio.to_thread(_launch_google_browser_session, property_name)
         return {"status": "ok", **result}
@@ -969,7 +1166,7 @@ async def google_search_console_browser_session():
 
 
 @app.get("/api/google/search-console/connect")
-async def google_search_console_connect():
+async def google_search_console_connect(workspace_id: str = "patentzoom"):
     env = _load_env_map()
     client_id = str(env.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     client_secret = str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
@@ -980,7 +1177,7 @@ async def google_search_console_connect():
         )
 
     state = secrets.token_urlsafe(24)
-    GOOGLE_OAUTH_STATES[state] = {"created_at": asyncio.get_event_loop().time()}
+    GOOGLE_OAUTH_STATES[state] = {"created_at": asyncio.get_event_loop().time(), "workspace_id": _resolve_seo_workspace_id(workspace_id)}
     params = {
         "client_id": client_id,
         "redirect_uri": _google_oauth_redirect_uri(),
@@ -1008,7 +1205,8 @@ async def google_search_console_callback(code: str = None, state: str = None, er
             status_code=400,
         )
 
-    GOOGLE_OAUTH_STATES.pop(state, None)
+    oauth_state = GOOGLE_OAUTH_STATES.pop(state, None) or {}
+    workspace_id = _resolve_seo_workspace_id(oauth_state.get("workspace_id"))
     env = _load_env_map()
     client_id = str(env.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
     client_secret = str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
@@ -1157,6 +1355,7 @@ def _start_agent_run(name: str, input_data: dict | None = None):
         if name == "patentzoom_seo_agent" and isinstance(event, dict):
             result = event.get("result", {}) if isinstance(event, dict) else {}
             _maybe_auto_request_indexing_after_publish(result, source="dashboard")
+            _maybe_auto_share_to_social_after_publish(result, source="dashboard")
 
     launch = _launch_agent_run(name, input_data=input_data, emit=emit, on_complete=on_complete)
     if not launch.get("ok"):

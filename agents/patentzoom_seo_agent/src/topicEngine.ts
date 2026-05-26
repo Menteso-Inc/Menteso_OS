@@ -28,7 +28,6 @@ import {
 } from "./textUtils";
 
 const DISCOVERY_MODE = "mixed_signal_dynamic";
-const PATENTZOOM_DOMAIN = "patentzoom.us";
 const DISCOVERY_SEED_QUERIES = [
   "patent filing strategy startups",
   "provisional patent filing",
@@ -109,6 +108,118 @@ const EVERGREEN_FALLBACK_TOPICS = [
   },
 ];
 
+const DRAWING_DISCOVERY_SEED_QUERIES = [
+  "utility patent drawings",
+  "design patent drawings",
+  "USPTO drawing requirements",
+  "patent illustration services",
+  "patent drawing rules",
+  "reference numerals patent drawings",
+  "patent drawing corrections",
+  "patent drawing cost",
+];
+
+const DRAWING_EVERGREEN_FALLBACK_TOPICS = [
+  {
+    primaryKeyword: "utility patent drawings requirements guide",
+    theme: "Utility Patent Drawings",
+    intentCluster: "utility patent drawings",
+    angle: "evergreen requirements guide",
+    secondaryKeywords: ["utility patent drawing requirements", "patent figure requirements", "utility patent drawing checklist"],
+  },
+  {
+    primaryKeyword: "design patent drawings rules for USPTO filings",
+    theme: "Design Patent Drawings",
+    intentCluster: "design patent drawings",
+    angle: "evergreen USPTO rules guide",
+    secondaryKeywords: ["design patent drawing rules", "ornamental drawing requirements", "design patent figure examples"],
+  },
+  {
+    primaryKeyword: "USPTO patent drawing requirements checklist",
+    theme: "Patent Drawing Rules",
+    intentCluster: "patent drawing rules",
+    angle: "evergreen compliance checklist",
+    secondaryKeywords: ["USPTO drawing requirements", "patent drawing margins", "reference numerals patent drawings"],
+  },
+  {
+    primaryKeyword: "patent drawing corrections after USPTO objections",
+    theme: "Patent Drawing Corrections",
+    intentCluster: "patent drawing rules",
+    angle: "evergreen objection response guide",
+    secondaryKeywords: ["patent drawing objections", "correcting patent drawings", "USPTO drawing objection response"],
+  },
+  {
+    primaryKeyword: "patent drawing cost guide for inventors",
+    theme: "Patent Drawings Cost",
+    intentCluster: "patent drawing costs",
+    angle: "evergreen pricing guide",
+    secondaryKeywords: ["patent drawing fees", "utility patent drawing cost", "design patent drawing pricing"],
+  },
+  {
+    primaryKeyword: "how patent illustrators prepare filing-ready figures",
+    theme: "Patent Illustrations",
+    intentCluster: "patent illustrations",
+    angle: "evergreen process guide",
+    secondaryKeywords: ["patent illustrator workflow", "patent illustration process", "filing ready patent figures"],
+  },
+];
+
+const IP_DOCKETERS_DISCOVERY_SEED_QUERIES = [
+  "ip docketing services",
+  "ip docketing systems",
+  "patent prosecution workflow",
+  "ip prosecution paralegal services",
+  "missed deadlines ip docketing",
+  "ip docketing software integrations",
+  "anaqua docketing support",
+  "patricia docketing workflow",
+];
+
+const IP_DOCKETERS_EVERGREEN_FALLBACK_TOPICS = [
+  {
+    primaryKeyword: "what is ip docketing for law firms",
+    theme: "IP Docketing Services",
+    intentCluster: "ip docketing",
+    angle: "evergreen fundamentals guide",
+    secondaryKeywords: ["ip docketing services", "law firm docketing workflow", "deadline management for patents"],
+  },
+  {
+    primaryKeyword: "how ip docketing prevents missed patent deadlines",
+    theme: "Missed Deadline Prevention",
+    intentCluster: "ip docketing",
+    angle: "evergreen risk-reduction guide",
+    secondaryKeywords: ["missed patent deadlines", "patent deadline tracking", "ip docketing risk management"],
+  },
+  {
+    primaryKeyword: "patent prosecution workflow support for growing law firms",
+    theme: "IP Prosecution Support",
+    intentCluster: "ip prosecution support",
+    angle: "evergreen workflow guide",
+    secondaryKeywords: ["patent prosecution workflow", "prosecution support services", "law firm patent workflow"],
+  },
+  {
+    primaryKeyword: "ip paralegal services for docketing and prosecution teams",
+    theme: "IP Paralegal Services",
+    intentCluster: "ip paralegal services",
+    angle: "evergreen support-services guide",
+    secondaryKeywords: ["ip paralegal services", "docketing paralegal support", "patent prosecution paralegal"],
+  },
+  {
+    primaryKeyword: "best ip docketing integrations for law firm operations",
+    theme: "Docketing System Integrations",
+    intentCluster: "docketing integrations",
+    angle: "evergreen integrations guide",
+    secondaryKeywords: ["anaqua support", "patricia integration", "ip docketing systems"],
+  },
+  {
+    primaryKeyword: "how outsourced ip docketing supports global patent portfolios",
+    theme: "Global Portfolio Docketing",
+    intentCluster: "ip docketing",
+    angle: "evergreen portfolio management guide",
+    secondaryKeywords: ["global ip portfolio management", "outsourced ip docketing", "international patent deadlines"],
+  },
+];
+
 const OUT_OF_SCOPE_PATTERNS = [
   /\b(salary|salaries|pay scale|hourly pay|compensation)\b/,
   /\b(job|jobs|career|careers|resume|cv|cover letter|internship|internships)\b/,
@@ -169,12 +280,22 @@ function patentAdjacentScore(value: string): number {
   const normalized = normalizeKeyword(value);
   const checks: Array<[RegExp, number]> = [
     [/\bpatent\b/, 5],
+    [/\bdocketing\b|\bdocket\b/, 5],
+    [/\bdeadline\b|\bdeadlines\b|\bdeadline tracking\b/, 4],
+    [/\bparalegal\b|\blaw firm support\b|\badmin support\b/, 4],
+    [/\bprosecution\b|\bprosecution workflow\b/, 4],
+    [/\bportfolio management\b|\bip portfolio\b/, 4],
+    [/\banaqua\b|\bpattsy\b|\bpatricia\b|\bwebtms\b|\bcpi\b|\bdockettrak\b|\bflextrac\b|\bappcoll\b/, 5],
     [/\bprovisional\b/, 4],
     [/\buspto\b/, 4],
     [/\boffice action\b/, 4],
     [/\bpct\b/, 4],
     [/\bsoftware\b/, 3],
     [/\bai\b|\bartificial intelligence\b/, 3],
+    [/\bdrawing\b|\bdrawings\b|\bfigure\b|\bfigures\b/, 4],
+    [/\billustration\b|\billustrator\b/, 4],
+    [/\breference numerals?\b|\bshading\b|\bline styles?\b|\bmargins?\b/, 4],
+    [/\bdesign patent\b|\butility patent\b/, 4],
     [/\bstartup\b|\bfounder\b/, 3],
     [/\bcost\b|\bfees\b|\bbudget\b/, 3],
     [/\bfiling\b|\bapplication\b|\bclaim\b/, 3],
@@ -189,8 +310,61 @@ function isPatentAdjacent(value: string): boolean {
   return patentAdjacentScore(value) >= 5;
 }
 
+function workspaceId(config: AppConfig): string {
+  return String(config.workspaceId || "").trim().toLowerCase();
+}
+
+function isDrawingWorkspace(config: AppConfig): boolean {
+  return workspaceId(config) === "patent-drawing-experts";
+}
+
+function isIpDocketersWorkspace(config: AppConfig): boolean {
+  return workspaceId(config) === "ip-docketers";
+}
+
+function isWorkspaceRelevantTopic(config: AppConfig, value: string): boolean {
+  if (!isPatentAdjacent(value)) return false;
+
+  const normalized = normalizeKeyword(value);
+
+  if (isDrawingWorkspace(config)) {
+    return /\bdrawing|drawings|figure|figures|illustration|illustrator|reference numerals|uspto drawing|design patent drawing|utility patent drawing|shading|line rules|margins?\b/.test(normalized);
+  }
+
+  if (isIpDocketersWorkspace(config)) {
+    if (/\b(certificate|certificates|certification|certifications|course|courses|training|exam|salary|salaries|job|jobs|career|careers|resume|interview)\b/.test(normalized)) {
+      return false;
+    }
+
+    return /\b(ip docketing|trademark docketing|patent docketing|docketing|deadline|deadlines|deadline tracking|missed deadlines|prosecution|prosecution workflow|paralegal|anaqua|pattsy|patricia|webtms|cpi|dockettrak|flextrac|appcoll|law firm|law firms|legal ops|legal operations|outsourced ip|integration|integrations|docketing systems?)\b/.test(normalized);
+  }
+
+  return true;
+}
+
+function discoverySeedQueriesForConfig(config: AppConfig): string[] {
+  if (isDrawingWorkspace(config)) return DRAWING_DISCOVERY_SEED_QUERIES;
+  if (isIpDocketersWorkspace(config)) return IP_DOCKETERS_DISCOVERY_SEED_QUERIES;
+  return DISCOVERY_SEED_QUERIES;
+}
+
+function evergreenFallbackTopicsForConfig(config: AppConfig) {
+  if (isDrawingWorkspace(config)) return DRAWING_EVERGREEN_FALLBACK_TOPICS;
+  if (isIpDocketersWorkspace(config)) return IP_DOCKETERS_EVERGREEN_FALLBACK_TOPICS;
+  return EVERGREEN_FALLBACK_TOPICS;
+}
+
 function inferTheme(cluster: string): string {
   const themeMap: Record<string, string> = {
+    "ip docketing": "IP Docketing Services",
+    "ip prosecution support": "IP Prosecution Support",
+    "ip paralegal services": "IP Paralegal Services",
+    "docketing integrations": "Docketing System Integrations",
+    "utility patent drawings": "Utility Patent Drawings",
+    "design patent drawings": "Design Patent Drawings",
+    "patent drawing rules": "Patent Drawing Rules",
+    "patent illustrations": "Patent Illustrations",
+    "patent drawing costs": "Patent Drawings Cost",
     "provisional patents": "Provisional Patent Strategy",
     "software and ai patents": "Software and AI Patent Protection",
     "patent costs": "Patent Cost and Filing Budget",
@@ -220,6 +394,7 @@ function computeCommercialRelevance(text: string): number {
   if (/\b(strategy|guide|checklist|steps|process|timeline)\b/.test(normalized)) score += 8;
   if (/\bstartup|founder|saas|company\b/.test(normalized)) score += 7;
   if (/\bpatent filing|provisional|office action|pct\b/.test(normalized)) score += 7;
+  if (/\bdocketing|deadline|prosecution|paralegal|integration|law firm\b/.test(normalized)) score += 8;
   return Math.min(25, score);
 }
 
@@ -232,6 +407,7 @@ function scoreCompetitorGap(title: string, snippet: string): number {
   let score = 0;
   if (/\bguide|checklist|mistakes|timeline|cost|strategy|example\b/.test(normalized)) score += 8;
   if (/\bstartup|founder|software|ai|office action|provisional\b/.test(normalized)) score += 6;
+  if (/\bdocketing|deadline|prosecution|paralegal|integration|law firm\b/.test(normalized)) score += 7;
   return Math.min(20, score);
 }
 
@@ -346,7 +522,7 @@ async function fetchSearchConsoleSignals(
     for (const row of rows) {
       const query = normalizeSignalQuery(String(row.keys?.[0] || ""));
       const page = String(row.keys?.[1] || "");
-      if (!query || !isPatentAdjacent(query)) continue;
+      if (!query || !isWorkspaceRelevantTopic(config, query)) continue;
 
       const impressions = Number(row.impressions || 0);
       const clicks = Number(row.clicks || 0);
@@ -449,7 +625,7 @@ async function fetchSerpResearchBundle(
   const competitors = Array.isArray(searchResult.organic_results)
     ? searchResult.organic_results
         .map((item) => extractOrganicText(item as Record<string, unknown>))
-        .filter((item) => item.url && !item.url.toLowerCase().includes(PATENTZOOM_DOMAIN))
+        .filter((item) => item.url && !item.url.toLowerCase().includes(config.siteDomain))
         .slice(0, 5)
     : [];
 
@@ -483,7 +659,7 @@ async function fetchSerpSignals(
     };
   }
 
-  const pickedQueries = uniqueStrings(seedQueries.filter(isPatentAdjacent), 4);
+  const pickedQueries = uniqueStrings(seedQueries.filter((query) => isWorkspaceRelevantTopic(config, query)), 4);
   const signals: TopicSignal[] = [];
   const competitorSignals: TopicSignal[] = [];
   const errors: string[] = [];
@@ -493,7 +669,7 @@ async function fetchSerpSignals(
       const bundle = await fetchSerpResearchBundle(config, logger, query);
 
       for (const suggestion of bundle.suggestions) {
-        if (!isPatentAdjacent(suggestion)) continue;
+        if (!isWorkspaceRelevantTopic(config, suggestion)) continue;
         signals.push({
           id: uniqueSignalId("serp_autocomplete", suggestion),
           sourceType: "serp_autocomplete",
@@ -512,7 +688,7 @@ async function fetchSerpSignals(
       }
 
       for (const search of bundle.relatedSearches) {
-        if (!isPatentAdjacent(search)) continue;
+        if (!isWorkspaceRelevantTopic(config, search)) continue;
         signals.push({
           id: uniqueSignalId("serp_related_search", search),
           sourceType: "serp_related_search",
@@ -531,7 +707,7 @@ async function fetchSerpSignals(
       }
 
       for (const question of bundle.relatedQuestions) {
-        if (!isPatentAdjacent(question)) continue;
+        if (!isWorkspaceRelevantTopic(config, question)) continue;
         signals.push({
           id: uniqueSignalId("serp_related_question", question),
           sourceType: "serp_related_question",
@@ -551,7 +727,7 @@ async function fetchSerpSignals(
 
       for (const competitor of bundle.competitors) {
         const candidateText = competitor.title || competitor.snippet || query;
-        if (!isPatentAdjacent(candidateText)) continue;
+        if (!isWorkspaceRelevantTopic(config, candidateText)) continue;
         competitorSignals.push({
           id: uniqueSignalId("competitor_article", candidateText, competitor.url),
           sourceType: "competitor_article",
@@ -598,12 +774,12 @@ async function fetchSerpSignals(
   };
 }
 
-function aggregateSignalsIntoCandidates(signals: TopicSignal[]): HotTopicCandidate[] {
+function aggregateSignalsIntoCandidates(config: AppConfig, signals: TopicSignal[]): HotTopicCandidate[] {
   const grouped = new Map<string, HotTopicCandidate>();
 
   for (const signal of signals) {
     const primaryKeyword = normalizeSignalQuery(signal.query || signal.label || signal.title || "");
-    if (!primaryKeyword || !isPatentAdjacent(primaryKeyword) || isOutOfScopeTopic(primaryKeyword)) continue;
+    if (!primaryKeyword || !isWorkspaceRelevantTopic(config, primaryKeyword) || isOutOfScopeTopic(primaryKeyword)) continue;
 
     const intentCluster = signal.intentCluster || inferIntentCluster(primaryKeyword);
     const theme = inferTheme(intentCluster);
@@ -673,17 +849,18 @@ function aggregateSignalsIntoCandidates(signals: TopicSignal[]): HotTopicCandida
 }
 
 function buildAdjacentExpansionCandidates(
+  config: AppConfig,
   candidates: HotTopicCandidate[],
   liveSignals: TopicSignal[],
 ): HotTopicCandidate[] {
   const expansions: HotTopicCandidate[] = [];
-  const basis = candidates.length ? candidates.slice(0, 4) : aggregateSignalsIntoCandidates(liveSignals).slice(0, 4);
+  const basis = candidates.length ? candidates.slice(0, 4) : aggregateSignalsIntoCandidates(config, liveSignals).slice(0, 4);
 
   for (const candidate of basis) {
     if (isOutOfScopeTopic(candidate.primaryKeyword)) continue;
     for (const modifier of ADJACENT_EXPANSION_MODIFIERS) {
       const keyword = `${candidate.primaryKeyword} ${modifier}`.trim();
-      if (isOutOfScopeTopic(keyword)) continue;
+      if (isOutOfScopeTopic(keyword) || !isWorkspaceRelevantTopic(config, keyword)) continue;
       expansions.push({
         ...candidate,
         topicId: slugify(`${candidate.intentCluster}-${keyword}`),
@@ -731,9 +908,9 @@ function buildManualOverrideCandidate(topicOverride: string): TopicSelection {
   };
 }
 
-function buildEvergreenFallbackCandidates(): HotTopicCandidate[] {
-  return EVERGREEN_FALLBACK_TOPICS
-    .filter((item) => !isOutOfScopeTopic(item.primaryKeyword))
+function buildEvergreenFallbackCandidates(config: AppConfig): HotTopicCandidate[] {
+  return evergreenFallbackTopicsForConfig(config)
+    .filter((item) => !isOutOfScopeTopic(item.primaryKeyword) && isWorkspaceRelevantTopic(config, item.primaryKeyword))
     .map((item, index) => {
       const sourceEvidence = [
         "Fallback evergreen topic selected because live discovery did not produce a safe publishable topic.",
@@ -787,7 +964,7 @@ export async function chooseTopic(args: {
   const now = new Date();
   const runDate = getTimeZoneIsoDate(now, config.timeZone);
 
-  logger.step("Discovering a dynamic PatentZoom topic from live search-demand and competitor signals.", {
+  logger.step(`Discovering a dynamic ${config.siteName} topic from live search-demand and competitor signals.`, {
     stage: "keywords",
     mode: DISCOVERY_MODE,
   });
@@ -821,7 +998,7 @@ export async function chooseTopic(args: {
   const seedQueries = uniqueStrings(
     [
       ...searchConsoleResult.signals.map((signal) => signal.query),
-      ...DISCOVERY_SEED_QUERIES,
+      ...discoverySeedQueriesForConfig(config),
     ],
     6,
   );
@@ -837,7 +1014,7 @@ export async function chooseTopic(args: {
   const sourceHealth = [searchConsoleResult.health, serpResult.health, serpResult.competitorHealth];
   const degradedSources = sourceHealth.filter((item) => !item.ok).map((item) => item.source);
   const liveSignals = [...searchConsoleResult.signals, ...serpResult.signals, ...serpResult.competitorSignals]
-    .filter((signal) => isPatentAdjacent(signal.query || signal.label || signal.title || ""))
+    .filter((signal) => isWorkspaceRelevantTopic(config, signal.query || signal.label || signal.title || ""))
     .sort(
       (a, b) =>
         b.demandScore + b.freshnessScore + b.commercialRelevanceScore + b.brandFitScore + b.competitorGapScore -
@@ -849,7 +1026,7 @@ export async function chooseTopic(args: {
     sourceMix: uniqueStrings(liveSignals.map((signal) => signal.sourceType), 8).join(", "),
   });
 
-  let candidates = aggregateSignalsIntoCandidates(liveSignals);
+  let candidates = aggregateSignalsIntoCandidates(config, liveSignals);
   let rejectedTopics: TopicRejectedCandidate[] = [];
 
   const filterCandidates = (items: HotTopicCandidate[]) =>
@@ -887,7 +1064,7 @@ export async function chooseTopic(args: {
       status: "warning",
       mode: "adjacent_expansion",
     });
-    const expanded = buildAdjacentExpansionCandidates(candidates, liveSignals);
+    const expanded = buildAdjacentExpansionCandidates(config, candidates, liveSignals);
     filtered = filterCandidates(expanded);
     candidates = expanded;
   }
@@ -898,7 +1075,7 @@ export async function chooseTopic(args: {
       status: "warning",
       mode: "evergreen_fallback",
     });
-    const evergreen = buildEvergreenFallbackCandidates();
+    const evergreen = buildEvergreenFallbackCandidates(config);
     filtered = filterCandidates(evergreen);
     candidates = evergreen;
   }
@@ -917,7 +1094,7 @@ export async function chooseTopic(args: {
   saveTopicDiscoverySnapshot(config.paths.topicDiscoveryFile, snapshot);
 
   if (!winner) {
-    throw new Error("No eligible PatentZoom topic remained after duplicate checks");
+    throw new Error(`No eligible ${config.siteName} topic remained after duplicate checks`);
   }
 
   logger.step(`Chosen topic: ${winner.primaryKeyword}`, {

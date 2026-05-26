@@ -9,7 +9,9 @@ import subprocess
 import threading
 import time
 import uuid
+import xmlrpc.client
 from datetime import datetime, timedelta, timezone
+from html import unescape
 from pathlib import Path
 import shutil
 from urllib import error as urllib_error
@@ -19,6 +21,7 @@ from urllib import request as urllib_request
 from dotenv import dotenv_values
 
 from shared.memory import get_best_strategy, load_memory, save_learning
+from shared.social_publishing import social_status_snapshot
 from .tests import tests
 
 AGENT_NAME = "patentzoom_seo_agent"
@@ -34,20 +37,74 @@ LOGS_DIR = RUNTIME_DIR / "logs"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
 
+SEO_WORKSPACES = {
+    "patentzoom": {
+        "id": "patentzoom",
+        "name": "PatentZoom SEO Agent",
+        "site_name": "PatentZoom",
+        "env_prefix": "",
+        "state_mode": "legacy",
+        "default_category": "Article",
+        "brand_tone": "Professional, authoritative, practical, helpful",
+    },
+    "patent-drawing-experts": {
+        "id": "patent-drawing-experts",
+        "name": "Patent Drawing Experts SEO Agent",
+        "site_name": "Patent Drawing Experts",
+        "env_prefix": "PATENT_DRAWING_EXPERTS",
+        "state_mode": "workspace",
+        "default_category": "Article",
+        "brand_tone": "Professional, precise, practical, educational, patent-illustration focused",
+    },
+    "ip-docketers": {
+        "id": "ip-docketers",
+        "name": "IP Docketers SEO Agent",
+        "site_name": "IP Docketers",
+        "env_prefix": "IP_DOCKETERS",
+        "state_mode": "workspace",
+        "default_category": "Article",
+        "brand_tone": "Professional, clear, operations-aware, intellectual-property workflow focused",
+    },
+    "menteso": {
+        "id": "menteso",
+        "name": "Menteso SEO Agent",
+        "site_name": "Menteso",
+        "env_prefix": "MENTESO",
+        "state_mode": "workspace",
+        "default_category": "Article",
+        "brand_tone": "Professional, modern, operations-minded, AI automation focused",
+    },
+}
+
+WORKSPACE_SITE_ENV_KEYS = [
+    "WP_BASE_URL",
+    "WP_USERNAME",
+    "WP_APPLICATION_PASSWORD",
+    "AUTO_PUBLISH",
+    "SITE_NAME",
+    "BRAND_TONE",
+    "DEFAULT_CATEGORY",
+    "DEFAULT_AUTHOR",
+    "ENABLE_FEATURED_IMAGE",
+    "ENABLE_GOOGLE_INDEXING",
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    "GOOGLE_SEARCH_CONSOLE_PROPERTY",
+]
+
 AGENT_CONFIG = {
     "name": "SEO Posting Agent",
     "description": (
-        "PatentZoom daily SEO publishing workflow. Researches patent-law topics, "
+        "Multi-workspace daily SEO publishing workflow. Researches patent-law topics, "
         "generates SEO content with the configured AI provider, optionally creates a featured image, "
         "and publishes drafts or live posts to WordPress."
     ),
     "role": "Daily SEO Publisher",
-    "goal": "Generate high-quality PatentZoom blog posts without duplicate topics",
+    "goal": "Generate high-quality SEO blog posts for the active workspace without duplicate topics",
     "status": "active",
     "version": "1.0.0",
     "requires_llm": True,
     "accepts_upload": False,
-    "group": "PatentZoom Agents",
+    "group": "Agents",
     "ui_type": "seo_posting",
     "input_fields": [
         {"name": "topic_override", "type": "text", "label": "Topic Override"},
@@ -68,10 +125,74 @@ AGENT_CONFIG = {
 }
 
 
+def _get_workspace(workspace_id=None):
+    workspace_key = str(workspace_id or "patentzoom").strip().lower() or "patentzoom"
+    return SEO_WORKSPACES.get(workspace_key, SEO_WORKSPACES["patentzoom"])
+
+
+def _workspace_memory_key(workspace_id=None):
+    workspace = _get_workspace(workspace_id)
+    if workspace["id"] == "patentzoom":
+        return AGENT_NAME
+    return f"{AGENT_NAME}/workspaces/{workspace['id']}"
+
+
+def _workspace_paths(workspace_id=None):
+    workspace = _get_workspace(workspace_id)
+    if workspace["state_mode"] == "legacy":
+        state_dir = AGENT_DIR / "state"
+        runtime_dir = AGENT_DIR / "runtime"
+    else:
+        state_dir = AGENT_DIR / "state" / "workspaces" / workspace["id"]
+        runtime_dir = AGENT_DIR / "runtime" / "workspaces" / workspace["id"]
+
+    requests_dir = runtime_dir / "requests"
+    logs_dir = runtime_dir / "logs"
+    images_dir = runtime_dir / "images"
+    for path in [state_dir, runtime_dir, requests_dir, logs_dir, images_dir]:
+        path.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "workspace": workspace,
+        "state_dir": state_dir,
+        "runtime_dir": runtime_dir,
+        "requests_dir": requests_dir,
+        "logs_dir": logs_dir,
+        "images_dir": images_dir,
+        "generated_posts_file": state_dir / "generated-posts.json",
+        "indexing_status_file": state_dir / "indexing-status.json",
+        "social_status_file": state_dir / "social-posting-status.json",
+        "topic_discovery_file": state_dir / "topic-discovery.json",
+        "scheduler_state_file": state_dir / "scheduler-state.json",
+    }
+
+
 def _load_env_values():
     if ENV_FILE.exists():
         return dotenv_values(ENV_FILE)
     return {}
+
+
+def _load_workspace_env(workspace_id=None):
+    workspace = _get_workspace(workspace_id)
+    env = dict(_load_env_values())
+    prefix = str(workspace.get("env_prefix") or "").strip()
+    if prefix:
+        for key in WORKSPACE_SITE_ENV_KEYS:
+            prefixed_key = f"{prefix}_{key}"
+            if prefixed_key in env and str(env.get(prefixed_key) or "").strip():
+                env[key] = env.get(prefixed_key)
+            else:
+                env[key] = ""
+
+        env["AUTO_PUBLISH"] = str(env.get("AUTO_PUBLISH") or "false").strip() or "false"
+        env["ENABLE_FEATURED_IMAGE"] = str(env.get("ENABLE_FEATURED_IMAGE") or "true").strip() or "true"
+        env["ENABLE_GOOGLE_INDEXING"] = str(env.get("ENABLE_GOOGLE_INDEXING") or "false").strip() or "false"
+
+    env["SITE_NAME"] = str(env.get("SITE_NAME") or workspace.get("site_name") or "").strip() or workspace["name"]
+    env["BRAND_TONE"] = str(env.get("BRAND_TONE") or workspace.get("brand_tone") or "").strip()
+    env["DEFAULT_CATEGORY"] = str(env.get("DEFAULT_CATEGORY") or workspace.get("default_category") or "Article").strip()
+    return env
 
 
 def _is_set(value):
@@ -105,8 +226,8 @@ def _selected_content_provider(env):
     return "anthropic" if provider == "anthropic" else "openai"
 
 
-def _load_topic_discovery():
-    if not TOPIC_DISCOVERY_FILE.exists():
+def _load_topic_discovery(file_path=TOPIC_DISCOVERY_FILE):
+    if not file_path.exists():
         return {
             "generatedAt": "",
             "mode": "mixed_signal_dynamic",
@@ -116,9 +237,9 @@ def _load_topic_discovery():
             "liveSignals": [],
             "sourceHealth": [],
             "degradedSources": [],
-        }
+    }
     try:
-        payload = json.loads(TOPIC_DISCOVERY_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
         return {
@@ -133,43 +254,43 @@ def _load_topic_discovery():
         }
 
 
-def _load_generated_posts():
-    if not STATE_FILE.exists():
+def _load_generated_posts(file_path=STATE_FILE):
+    if not file_path.exists():
         return []
     try:
-        payload = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
         posts = payload.get("generatedPosts", [])
         return posts if isinstance(posts, list) else []
     except Exception:
         return []
 
 
-def _load_indexing_statuses():
-    if not INDEXING_STATE_FILE.exists():
+def _load_indexing_statuses(file_path=INDEXING_STATE_FILE):
+    if not file_path.exists():
         return {}
     try:
-        payload = json.loads(INDEXING_STATE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
         urls = payload.get("urls", {})
         return urls if isinstance(urls, dict) else {}
     except Exception:
         return {}
 
 
-def _load_scheduler_state():
-    if not SCHEDULER_STATE_FILE.exists():
+def _load_scheduler_state(file_path=SCHEDULER_STATE_FILE):
+    if not file_path.exists():
         return {}
     try:
-        payload = json.loads(SCHEDULER_STATE_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}
 
 
-def _load_recent_runs(limit=6):
-    if not LOGS_DIR.exists():
+def _load_recent_runs(limit=6, logs_dir=LOGS_DIR):
+    if not logs_dir.exists():
         return []
     runs = []
-    for path in sorted(LOGS_DIR.glob("*.json"), reverse=True):
+    for path in sorted(logs_dir.glob("*.json"), reverse=True):
         try:
             entries = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -202,6 +323,151 @@ def _load_recent_runs(limit=6):
 
 def _strip_html(value):
     return re.sub(r"<[^>]+>", "", str(value or "")).strip()
+
+
+def _normalize_whitespace(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _trim_at_word_boundary(value, max_length):
+    text = _normalize_whitespace(value)
+    if len(text) <= max_length:
+        return text
+    sliced = text[: max_length + 1]
+    if " " not in sliced:
+        return text[:max_length].strip()
+    return sliced[: sliced.rfind(" ")].strip()
+
+
+def _to_title_case(value):
+    acronyms = {
+        "ai": "AI",
+        "ip": "IP",
+        "pct": "PCT",
+        "uspto": "USPTO",
+        "saas": "SaaS",
+    }
+    words = [word for word in _normalize_whitespace(value).split(" ") if word]
+    normalized = []
+    for word in words:
+        lower = word.lower()
+        if lower in acronyms:
+            normalized.append(acronyms[lower])
+        else:
+            normalized.append(word[:1].upper() + word[1:].lower())
+    return " ".join(normalized)
+
+
+def _is_ip_docketers_workspace(workspace_id):
+    return str(workspace_id or "").strip().lower() == "ip-docketers"
+
+
+def _workspace_title_suffix(workspace_id):
+    return "Guide for Law Firms and IP Teams" if _is_ip_docketers_workspace(workspace_id) else "Guide for Startups and Inventors"
+
+
+def _seo_meta_description(primary_keyword, site_name, workspace_id):
+    keyword_title = _to_title_case(primary_keyword)
+    if _is_ip_docketers_workspace(workspace_id):
+        text = (
+            f"{keyword_title} explained for law firms and IP teams, including workflow design, "
+            f"deadline control, integration support, and practical next steps with {site_name}."
+        )
+    else:
+        text = (
+            f"{keyword_title} explained with practical filing guidance, common mistakes, "
+            f"and next steps from {site_name}."
+        )
+    if len(text) > 155:
+        text = _trim_at_word_boundary(text, 150)
+    return text
+
+
+def _seo_meta_title(title, primary_keyword, site_name, workspace_id):
+    keyword_title = _to_title_case(primary_keyword)
+    preferred = f"{keyword_title} | {site_name}"
+    if len(preferred) <= 60:
+        return preferred
+    cleaned_title = _normalize_whitespace(title).rstrip(":-–— ").strip()
+    if _is_ip_docketers_workspace(workspace_id) and len(cleaned_title) >= 60 and ":" not in cleaned_title:
+        cleaned_title = f"{keyword_title} {_workspace_title_suffix(workspace_id)}"
+    return _trim_at_word_boundary(cleaned_title or preferred, 60)
+
+
+def _build_seo_article_stub(workspace_id, post_title, primary_keyword, site_name):
+    focus_keyword = _normalize_whitespace(primary_keyword or post_title).lower() or "patent strategy"
+    title = _normalize_whitespace(unescape(post_title)) or _to_title_case(focus_keyword)
+    return {
+        "title": title,
+        "primaryKeyword": focus_keyword,
+        "metaTitle": _seo_meta_title(title, focus_keyword, site_name, workspace_id),
+        "metaDescription": _seo_meta_description(focus_keyword, site_name, workspace_id),
+    }
+
+
+def _apply_xmlrpc_yoast_meta(workspace_id, post_id, article=None, seo_score=100, readability_score=100):
+    workspace = _get_workspace(workspace_id)
+    env = _load_workspace_env(workspace["id"])
+    wp_base = str(env.get("WP_BASE_URL") or "").strip().rstrip("/")
+    wp_username = str(env.get("WP_USERNAME") or "").strip()
+    wp_password = str(env.get("WP_APPLICATION_PASSWORD") or "").strip()
+    if not (wp_base and wp_username and wp_password and post_id):
+        return {"ok": False, "reason": "wordpress_not_configured"}
+
+    server = xmlrpc.client.ServerProxy(f"{wp_base}/xmlrpc.php", allow_none=True)
+    post = server.wp.getPost(0, wp_username, wp_password, int(post_id))
+    existing_fields = {}
+    for field in post.get("custom_fields", []) or []:
+        key = str(field.get("key") or "")
+        if key:
+            existing_fields[key] = field
+
+    article_payload = article if isinstance(article, dict) and article else _build_seo_article_stub(
+        workspace["id"],
+        post.get("post_title", ""),
+        "",
+        str(env.get("SITE_NAME") or workspace.get("site_name") or workspace["name"]).strip(),
+    )
+    primary_keyword = _normalize_whitespace(article_payload.get("primaryKeyword") or post.get("post_title", "")).lower()
+    meta_title = _normalize_whitespace(article_payload.get("metaTitle") or _seo_meta_title(
+        article_payload.get("title") or post.get("post_title", ""),
+        primary_keyword,
+        str(env.get("SITE_NAME") or workspace.get("site_name") or workspace["name"]).strip(),
+        workspace["id"],
+    ))
+    meta_description = _normalize_whitespace(article_payload.get("metaDescription") or _seo_meta_description(
+        primary_keyword,
+        str(env.get("SITE_NAME") or workspace.get("site_name") or workspace["name"]).strip(),
+        workspace["id"],
+    ))
+
+    fields_to_apply = {
+        "_yoast_wpseo_title": meta_title,
+        "_yoast_wpseo_metadesc": meta_description,
+        "_yoast_wpseo_focuskw": primary_keyword,
+        "_yoast_wpseo_linkdex": str(int(seo_score or 100)),
+        "_yoast_wpseo_content_score": str(int(readability_score or 100)),
+    }
+
+    custom_fields = []
+    for key, value in fields_to_apply.items():
+        current = existing_fields.get(key)
+        payload = {"value": value}
+        if current and current.get("id"):
+            payload["id"] = current["id"]
+        else:
+            payload["key"] = key
+        custom_fields.append(payload)
+
+    server.wp.editPost(0, wp_username, wp_password, int(post_id), {"custom_fields": custom_fields})
+    return {
+        "ok": True,
+        "postId": int(post_id),
+        "workspaceId": workspace["id"],
+        "metaTitle": meta_title,
+        "metaDescription": meta_description,
+        "focusKeyword": primary_keyword,
+    }
 
 
 def _count_matches(text, needle):
@@ -271,8 +537,8 @@ def _top_keywords(posts, recent_runs, limit=5):
     return [{"keyword": keyword, "count": count} for keyword, count in ordered[:limit]]
 
 
-def _fetch_recent_patentzoom_posts(limit=8):
-    env = _load_env_values()
+def _fetch_recent_patentzoom_posts(limit=8, env=None):
+    env = dict(env or _load_env_values())
     base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
     if not base_url:
         return []
@@ -520,7 +786,7 @@ def _build_article_manager(recent_runs, index_cache):
         articles.append(
             {
                 "id": run.get("runId", ""),
-                "title": run.get("title") or article.get("title", "PatentZoom SEO draft"),
+                "title": run.get("title") or article.get("title", "SEO draft"),
                 "seoScore": run.get("seoScore"),
                 "primaryKeyword": run.get("primaryKeyword") or article.get("primaryKeyword", ""),
                 "slug": run.get("slug") or article.get("slug", ""),
@@ -619,12 +885,20 @@ def _build_today_run(env, topic_discovery):
     secondary_keywords = list(selected.get("secondaryKeywords", []) or [])
     source_mix = ", ".join(selected.get("sourceTypes", []) or [])
     confidence = round(float(selected.get("score") or 0), 1) if selected else 0
+    site_name = str(env.get("SITE_NAME") or "").strip().lower()
+    website_url = str(env.get("WP_BASE_URL") or "").strip().lower()
+    if "ip docketers" in site_name or "ipdocketers" in website_url:
+        target_audience = "Law firms, in-house IP teams, docketing managers, prosecution teams, and legal operations professionals"
+    elif "patent drawing experts" in site_name or "patentdrawingexperts" in website_url:
+        target_audience = "Inventors, patent attorneys, law firms, prosecution teams, and businesses that need USPTO-compliant patent drawings"
+    else:
+        target_audience = "Founders, inventors, startup teams, and businesses"
     return {
         "selectedTopic": selected.get("theme") or selected.get("pillar") or "Dynamic topic discovery will choose the strongest live topic",
         "targetKeyword": selected.get("primaryKeyword", ""),
         "secondaryKeywords": secondary_keywords[:4],
         "contentType": "SEO Blog Article",
-        "targetAudience": "Founders, inventors, startup teams, and businesses",
+        "targetAudience": target_audience,
         "publishMode": "publish" if str(env.get("AUTO_PUBLISH", "false")).strip().lower() == "true" else "draft",
         "generateFeaturedImage": str(env.get("ENABLE_FEATURED_IMAGE", "true")).strip().lower() == "true",
         "dryRun": False,
@@ -641,14 +915,75 @@ def _build_wordpress_monitor(env, posts, recent_runs):
     last_published = published_posts[-1] if published_posts else None
     return {
         "connectionStatus": "Connected" if _is_set(env.get("WP_BASE_URL")) and _is_set(env.get("WP_USERNAME")) and _is_configured_secret(env.get("WP_APPLICATION_PASSWORD")) else "Not Connected",
-        "websiteUrl": str(env.get("WP_BASE_URL") or "https://patentzoom.us"),
+        "websiteUrl": str(env.get("WP_BASE_URL") or ""),
         "lastPublishedPost": (last_published or {}).get("primaryKeyword", ""),
         "lastPublishedUrl": (last_published or {}).get("wpUrl", ""),
         "draftsCreated": len(draft_posts),
         "failedPublishes": len(failed_runs),
-        "defaultCategory": str(env.get("DEFAULT_CATEGORY") or "Patent Filing"),
+        "defaultCategory": str(env.get("DEFAULT_CATEGORY") or "Article"),
         "defaultAuthor": str(env.get("DEFAULT_AUTHOR") or "Editorial Team"),
         "mediaUploadStatus": "Enabled" if str(env.get("ENABLE_FEATURED_IMAGE", "true")).strip().lower() == "true" else "Disabled",
+    }
+
+
+def _build_social_status(workspace, env, file_path):
+    snapshot = social_status_snapshot(workspace["id"], env, file_path)
+    recent_history = list(snapshot.get("recentHistory") or [])
+    latest = recent_history[0] if recent_history else {}
+    configured = snapshot.get("configured") or {}
+    platforms = list(snapshot.get("platforms") or [])
+    expected_platforms = {
+        "patentzoom": ["facebook", "instagram", "linkedin"],
+        "patent-drawing-experts": ["facebook", "linkedin"],
+        "ip-docketers": ["facebook", "linkedin"],
+        "menteso": ["facebook", "linkedin"],
+    }.get(workspace["id"], platforms)
+    platform_rows = []
+
+    for platform in platforms:
+        key = str(platform or "").strip().lower()
+        is_configured = bool(configured.get(key))
+        result = ((latest.get("results") or {}).get(key) or {}) if isinstance(latest, dict) else {}
+        last_ok = bool(result.get("ok"))
+        if not latest:
+            status = "Pending"
+            detail = "No social post recorded yet for this platform."
+        elif not is_configured:
+            status = "Not Configured"
+            detail = f"{platform.title()} is not connected for this workspace yet."
+        elif last_ok:
+            status = "Posted"
+            detail = f"Last post succeeded for {platform.title()}."
+        else:
+            status = "Failed"
+            detail = str(result.get("message") or f"Last {platform.title()} post did not complete successfully.")
+
+        platform_rows.append(
+            {
+                "platform": key,
+                "label": key.title(),
+                "configured": is_configured,
+                "status": status,
+                "detail": detail,
+                "postId": str(result.get("postId") or ""),
+            }
+        )
+
+    return {
+        "autoPostEnabled": bool(snapshot.get("autoPostEnabled")),
+        "useFeaturedImage": bool(snapshot.get("useFeaturedImage")),
+        "useHashtags": bool(snapshot.get("useHashtags")),
+        "configuredPlatformCount": int(snapshot.get("configuredPlatformCount") or 0),
+        "platforms": platforms,
+        "pendingPlatforms": [item for item in expected_platforms if item not in platforms],
+        "platformRows": platform_rows,
+        "updatedAt": str(snapshot.get("updatedAt") or ""),
+        "latestArticleUrl": str(latest.get("articleUrl") or ""),
+        "latestTitle": str(latest.get("title") or ""),
+        "latestPostedAt": str(latest.get("postedAt") or ""),
+        "latestOk": bool(latest.get("ok")) if latest else False,
+        "latestErrors": list(latest.get("errors") or []) if isinstance(latest, dict) else [],
+        "recentHistory": recent_history[:5],
     }
 
 
@@ -665,7 +1000,7 @@ def _build_seo_performance(posts, recent_runs, index_cache):
         indexing = _merge_indexing_status(url, run.get("indexing"), index_cache)
         rows.append(
             {
-                "articleTitle": (run.get("title") or item.get("primaryKeyword") or "PatentZoom article"),
+                "articleTitle": (run.get("title") or item.get("primaryKeyword") or "SEO article"),
                 "publishedDate": item.get("date", ""),
                 "focusKeyword": item.get("primaryKeyword", ""),
                 "impressions": "Pending",
@@ -690,7 +1025,7 @@ def _build_latest_article_preview(article_manager, wp_monitor):
         "metaTitle": latest.get("title", ""),
         "metaDescription": latest.get("metaDescription", ""),
         "wordCount": len(_strip_html(latest.get("previewHtml", "")).split()) if latest.get("previewHtml") else 0,
-        "category": "Patent Filing",
+        "category": wp_monitor.get("defaultCategory", "Article"),
         "author": wp_monitor.get("defaultAuthor", "Editorial Team"),
         "featuredImagePreview": "",
         "wordpressUrl": latest.get("url", ""),
@@ -700,7 +1035,7 @@ def _build_latest_article_preview(article_manager, wp_monitor):
     }
 
 
-def _build_seo_checklist(article_preview, internal_linking, posts):
+def _build_seo_checklist(article_preview, internal_linking, posts, site_name):
     html = str(article_preview.get("previewHtml", "") or "")
     title = str(article_preview.get("title", "") or "")
     focus_keyword = str(article_preview.get("focusKeyword", "") or "")
@@ -722,7 +1057,7 @@ def _build_seo_checklist(article_preview, internal_linking, posts):
         {"label": "FAQ section added", "passed": "faq" in html.lower()},
         {"label": "Featured image alt text added", "passed": bool(article_preview.get("featuredImagePreview")) or str(article_preview.get("status", "")).lower() in {"draft", "publish", "published"}},
         {"label": "No duplicate topic", "passed": not focus_keyword or focus_keyword.strip().lower() not in duplicate_topics},
-        {"label": "CTA included", "passed": "patentzoom" in html.lower()},
+        {"label": "CTA included", "passed": bool(site_name and str(site_name).lower() in html.lower())},
     ]
     return checklist
 
@@ -744,17 +1079,21 @@ def _infer_failed_step(error_message, status):
     return "Workflow"
 
 
-def get_dashboard_data():
-    env = _load_env_values()
+def get_dashboard_data(workspace_id="patentzoom"):
+    workspace = _get_workspace(workspace_id)
+    paths = _workspace_paths(workspace["id"])
+    env = _load_workspace_env(workspace["id"])
+    workspace_memory = load_memory(_workspace_memory_key(workspace["id"]))
+    site_name = str(env.get("SITE_NAME") or workspace["site_name"]).strip() or workspace["site_name"]
     content_provider = _selected_content_provider(env)
-    posts = _load_generated_posts()
-    index_cache = _load_indexing_statuses()
-    topic_discovery = _load_topic_discovery()
-    scheduler_state = _load_scheduler_state()
-    recent_runs = _load_recent_runs()
-    all_runs = _load_recent_runs(limit=None)
-    recent_site_posts = _fetch_recent_patentzoom_posts()
-    recent_site_posts_for_stats = _fetch_recent_patentzoom_posts(limit=100)
+    posts = _load_generated_posts(paths["generated_posts_file"])
+    index_cache = _load_indexing_statuses(paths["indexing_status_file"])
+    topic_discovery = _load_topic_discovery(paths["topic_discovery_file"])
+    scheduler_state = _load_scheduler_state(paths["scheduler_state_file"])
+    recent_runs = _load_recent_runs(logs_dir=paths["logs_dir"])
+    all_runs = _load_recent_runs(limit=None, logs_dir=paths["logs_dir"])
+    recent_site_posts = _fetch_recent_patentzoom_posts(env=env)
+    recent_site_posts_for_stats = _fetch_recent_patentzoom_posts(limit=100, env=env)
 
     publish_statuses = {str(item.get("status", "")).lower() for item in posts}
     draft_count = sum(1 for item in posts if str(item.get("status", "")).lower() == "draft")
@@ -763,11 +1102,12 @@ def get_dashboard_data():
     average_seo_score = round(sum(scored_runs) / len(scored_runs), 1) if scored_runs else 0
     article_manager = _build_article_manager(recent_runs[:8], index_cache)
     wp_monitor = _build_wordpress_monitor(env, posts, recent_runs)
+    social_status = _build_social_status(workspace, env, paths["social_status_file"])
     latest_article_preview = _build_latest_article_preview(article_manager, wp_monitor)
-    seo_checklist = _build_seo_checklist(latest_article_preview, _build_internal_linking(recent_site_posts, topic_discovery), posts)
+    seo_checklist = _build_seo_checklist(latest_article_preview, _build_internal_linking(recent_site_posts, topic_discovery), posts, site_name)
     logs_history = [
         {
-            "topic": item.get("title") or item.get("primaryKeyword") or "PatentZoom SEO run",
+            "topic": item.get("title") or item.get("primaryKeyword") or f"{site_name} SEO run",
             "status": item.get("postStatus") or item.get("status"),
             "publishDate": item.get("createdAt", ""),
             "url": item.get("wordpressUrl", ""),
@@ -824,13 +1164,21 @@ def get_dashboard_data():
             "key": "wordpress",
             "label": "WordPress publishing",
             "ready": _is_set(env.get("WP_BASE_URL")) and _is_set(env.get("WP_USERNAME")) and _is_configured_secret(env.get("WP_APPLICATION_PASSWORD")),
-            "detail": "Needed to create draft or published posts on patentzoom.us. Use a WordPress Application Password, not a placeholder value.",
+            "detail": f"Needed to create draft or published posts for {site_name}. Use a WordPress Application Password, not a placeholder value.",
         },
         {
             "key": "indexing",
             "label": "Google indexing handoff",
-            "ready": str(env.get("ENABLE_GOOGLE_INDEXING", "false")).strip().lower() != "true" or _is_configured_secret(env.get("GOOGLE_SERVICE_ACCOUNT_JSON")),
-            "detail": "If Google indexing is enabled, a service account JSON must also be configured.",
+            "ready": (
+                str(env.get("ENABLE_GOOGLE_INDEXING", "false")).strip().lower() != "true"
+                or _is_configured_secret(env.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
+                or bool(
+                    str(env.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip()
+                    and str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
+                    and str(env.get("GOOGLE_OAUTH_REFRESH_TOKEN") or "").strip()
+                )
+            ),
+            "detail": "Google indexing can use a service account or the connected Search Console OAuth flow.",
         },
         {
             "key": "search_console_oauth",
@@ -866,8 +1214,8 @@ def get_dashboard_data():
     if str(env.get("ENABLE_GOOGLE_INDEXING", "false")).strip().lower() == "true" and not readiness[3]["ready"]:
         next_actions.append({
             "tone": "warning",
-            "title": "Add GOOGLE_SERVICE_ACCOUNT_JSON or disable indexing",
-            "detail": "The agent can publish content, but automatic indexing handoff will remain unavailable.",
+            "title": "Connect Search Console OAuth or add a service account",
+            "detail": "The agent can publish content, but automatic indexing handoff will remain unavailable until one Google indexing path is configured.",
         })
     if not readiness[4]["ready"]:
         next_actions.append({
@@ -892,6 +1240,11 @@ def get_dashboard_data():
     last_topic = posts[-1] if posts else None
 
     return {
+        "workspace": {
+            "id": workspace["id"],
+            "name": workspace["name"],
+            "siteName": site_name,
+        },
         "readiness": readiness,
         "topicDiscovery": topic_discovery,
         "overview": {
@@ -923,7 +1276,7 @@ def get_dashboard_data():
         "seoChecklist": seo_checklist,
         "internalLinking": {
             "suggestions": _build_internal_linking(recent_site_posts, topic_discovery),
-            "note": "Suggestions are based on recent PatentZoom posts and the selected topic discovery signals.",
+            "note": f"Suggestions are based on recent {site_name} posts and the selected topic discovery signals.",
         },
         "automationSettings": _build_automation_settings(env, readiness, scheduler_state),
         "googleAuth": {
@@ -936,15 +1289,16 @@ def get_dashboard_data():
                 and str(env.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip()
                 and str(env.get("GOOGLE_OAUTH_REFRESH_TOKEN") or "").strip()
             ),
-            "property": str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "sc-domain:patentzoom.us").strip() or "sc-domain:patentzoom.us",
+            "property": str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip(),
             "redirectUri": "http://127.0.0.1:8000/api/google/search-console/callback",
         },
         "wordpressMonitor": wp_monitor,
+        "socialStatus": social_status,
         "seoPerformance": _build_seo_performance(posts, recent_runs, index_cache),
         "logsHistory": logs_history,
         "workflowStages": [
             {"key": "readiness", "label": "Topic Engine", "description": "Load history, validate services, and prepare live demand sources for dynamic discovery."},
-            {"key": "keywords", "label": "Research", "description": "Score live search, Search Console, and competitor signals to choose the strongest PatentZoom topic."},
+            {"key": "keywords", "label": "Research", "description": f"Score live search, Search Console, and competitor signals to choose the strongest {site_name} topic."},
             {"key": "content", "label": "Content Writer", "description": "Generate the outline, article, metadata, and FAQ structure."},
             {"key": "optimization", "label": "SEO Validator", "description": "Improve headings, internal links, readability, and SEO structure."},
             {"key": "image", "label": "Featured Image", "description": "Create and upload a featured image when enabled."},
@@ -956,6 +1310,7 @@ def get_dashboard_data():
             "publishedCount": published_count,
             "draftCount": draft_count,
             "recentRunCount": len(recent_runs),
+            "workspaceStats": workspace_memory.get("stats", {}),
             "lastRunStatus": last_run.get("status", "never") if last_run else "never",
             "lastPrimaryKeyword": last_run.get("primaryKeyword", "") if last_run else "",
             "autoPublish": str(env.get("AUTO_PUBLISH", "false")).strip().lower() == "true",
@@ -1043,6 +1398,39 @@ def _build_payload(input_data):
     return payload
 
 
+def _build_workspace_config_overrides(workspace_id=None):
+    workspace = _get_workspace(workspace_id)
+    env = _load_workspace_env(workspace["id"])
+    paths = _workspace_paths(workspace["id"])
+    default_author = str(env.get("DEFAULT_AUTHOR") or "").strip()
+
+    return {
+        "workspaceId": workspace["id"],
+        "workspaceName": workspace["name"],
+        "siteName": str(env.get("SITE_NAME") or workspace["site_name"]).strip() or workspace["site_name"],
+        "brandTone": str(env.get("BRAND_TONE") or workspace["brand_tone"]).strip(),
+        "wpBaseUrl": str(env.get("WP_BASE_URL") or "").strip(),
+        "wpUsername": str(env.get("WP_USERNAME") or "").strip(),
+        "wpApplicationPassword": str(env.get("WP_APPLICATION_PASSWORD") or "").strip(),
+        "autoPublish": str(env.get("AUTO_PUBLISH", "false")).strip().lower() == "true",
+        "defaultCategory": str(env.get("DEFAULT_CATEGORY") or workspace["default_category"]).strip() or workspace["default_category"],
+        "defaultAuthor": int(default_author) if default_author.isdigit() else None,
+        "enableFeaturedImage": str(env.get("ENABLE_FEATURED_IMAGE", "true")).strip().lower() == "true",
+        "enableGoogleIndexing": str(env.get("ENABLE_GOOGLE_INDEXING", "false")).strip().lower() == "true",
+        "googleServiceAccountJson": str(env.get("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip(),
+        "googleSearchConsoleProperty": str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip(),
+        "paths": {
+            "stateDir": str(paths["state_dir"]),
+            "runtimeDir": str(paths["runtime_dir"]),
+            "generatedPostsFile": str(paths["generated_posts_file"]),
+            "indexingStatusFile": str(paths["indexing_status_file"]),
+            "topicDiscoveryFile": str(paths["topic_discovery_file"]),
+            "logsDir": str(paths["logs_dir"]),
+            "imagesDir": str(paths["images_dir"]),
+        },
+    }
+
+
 def _build_command(input_path):
     node_cmd = _node_command()
     if DIST_ENTRY.exists():
@@ -1082,15 +1470,19 @@ def run_agent(input_data=None, on_step=None):
     Run the PatentZoom SEO agent by delegating execution to the TypeScript workflow.
     """
     start_time = time.time()
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
+    requested_workspace_id = str((input_data or {}).get("workspace_id") or (input_data or {}).get("workspaceId") or "patentzoom").strip() or "patentzoom"
+    workspace = _get_workspace(requested_workspace_id)
+    memory_key = _workspace_memory_key(workspace["id"])
+    workspace_paths = _workspace_paths(workspace["id"])
+    workspace_paths["runtime_dir"].mkdir(parents=True, exist_ok=True)
+    workspace_paths["requests_dir"].mkdir(parents=True, exist_ok=True)
 
-    memory = load_memory(AGENT_NAME)
-    strategy = get_best_strategy(AGENT_NAME, "daily_seo_blog", default="mixed_signal_dynamic")
+    memory = load_memory(memory_key)
+    strategy = get_best_strategy(memory_key, "daily_seo_blog", default="mixed_signal_dynamic")
     if str(strategy).strip().lower() == "serpapi_calendar":
         strategy = "mixed_signal_dynamic"
     if on_step:
-        on_step("Loading PatentZoom SEO agent memory...")
+        on_step(f"Loading {workspace['name']} memory...")
         on_step(
             f"Memory loaded - {memory.get('stats', {}).get('total_runs', 0)} past runs, "
             f"{round(memory.get('stats', {}).get('success_rate', 0.0) * 100)}% success rate"
@@ -1098,15 +1490,17 @@ def run_agent(input_data=None, on_step=None):
         on_step(f"Selected strategy: {strategy}")
 
     payload = _build_payload(input_data)
+    payload["workspace_id"] = workspace["id"]
+    payload["config_overrides"] = _build_workspace_config_overrides(workspace["id"])
     payload["strategy"] = strategy
     if on_step:
         on_step({
             "type": "step",
-            "message": "Validating local PatentZoom SEO setup and preparing the workflow.",
+            "message": f"Validating local {workspace['name']} setup and preparing the workflow.",
             "data": {"stage": "readiness", "status": "active"},
         })
 
-    input_path = REQUESTS_DIR / f"request_{uuid.uuid4().hex}.json"
+    input_path = workspace_paths["requests_dir"] / f"request_{uuid.uuid4().hex}.json"
     input_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     process_ref = {"proc": None}
@@ -1226,6 +1620,8 @@ def run_agent(input_data=None, on_step=None):
             result.setdefault("featuredImageId", None)
             result.setdefault("outputLogs", output_logs)
             result.setdefault("warnings", warnings)
+            result.setdefault("workspaceId", workspace["id"])
+            result.setdefault("workspaceName", workspace["name"])
             result["executionTime"] = round(result.get("executionTime", execution_time), 2)
 
     except Exception as exc:
@@ -1238,6 +1634,40 @@ def run_agent(input_data=None, on_step=None):
             pass
 
     execution_time = result.get("executionTime", round(time.time() - start_time, 2))
+    result.setdefault("workspaceId", workspace["id"])
+    result.setdefault("workspaceName", workspace["name"])
+
+    post_id = _extract_wp_post_id(result.get("wordpressPostId"))
+    post_status = str(result.get("postStatus") or "").strip().lower()
+    if result.get("status") == "success" and post_id and post_status in {"draft", "publish", "published"}:
+        try:
+            xmlrpc_result = _apply_xmlrpc_yoast_meta(
+                workspace["id"],
+                post_id,
+                result.get("article"),
+                result.get("seoScore") or 100,
+                100,
+            )
+            if xmlrpc_result.get("ok"):
+                result["seoMetaSync"] = xmlrpc_result
+                if on_step:
+                    on_step(
+                        {
+                            "type": "step",
+                            "message": (
+                                f"Applied WordPress SEO plugin meta fallback for {workspace['name']} "
+                                f"post {post_id} so the admin SEO score can update correctly."
+                            ),
+                            "data": {"stage": "seo_meta_sync", "postId": post_id},
+                        }
+                    )
+        except Exception as exc:
+            warning = f"SEO plugin meta sync fallback skipped for post {post_id}: {exc}"
+            warnings.append(warning)
+            output_logs.append(warning)
+            if on_step:
+                on_step({"type": "warning", "message": warning})
+
     test_report = tests.run(result)
     result["tests"] = test_report
 
@@ -1247,7 +1677,7 @@ def run_agent(input_data=None, on_step=None):
         f"post_status={result.get('postStatus') or '-'}"
     )
     save_learning(
-        AGENT_NAME,
+        memory_key,
         "daily_seo_blog",
         result.get("status", "failure"),
         insight,

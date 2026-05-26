@@ -43,6 +43,7 @@ vi.mock("googleapis", () => {
 function createConfig() {
   const stateDir = mkdtempSync(join(tmpdir(), "pz-topic-engine-"));
   return {
+    workspaceId: "patentzoom",
     serpApiKey: "demo",
     timeZone: "Asia/Kolkata",
     googleSearchConsoleProperty: "sc-domain:patentzoom.us",
@@ -234,5 +235,177 @@ describe("topicEngine dynamic discovery", () => {
     const snapshot = JSON.parse(readFileSync(config.paths.topicDiscoveryFile, "utf-8"));
     expect(snapshot.rejectedTopics.length).toBeGreaterThan(0);
     expect(snapshot.selectedTopic.primaryKeyword.toLowerCase()).not.toBe("provisional patent filing");
+  });
+
+  it("uses drawing-focused discovery seeds for the Patent Drawing Experts workspace", async () => {
+    const config = {
+      ...createConfig(),
+      workspaceId: "patent-drawing-experts",
+      googleSearchConsoleProperty: "sc-domain:patentdrawingexperts.com",
+    };
+    oauthState.rows = [];
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const engine = url.searchParams.get("engine");
+      const query = (url.searchParams.get("q") || "").toLowerCase();
+
+      if (engine === "google_autocomplete") {
+        return createResponse({
+          suggestions: [{ value: `${query} checklist` }],
+        });
+      }
+
+      if (query.includes("patent drawing") || query.includes("utility patent drawings") || query.includes("uspto drawing requirements")) {
+        return createResponse({
+          related_questions: [{ question: `How do ${query} work?` }],
+          related_searches: [{ query: `${query} guide` }],
+          organic_results: [
+            {
+              title: `${query} examples`,
+              link: "https://competitor.example.com/patent-drawing-examples",
+              snippet: `Competitor article about ${query}`,
+              date: "5 days ago",
+            },
+          ],
+        });
+      }
+
+      return createResponse({
+        related_questions: [],
+        related_searches: [],
+        organic_results: [],
+      });
+    }) as typeof fetch;
+
+    const result = await chooseTopic({
+      config,
+      logger: mockLogger,
+      ledger: [],
+      recentPosts: [],
+    });
+
+    expect(result.primaryKeyword.toLowerCase()).toMatch(/drawing|illustration|uspto/);
+  });
+
+  it("uses docketing-focused discovery seeds for the IP Docketers workspace", async () => {
+    const config = {
+      ...createConfig(),
+      workspaceId: "ip-docketers",
+      googleSearchConsoleProperty: "sc-domain:ipdocketers.com",
+    };
+    oauthState.rows = [];
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const engine = url.searchParams.get("engine");
+      const query = (url.searchParams.get("q") || "").toLowerCase();
+
+      if (engine === "google_autocomplete") {
+        return createResponse({
+          suggestions: [{ value: `${query} checklist` }],
+        });
+      }
+
+      if (
+        query.includes("docketing") ||
+        query.includes("prosecution workflow") ||
+        query.includes("paralegal")
+      ) {
+        return createResponse({
+          related_questions: [{ question: `How does ${query} work for law firms?` }],
+          related_searches: [{ query: `${query} best practices` }],
+          organic_results: [
+            {
+              title: `${query} guide for legal ops teams`,
+              link: "https://competitor.example.com/ip-docketing-guide",
+              snippet: `Competitor article about ${query}`,
+              date: "4 days ago",
+            },
+          ],
+        });
+      }
+
+      return createResponse({
+        related_questions: [],
+        related_searches: [],
+        organic_results: [],
+      });
+    }) as typeof fetch;
+
+    const result = await chooseTopic({
+      config,
+      logger: mockLogger,
+      ledger: [],
+      recentPosts: [],
+    });
+
+    expect(result.primaryKeyword.toLowerCase()).toMatch(/docketing|prosecution|paralegal|deadline/);
+  });
+
+  it("rejects certificate-style noise for the IP Docketers workspace", async () => {
+    const config = {
+      ...createConfig(),
+      workspaceId: "ip-docketers",
+      googleSearchConsoleProperty: "sc-domain:ipdocketers.com",
+    };
+    oauthState.rows = [];
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const engine = url.searchParams.get("engine");
+      const query = (url.searchParams.get("q") || "").toLowerCase();
+
+      if (engine === "google_autocomplete") {
+        if (query.includes("paralegal")) {
+          return createResponse({
+            suggestions: [{ value: "patent paralegal certificate cost" }],
+          });
+        }
+        return createResponse({
+          suggestions: [{ value: `${query} checklist` }],
+        });
+      }
+
+      if (query.includes("paralegal")) {
+        return createResponse({
+          related_questions: [{ question: "What is patent paralegal certificate cost?" }],
+          related_searches: [{ query: "patent paralegal certification fees" }],
+          organic_results: [],
+        });
+      }
+
+      if (query.includes("docketing") || query.includes("deadline")) {
+        return createResponse({
+          related_questions: [{ question: `How does ${query} work for law firms?` }],
+          related_searches: [{ query: `${query} best practices` }],
+          organic_results: [
+            {
+              title: `${query} guide for legal ops teams`,
+              link: "https://competitor.example.com/ip-docketing-guide",
+              snippet: `Competitor article about ${query}`,
+              date: "4 days ago",
+            },
+          ],
+        });
+      }
+
+      return createResponse({
+        related_questions: [],
+        related_searches: [],
+        organic_results: [],
+      });
+    }) as typeof fetch;
+
+    const result = await chooseTopic({
+      config,
+      logger: mockLogger,
+      ledger: [],
+      recentPosts: [],
+    });
+
+    expect(result.primaryKeyword.toLowerCase()).not.toContain("certificate");
+    expect(result.primaryKeyword.toLowerCase()).not.toContain("certification");
+    expect(result.primaryKeyword.toLowerCase()).toMatch(/docketing|deadline|prosecution|paralegal/);
   });
 });

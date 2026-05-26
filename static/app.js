@@ -92,31 +92,53 @@ const SEO_WORKSPACES = [
     {
         id: "ip-docketers",
         name: "IP Docketers SEO Agent",
-        kind: "placeholder",
-        status: "coming_soon",
-        placeholderTitle: "Dashboard Coming Soon",
-        placeholderMessage: "IP Docketers SEO Agent setup is in progress.",
-        placeholderDetail: "This chip is ready for future expansion. Once the IP Docketers SEO workflow is connected, its separate dashboard will appear here without changing the core layout.",
+        kind: "live",
+        status: "active",
+        placeholderTitle: "",
+        placeholderMessage: "",
+        placeholderDetail: "",
     },
     {
         id: "menteso",
         name: "Menteso SEO Agent",
-        kind: "placeholder",
-        status: "coming_soon",
-        placeholderTitle: "Dashboard Coming Soon",
-        placeholderMessage: "Menteso SEO Agent setup is in progress.",
-        placeholderDetail: "The shared SEO Posting Agent architecture is ready. This area is reserved for the future Menteso SEO dashboard.",
+        kind: "live",
+        status: "active",
+        placeholderTitle: "",
+        placeholderMessage: "",
+        placeholderDetail: "",
     },
     {
         id: "patent-drawing-experts",
         name: "Patent Drawing Experts SEO Agent",
-        kind: "placeholder",
-        status: "coming_soon",
-        placeholderTitle: "Dashboard Coming Soon",
-        placeholderMessage: "Patent Drawing Experts SEO Agent setup is in progress.",
-        placeholderDetail: "This workspace is ready for the future Patent Drawing Experts SEO dashboard without changing the SEO Posting Agent layout.",
+        kind: "live",
+        status: "active",
+        placeholderTitle: "",
+        placeholderMessage: "",
+        placeholderDetail: "",
     },
 ];
+
+function getSeoWorkspaceById(workspaceId) {
+    return SEO_WORKSPACES.find((item) => item.id === workspaceId) || SEO_WORKSPACES[0];
+}
+
+function getActiveSeoWorkspaceLabel() {
+    return getSeoWorkspaceById(state.seo.activeWorkspaceId).name || "SEO workspace";
+}
+
+function getDefaultSearchConsoleProperty(workspaceId) {
+    const workspace = getSeoWorkspaceById(workspaceId);
+    if (workspace.id === "patent-drawing-experts") {
+        return "sc-domain:patentdrawingexperts.com";
+    }
+    if (workspace.id === "ip-docketers") {
+        return "sc-domain:your-domain.com";
+    }
+    if (workspace.id === "menteso") {
+        return "sc-domain:your-domain.com";
+    }
+    return "sc-domain:patentzoom.us";
+}
 
 // ---------------------------------------------------------------------------
 // Init
@@ -270,20 +292,23 @@ async function stopAgent(name) {
 }
 
 async function saveGoogleSearchConsoleConfig() {
+    const workspaceId = state.seo.activeWorkspaceId || "patentzoom";
     const res = await fetch("/api/google/search-console/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+            workspace_id: workspaceId,
             client_id: state.seo.google.clientId.trim(),
             client_secret: state.seo.google.clientSecret.trim(),
-            property: state.seo.google.property.trim() || "sc-domain:patentzoom.us",
+            property: state.seo.google.property.trim() || getDefaultSearchConsoleProperty(workspaceId),
         }),
     });
     return await res.json();
 }
 
 async function launchGoogleBrowserSession() {
-    const res = await fetch("/api/google/search-console/browser-session", {
+    const workspaceId = encodeURIComponent(state.seo.activeWorkspaceId || "patentzoom");
+    const res = await fetch(`/api/google/search-console/browser-session?workspace_id=${workspaceId}`, {
         method: "POST",
     });
     return await res.json();
@@ -293,7 +318,10 @@ async function requestGoogleIndexing(url) {
     const res = await fetch("/api/google/search-console/request-indexing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({
+            url,
+            workspace_id: state.seo.activeWorkspaceId || "patentzoom",
+        }),
     });
     return await res.json();
 }
@@ -317,7 +345,7 @@ async function runAgent(name, params = {}) {
         resetSeoWorkflow();
         handleSeoWorkflowEvent({
             type: "step",
-            message: "Preparing a new PatentZoom SEO run.",
+            message: `Preparing a new ${getActiveSeoWorkspaceLabel()} run.`,
             data: { stage: "readiness", status: "active" },
         }, "step");
     }
@@ -503,6 +531,7 @@ function triggerSeoRun(agent, overrides = {}) {
     runAgent(agent.module_name, {
         method: "POST",
         body: {
+            workspace_id: state.seo.activeWorkspaceId || "patentzoom",
             topic_override: parsedTopicOverride.topicOverride,
             publish_override: overrides.publish_override || state.seo.publishOverride,
             enable_featured_image: overrides.enable_featured_image ?? state.seo.enableFeaturedImage,
@@ -849,9 +878,7 @@ function render() {
 }
 
 function getActiveSeoWorkspace() {
-    const workspace =
-        SEO_WORKSPACES.find((item) => item.id === state.seo.activeWorkspaceId) ||
-        SEO_WORKSPACES[0];
+    const workspace = getSeoWorkspaceById(state.seo.activeWorkspaceId);
     if (state.seo.activeWorkspaceId !== workspace.id) {
         state.seo.activeWorkspaceId = workspace.id;
     }
@@ -901,11 +928,18 @@ function renderSeoWorkspacePlaceholder(workspace) {
 
 function getSeoWorkspaceStats(agent, workspace, stats, rate, rateClass) {
     if (!workspace || workspace.kind === "live") {
+        const snapshot = state.seoDashboard.snapshot || {};
+        const snapshotWorkspaceId = snapshot?.workspace?.id || "";
+        const workspaceStats = snapshotWorkspaceId === (workspace?.id || "") ? (snapshot?.summary?.workspaceStats || {}) : null;
+        const totalRuns = workspaceStats?.total_runs ?? stats.total_runs ?? 0;
+        const successRateRaw = workspaceStats?.success_rate ?? rate;
+        const avgExecutionTime = workspaceStats?.avg_execution_time ?? stats.avg_execution_time ?? 0;
+        const successClass = successRateRaw >= 0.8 ? "success" : successRateRaw >= 0.5 ? "warning" : successRateRaw > 0 ? "error" : "";
         return {
-            totalRuns: stats.total_runs || 0,
-            successRate: formatPercent(rate),
-            successRateClass: rateClass,
-            avgTime: `${(stats.avg_execution_time || 0).toFixed(2)}s`,
+            totalRuns,
+            successRate: formatPercent(successRateRaw),
+            successRateClass: successClass || rateClass,
+            avgTime: `${Number(avgExecutionTime || 0).toFixed(2)}s`,
             status: (agent.status || "idle").toUpperCase(),
             statusClass: "success",
         };
@@ -1172,7 +1206,7 @@ function renderMain() {
             <div class="input-section">
                 <div class="input-card seo-input-card seo-placeholder-input-card">
                     <div class="seo-note-title">${esc(activeSeoWorkspace?.name || "SEO Agent")}</div>
-                    <div class="seo-note-text">This SEO agent dashboard is reserved for future setup. PatentZoom SEO Agent is currently the active live dashboard.</div>
+                    <div class="seo-note-text">This SEO agent dashboard is reserved for future setup. Live SEO workspaces will appear here as they are connected to the shared engine.</div>
                 </div>
             </div>
         `;
@@ -1383,16 +1417,36 @@ function renderSEOInputSection(agent) {
         : (typeof todayRun.sourceMix === "string" && todayRun.sourceMix.trim()
             ? todayRun.sourceMix.split(",").map((item) => item.trim()).filter(Boolean)
             : []);
+    const runStateLabel = state.isRunning
+        ? "Workflow in progress"
+        : seo.dryRun
+            ? "Dry run ready"
+            : seo.publishOverride === "publish"
+                ? "Live publish ready"
+                : "Draft mode ready";
+    const runStateClass = state.isRunning
+        ? "success"
+        : seo.publishOverride === "publish" && !seo.dryRun
+            ? "warning"
+            : "";
     return `
         <div class="input-section">
             <div class="section-title">Today’s SEO Run</div>
             <div class="input-card seo-input-card">
+                <div class="seo-run-command-bar">
+                    <div class="seo-run-command-copy">
+                        <div class="seo-run-command-kicker">Live topic control</div>
+                        <div class="seo-run-command-title">Review the selected topic, adjust only what you need, then launch the SEO workflow.</div>
+                    </div>
+                    <div class="seo-run-command-state ${runStateClass}">${esc(runStateLabel)}</div>
+                </div>
+
                 <div class="seo-panel-grid seo-run-summary-grid">
-                    <div class="seo-run-summary-card">
+                    <div class="seo-run-summary-card seo-run-summary-card-primary seo-run-summary-card-topic">
                         <div class="seo-run-summary-label">Selected Topic</div>
                         <div class="seo-run-summary-value">${esc(selectedTopic)}</div>
                     </div>
-                    <div class="seo-run-summary-card">
+                    <div class="seo-run-summary-card seo-run-summary-card-primary seo-run-summary-card-keyword">
                         <div class="seo-run-summary-label">Target Keyword</div>
                         <div class="seo-run-summary-value">${esc(targetKeyword)}</div>
                     </div>
@@ -1404,7 +1458,7 @@ function renderSEOInputSection(agent) {
                         <div class="seo-run-summary-label">Target Audience</div>
                         <div class="seo-run-summary-value">${esc(todayRun.targetAudience || "Founders, inventors, and businesses")}</div>
                     </div>
-                    <div class="seo-run-summary-card">
+                    <div class="seo-run-summary-card seo-run-summary-card-wide">
                         <div class="seo-run-summary-label">Source Mix</div>
                         <div class="seo-run-summary-value">${esc(sourceMix.length ? sourceMix.join(", ") : "Live topic sources pending")}</div>
                     </div>
@@ -1414,73 +1468,85 @@ function renderSEOInputSection(agent) {
                     </div>
                 </div>
 
-                <div class="input-row">
-                    <label class="input-label" for="seo-topic-override">Topic Override</label>
-                    <input
-                        id="seo-topic-override"
-                        class="text-input"
-                        type="text"
-                        placeholder="Leave blank to use live Search Console, SerpAPI, and competitor topic discovery"
-                        value="${esc(seo.topicOverride)}"
-                    />
-                    <div class="input-help">
-                        Optional: force a specific topic for this run. Otherwise the agent will choose from live demand signals and competitor-topic discovery. For testing, use <code>/bypass-daily-limit</code> here to allow an extra live post today, with or without a custom topic after the command.
-                    </div>
-                </div>
+                <div class="seo-run-controls-grid">
+                    <div class="seo-run-control-panel">
+                        <div class="input-row">
+                            <label class="input-label" for="seo-topic-override">Topic Override</label>
+                            <input
+                                id="seo-topic-override"
+                                class="text-input"
+                                type="text"
+                                placeholder="Leave blank to use live Search Console, SerpAPI, and competitor topic discovery"
+                                value="${esc(seo.topicOverride)}"
+                            />
+                            <div class="input-help">
+                                Optional: force a specific topic for this run. Otherwise the agent will choose from live demand signals and competitor-topic discovery. For testing, use <code>/bypass-daily-limit</code> here to allow an extra live post today, with or without a custom topic after the command.
+                            </div>
+                        </div>
 
-                <div class="seo-chip-list">
-                    ${secondaryKeywords.length
-                        ? secondaryKeywords.map((keyword) => `<span class="sub-agent-chip">${esc(keyword)}</span>`).join("")
-                        : '<span class="sub-agent-chip">Secondary keywords will appear after research</span>'}
-                </div>
-
-                <div class="seo-grid">
-                    <div class="input-row">
-                        <label class="input-label" for="seo-publish-override">Publish Mode</label>
-                        <select id="seo-publish-override" class="wipo-select">
-                            <option value="draft" ${seo.publishOverride === "draft" ? "selected" : ""}>Draft</option>
-                            <option value="publish" ${seo.publishOverride === "publish" ? "selected" : ""}>Publish Immediately</option>
-                        </select>
-                        <div class="input-help">
-                            Draft is safest. Publish only when you want this run to go live if validation passes.
+                        <div class="seo-chip-list">
+                            ${secondaryKeywords.length
+                                ? secondaryKeywords.map((keyword) => `<span class="sub-agent-chip">${esc(keyword)}</span>`).join("")
+                                : '<span class="sub-agent-chip">Secondary keywords will appear after research</span>'}
                         </div>
                     </div>
 
-                    <div class="input-row seo-toggles">
-                        <label class="toggle-row">
-                            <input id="seo-featured-image" type="checkbox" ${seo.enableFeaturedImage ? "checked" : ""}>
-                            <span>Generate featured image</span>
-                        </label>
-                        <label class="toggle-row">
-                            <input id="seo-dry-run" type="checkbox" ${seo.dryRun ? "checked" : ""}>
-                            <span>Dry run only</span>
-                        </label>
-                        <div class="input-help">
-                            Dry run skips WordPress publishing and lets you validate the topic, SEO metadata, and article structure safely.
+                    <div class="seo-run-control-panel seo-run-control-panel-side">
+                        <div class="seo-grid">
+                            <div class="input-row">
+                                <label class="input-label" for="seo-publish-override">Publish Mode</label>
+                                <select id="seo-publish-override" class="wipo-select">
+                                    <option value="draft" ${seo.publishOverride === "draft" ? "selected" : ""}>Draft</option>
+                                    <option value="publish" ${seo.publishOverride === "publish" ? "selected" : ""}>Publish Immediately</option>
+                                </select>
+                                <div class="input-help">
+                                    Draft is safest. Publish only when you want this run to go live if validation passes.
+                                </div>
+                            </div>
+
+                            <div class="input-row seo-toggles">
+                                <label class="toggle-row">
+                                    <input id="seo-featured-image" type="checkbox" ${seo.enableFeaturedImage ? "checked" : ""}>
+                                    <span>Generate featured image</span>
+                                </label>
+                                <label class="toggle-row">
+                                    <input id="seo-dry-run" type="checkbox" ${seo.dryRun ? "checked" : ""}>
+                                    <span>Dry run only</span>
+                                </label>
+                                <div class="input-help">
+                                    Dry run skips WordPress publishing and lets you validate the topic, SEO metadata, and article structure safely.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="seo-agent-note">
+                            <div class="seo-note-title">${esc(agent.name || "SEO Posting Agent")}</div>
+                            <div class="seo-note-text">Daily flow: topic research, outline, article generation, SEO validation, internal links, featured image, WordPress draft or publish, and duplicate-safe topic ledger updates.</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="seo-agent-note">
-                    <div class="seo-note-title">${esc(agent.name || "SEO Posting Agent")}</div>
-                    <div class="seo-note-text">Daily flow: topic research, outline, article generation, SEO validation, internal links, featured image, WordPress draft or publish, and duplicate-safe topic ledger updates.</div>
-                </div>
-
-                <div class="run-actions">
-                    <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
-                        ${state.isRunning
-                            ? '<span class="spinner"></span> Running SEO workflow...'
-                            : "&#x25B6;&nbsp;&nbsp;Run SEO Posting Agent"}
-                    </button>
-                    <button type="button" class="run-btn secondary-run-btn" id="seo-save-draft-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
-                        Save as Draft
-                    </button>
-                    <button type="button" class="run-btn secondary-run-btn" id="seo-publish-now-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
-                        Publish Immediately
-                    </button>
-                    <button type="button" class="stop-btn" id="stop-btn" ${(state.isRunning || state.agentRunStatus === "running" || state.agentRunStatus === "stopping") ? "" : "disabled"}>
-                        ${state.stopRequested ? "Stopping..." : "Stop"}
-                    </button>
+                <div class="seo-run-actions-shell">
+                    <div class="seo-run-actions-copy">
+                        <div class="seo-run-actions-title">Execution actions</div>
+                        <div class="seo-run-actions-note">Use draft for safe review, live publish for production, or stop an active workflow if the topic or output needs to change.</div>
+                    </div>
+                    <div class="run-actions">
+                        <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                            ${state.isRunning
+                                ? '<span class="spinner"></span> Running SEO workflow...'
+                                : "&#x25B6;&nbsp;&nbsp;Run SEO Posting Agent"}
+                        </button>
+                        <button type="button" class="run-btn secondary-run-btn" id="seo-save-draft-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                            Save as Draft
+                        </button>
+                        <button type="button" class="run-btn secondary-run-btn" id="seo-publish-now-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
+                            Publish Immediately
+                        </button>
+                        <button type="button" class="stop-btn" id="stop-btn" ${(state.isRunning || state.agentRunStatus === "running" || state.agentRunStatus === "stopping") ? "" : "disabled"}>
+                            ${state.stopRequested ? "Stopping..." : "Stop"}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1503,6 +1569,30 @@ function getSeoExpandedInsight() {
         state.seoDashboard.expandedInsight = "overview";
     }
     return state.seoDashboard.expandedInsight;
+}
+
+function getSeoIndexingStatusClass(status) {
+    const normalized = String(status || "").trim().toLowerCase();
+    if (!normalized || normalized === "pending" || normalized === "unknown") {
+        return "status-not_found";
+    }
+    if (
+        normalized.includes("indexed")
+        || normalized.includes("request")
+        || normalized.includes("pass")
+        || normalized.includes("allowed")
+    ) {
+        return "status-found";
+    }
+    if (
+        normalized.includes("fail")
+        || normalized.includes("error")
+        || normalized.includes("blocked")
+        || normalized.includes("revoked")
+    ) {
+        return "status-error";
+    }
+    return "status-not_found";
 }
 
 function applySeoInsightsAccordion() {
@@ -1600,7 +1690,7 @@ function renderSEOOverviewSection() {
         return `
             <div class="result-card seo-dashboard-shell">
                 <h4>SEO Posting Agent Dashboard</h4>
-                <div class="memory-empty">Loading PatentZoom SEO control data...</div>
+                <div class="memory-empty">Loading ${esc(getActiveSeoWorkspaceLabel())} control data...</div>
             </div>
         `;
     }
@@ -1630,43 +1720,47 @@ function renderSEOOverviewSection() {
     const internalLinking = snapshot.internalLinking || {};
     const automationSettings = snapshot.automationSettings || [];
     const wordpressMonitor = snapshot.wordpressMonitor || {};
+    const socialStatus = snapshot.socialStatus || {};
     const seoPerformance = snapshot.seoPerformance || [];
     const logsHistory = snapshot.logsHistory || [];
     const topKeywords = overview.topKeywords || [];
     const liveSignals = snapshot.liveSignals || [];
     const rejectedTopics = snapshot.rejectedTopics || [];
     const selectedTopic = topicDiscovery.selectedTopic || {};
+    const workspace = snapshot.workspace || {};
+    const workspaceSiteName = workspace.siteName || workspace.name || getActiveSeoWorkspaceLabel();
+    const workspacePropertyPlaceholder = getDefaultSearchConsoleProperty(workspace.id || state.seo.activeWorkspaceId);
 
     return `
         <div class="seo-dashboard-shell">
             <div class="section-title">SEO Posting Agent Dashboard</div>
 
-            <div class="seo-overview-grid seo-overview-grid-wide">
-                <div class="stat-card">
+            <div class="seo-overview-grid seo-overview-grid-wide seo-kpi-grid">
+                <div class="stat-card stat-card-primary">
                     <div class="stat-value">${overview.articlesPublished || 0}</div>
                     <div class="stat-label">Articles Published</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-positive">
                     <div class="stat-value ${overview.publishedToday ? "success" : "warning"}">${overview.publishedToday ? "Yes" : "No"}</div>
                     <div class="stat-label">Published Today</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-secondary">
                     <div class="stat-value warning">${overview.monthlyArticlesPublished || 0} / ${overview.monthlyTarget || 30}</div>
                     <div class="stat-label">Monthly Articles Published</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-secondary">
                     <div class="stat-value">${overview.successRate || 0}%</div>
                     <div class="stat-label">Success Rate</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-secondary">
                     <div class="stat-value">${overview.seoScore || 0}</div>
                     <div class="stat-label">Average SEO Score</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-positive">
                     <div class="stat-value ${String(overview.wordpressStatus || "").toLowerCase().includes("connected") ? "success" : "error"}" style="font-size:18px">${esc(overview.wordpressStatus || "Pending")}</div>
                     <div class="stat-label">WordPress Status</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card-secondary">
                     <div class="stat-value" style="font-size:18px">${overview.lastPublishedDate ? esc(overview.lastPublishedDate) : "Pending"}</div>
                     <div class="stat-label">Last Published Date</div>
                 </div>
@@ -1713,7 +1807,7 @@ function renderSEOOverviewSection() {
                 <div class="result-card">
                     <h4>Topic Radar</h4>
                     <div class="seo-slot-title">${esc(selectedTopic.title || selectedTopic.primaryKeyword || "Dynamic discovery pending")}</div>
-                    <div class="seo-slot-meta">${esc(selectedTopic.theme || selectedTopic.intentCluster || "Patent-adjacent discovery")}</div>
+                    <div class="seo-slot-meta">${esc(selectedTopic.theme || selectedTopic.intentCluster || `${workspaceSiteName} topic discovery`)}</div>
                     <div class="seo-slot-cluster">Mode: ${esc(topicRadar.mode || "mixed_signal_dynamic")} â€¢ Snapshot: ${esc(topicRadar.generatedAt || "Pending")}</div>
                     <div class="seo-chip-list">
                         ${((selectedTopic.sourceTypes || []).length
@@ -1838,7 +1932,7 @@ function renderSEOOverviewSection() {
                 </div>
                 ${articleManager.length
                     ? `<div class="seo-table-wrap">
-                        <table class="results-table seo-mini-table">
+                        <table class="results-table seo-mini-table seo-article-manager-table">
                             <thead>
                                 <tr>
                                     <th>Article title</th>
@@ -1855,15 +1949,29 @@ function renderSEOOverviewSection() {
                             <tbody>
                                 ${articleManager.map((item) => `
                                     <tr>
-                                        <td>${esc(item.title || "-")}</td>
+                                        <td>
+                                            <div class="seo-table-title">${esc(item.title || "-")}</div>
+                                            <div class="seo-table-subtitle">${item.url ? `<a class="result-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.url)}</a>` : "Draft or unpublished article"}</div>
+                                        </td>
                                         <td>${item.seoScore ?? "-"}</td>
-                                        <td>${esc(item.primaryKeyword || "-")}</td>
-                                        <td>${esc(item.slug || "-")}</td>
-                                        <td title="${esc(item.metaDescription || "-")}">${esc(item.metaDescription || "-")}</td>
+                                        <td>
+                                            <div class="seo-table-title">${esc(item.primaryKeyword || "-")}</div>
+                                            <div class="seo-table-subtitle">${esc(item.focusKeyword || item.secondaryKeyword || "Primary focus keyword")}</div>
+                                        </td>
+                                        <td><code class="seo-inline-code">${esc(item.slug || "-")}</code></td>
+                                        <td><div class="seo-table-description" title="${esc(item.metaDescription || "-")}">${esc(item.metaDescription || "-")}</div></td>
                                         <td><span class="status-pill ${String(item.publishStatus || "").toLowerCase() === "publish" ? "status-found" : "status-not_found"}">${esc(item.publishStatus || "-")}</span></td>
-                                        <td>${esc(item.indexingStatus || "Pending")}</td>
-                                        <td>${item.previewHtml ? `<button type="button" class="json-toggle seo-preview-btn" data-article-id="${esc(item.id)}">Preview</button>` : "-"}</td>
-                                        <td>${String(item.publishStatus || "").toLowerCase() === "publish" && item.url ? `<button type="button" class="json-toggle seo-request-indexing-btn" data-url="${esc(item.url)}">Request Indexing</button>` : "-"}</td>
+                                        <td><span class="status-pill ${getSeoIndexingStatusClass(item.indexingStatus)}">${esc(item.indexingStatus || "Pending")}</span></td>
+                                        <td>
+                                            <div class="seo-action-buttons seo-article-actions">
+                                                ${item.previewHtml ? `<button type="button" class="json-toggle seo-preview-btn" data-article-id="${esc(item.id)}">Preview</button>` : `<span class="seo-table-subtitle">No preview</span>`}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="seo-action-buttons seo-article-actions">
+                                                ${String(item.publishStatus || "").toLowerCase() === "publish" && item.url ? `<button type="button" class="json-toggle seo-request-indexing-btn" data-url="${esc(item.url)}">Request Indexing</button>` : `<span class="seo-table-subtitle">Not available</span>`}
+                                            </div>
+                                        </td>
                                     </tr>
                                 `).join("")}
                             </tbody>
@@ -1963,8 +2071,8 @@ function renderSEOOverviewSection() {
                         </div>
                         <div class="input-row">
                             <label class="input-label" for="seo-google-property">Search Console Property</label>
-                            <input id="seo-google-property" class="text-input" type="text" placeholder="sc-domain:patentzoom.us" value="${esc(seo.google.property)}" />
-                            <div class="input-help">Use your existing property. For PatentZoom the best option is <code>sc-domain:patentzoom.us</code>.</div>
+                            <input id="seo-google-property" class="text-input" type="text" placeholder="${esc(workspacePropertyPlaceholder)}" value="${esc(seo.google.property)}" />
+                            <div class="input-help">Use the Search Console domain property for this workspace, for example <code>${esc(workspacePropertyPlaceholder)}</code>.</div>
                         </div>
                         <div class="seo-preview-description"><strong>Redirect URI:</strong> ${esc(seo.google.redirectUri || "http://127.0.0.1:8000/api/google/search-console/callback")}</div>
                         <div class="run-actions">
@@ -1978,12 +2086,60 @@ function renderSEOOverviewSection() {
 
             <div class="seo-panel-grid">
                 <div class="result-card">
+                    <h4>Social Publishing</h4>
+                    <div class="seo-status-list">
+                        <div class="seo-status-item">
+                            <div>
+                                <div class="seo-status-name">Auto Social Posting</div>
+                                <div class="seo-status-detail">${socialStatus.autoPostEnabled ? "Published articles are shared automatically after a successful live publish." : "Automatic social posting is turned off for this workspace."}</div>
+                            </div>
+                            <span class="seo-status-pill ${socialStatus.autoPostEnabled ? "ready" : "blocked"}">${socialStatus.autoPostEnabled ? "Enabled" : "Disabled"}</span>
+                        </div>
+                        <div class="seo-status-item">
+                            <div>
+                                <div class="seo-status-name">Content Rules</div>
+                                <div class="seo-status-detail">Featured image: ${socialStatus.useFeaturedImage ? "On" : "Off"} • Hashtags: ${socialStatus.useHashtags ? "On" : "Off"}</div>
+                            </div>
+                            <span class="seo-status-pill ready">${esc(String(socialStatus.configuredPlatformCount || 0))} Active</span>
+                        </div>
+                        ${(socialStatus.platformRows || []).map((item) => `
+                            <div class="seo-status-item">
+                                <div>
+                                    <div class="seo-status-name">${esc(item.label || "-")}</div>
+                                    <div class="seo-status-detail">${esc(item.detail || "")}${item.postId ? ` • Post ID: ${esc(item.postId)}` : ""}</div>
+                                </div>
+                                <span class="seo-status-pill ${item.status === "Posted" ? "ready" : "blocked"}">${esc(item.status || "-")}</span>
+                            </div>
+                        `).join("")}
+                        ${(socialStatus.pendingPlatforms || []).length
+                            ? `<div class="seo-status-item">
+                                <div>
+                                    <div class="seo-status-name">Later Setup</div>
+                                    <div class="seo-status-detail">${esc((socialStatus.pendingPlatforms || []).map((item) => item.charAt(0).toUpperCase() + item.slice(1)).join(", "))} is planned but not connected yet for this workspace.</div>
+                                </div>
+                                <span class="seo-status-pill blocked">Pending</span>
+                            </div>`
+                            : ""}
+                        ${socialStatus.latestArticleUrl
+                            ? `<div class="seo-status-item">
+                                <div>
+                                    <div class="seo-status-name">Latest Social Post</div>
+                                    <div class="seo-status-detail">${esc(socialStatus.latestTitle || "Latest article")} • ${esc(formatTimestamp(socialStatus.updatedAt || socialStatus.latestPostedAt || ""))}</div>
+                                    <a class="result-link" href="${esc(socialStatus.latestArticleUrl)}" target="_blank" rel="noopener noreferrer">${esc(socialStatus.latestArticleUrl)}</a>
+                                </div>
+                                <span class="seo-status-pill ${socialStatus.latestOk ? "ready" : "blocked"}">${socialStatus.latestOk ? "Success" : "Check"}</span>
+                            </div>`
+                            : `<div class="memory-empty">No social post has been recorded yet for this workspace.</div>`}
+                    </div>
+                </div>
+
+                <div class="result-card">
                     <h4>WordPress Publishing Monitor</h4>
                     <div class="seo-status-list">
                         <div class="seo-status-item">
                             <div>
                                 <div class="seo-status-name">WordPress Connection Status</div>
-                                <div class="seo-status-detail">${esc(wordpressMonitor.websiteUrl || "https://patentzoom.us")}</div>
+                                <div class="seo-status-detail">${esc(wordpressMonitor.websiteUrl || "-")}</div>
                             </div>
                             <span class="seo-status-pill ${String(wordpressMonitor.connectionStatus || "").toLowerCase().includes("connected") ? "ready" : "blocked"}">${esc(wordpressMonitor.connectionStatus || "Unknown")}</span>
                         </div>
@@ -2085,7 +2241,7 @@ function renderSEOOverviewSection() {
                                         <span class="seo-run-status ${esc(run.status || "unknown")}">${esc(run.status || "unknown")}</span>
                                         <span class="memory-time">${esc(formatTimestamp(run.createdAt))}</span>
                                     </div>
-                                    <div class="seo-run-title">${esc(run.title || run.primaryKeyword || "PatentZoom SEO run")}</div>
+                                    <div class="seo-run-title">${esc(run.title || run.primaryKeyword || "SEO run")}</div>
                                     <div class="seo-run-meta">
                                         <span>Keyword: ${esc(run.primaryKeyword || "-")}</span>
                                         <span>Post: ${esc(run.postStatus || "-")}</span>
@@ -2624,13 +2780,15 @@ function attachHandlers(agent) {
 
     if (agent.ui_type === "seo_posting") {
         document.querySelectorAll("[data-seo-workspace]").forEach((btn) => {
-            btn.onclick = (e) => {
+            btn.onclick = async (e) => {
                 e.preventDefault();
                 const nextId = btn.dataset.seoWorkspace || "";
                 if (!nextId || state.seo.activeWorkspaceId === nextId) return;
                 state.seo.activeWorkspaceId = nextId;
                 state.seoDashboard.previewArticle = null;
                 state.seoDashboard.historyEntry = null;
+                state.seo.google.property = getDefaultSearchConsoleProperty(nextId);
+                await loadSeoDashboardData(agent.module_name);
                 renderMain();
             };
         });
@@ -2711,11 +2869,12 @@ function attachHandlers(agent) {
 
     const seoGoogleConnectBtn = document.getElementById("seo-google-connect-btn");
     if (seoGoogleConnectBtn && agent.ui_type === "seo_posting") {
-        seoGoogleConnectBtn.onclick = (e) => {
-            e.preventDefault();
-            window.open("/api/google/search-console/connect", "_blank", "noopener,noreferrer");
-        };
-    }
+            seoGoogleConnectBtn.onclick = (e) => {
+                e.preventDefault();
+                const workspaceId = encodeURIComponent(state.seo.activeWorkspaceId || "patentzoom");
+                window.open(`/api/google/search-console/connect?workspace_id=${workspaceId}`, "_blank", "noopener,noreferrer");
+            };
+        }
 
     const seoGoogleBrowserBtn = document.getElementById("seo-google-browser-btn");
     if (seoGoogleBrowserBtn && agent.ui_type === "seo_posting") {
@@ -2831,10 +2990,10 @@ function attachHandlers(agent) {
 
 function inferSeoStageFromMessage(message = "") {
     const lower = String(message || "").toLowerCase();
-    if (lower.includes("preparing a new patentzoom seo run")) return { stage: "readiness", status: "active" };
-    if (lower.includes("validating local patentzoom seo setup")) return { stage: "readiness", status: "active" };
-    if (lower.includes("loading recent patentzoom posts")) return { stage: "readiness", status: "active" };
-    if (lower.includes("loaded") && lower.includes("recent patentzoom posts")) return { stage: "readiness", status: "complete" };
+    if (lower.includes("preparing a new") && lower.includes("seo agent run")) return { stage: "readiness", status: "active" };
+    if (lower.includes("validating local") && lower.includes("seo agent setup")) return { stage: "readiness", status: "active" };
+    if (lower.includes("loading recent") && lower.includes("posts")) return { stage: "readiness", status: "active" };
+    if (lower.includes("loaded") && lower.includes("recent") && lower.includes("posts")) return { stage: "readiness", status: "complete" };
     if (lower.includes("researching keywords")) return { stage: "keywords", status: "active" };
     if (lower.includes("selected \"") || lower.includes("chosen topic:")) return { stage: "keywords", status: "complete" };
     if (lower.includes("starting ai article generation")) return { stage: "content", status: "active" };
@@ -2913,7 +3072,7 @@ function finalizeSeoWorkflow(result) {
                 : "Draft saved. Indexing waits until the post is published.",
         );
     }
-    state.seoDashboard.workflow.currentMessage = "PatentZoom SEO workflow finished successfully.";
+    state.seoDashboard.workflow.currentMessage = `${getActiveSeoWorkspaceLabel()} workflow finished successfully.`;
 }
 
 function buildSeoWorkflowState(stageDefs = []) {
@@ -2942,7 +3101,8 @@ async function loadSeoDashboardData(name) {
     state.seoDashboard.historyEntry = null;
     renderMain();
     try {
-        const res = await fetch(`/api/agents/${name}/dashboard-data`);
+        const workspaceId = encodeURIComponent(state.seo.activeWorkspaceId || "patentzoom");
+        const res = await fetch(`/api/agents/${name}/dashboard-data?workspace_id=${workspaceId}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load SEO dashboard data");
         state.seoDashboard.snapshot = data;
@@ -2951,7 +3111,7 @@ async function loadSeoDashboardData(name) {
         state.seo.dryRun = false;
         state.seo.google.clientConfigured = !!data?.googleAuth?.clientConfigured;
         state.seo.google.connected = !!data?.googleAuth?.connected;
-        state.seo.google.property = data?.googleAuth?.property || state.seo.google.property;
+        state.seo.google.property = data?.googleAuth?.property || getDefaultSearchConsoleProperty(state.seo.activeWorkspaceId);
         state.seo.google.redirectUri = data?.googleAuth?.redirectUri || state.seo.google.redirectUri;
         if (!state.seo.topicOverride) {
             state.seo.topicOverride = data?.todayRun?.selectedTopic || "";
