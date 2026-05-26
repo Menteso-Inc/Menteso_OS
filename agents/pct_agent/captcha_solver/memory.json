@@ -1,0 +1,81 @@
+{
+  "agent": "pct_agent/captcha_solver",
+  "learnings": [
+    {
+      "timestamp": "2026-05-22T08:44:05.833223+00:00",
+      "task": "solve_captcha",
+      "outcome": "failed",
+      "insight": "captcha_type=wipo_text outcome=failed tier=none elapsed=18.6s attempts=3",
+      "strategy": "none"
+    },
+    {
+      "timestamp": "2026-05-22T08:44:22.649104+00:00",
+      "task": "solve_captcha",
+      "outcome": "manual_solved",
+      "insight": "captcha_type=wipo_text outcome=manual_solved tier=manual elapsed=13.7s attempts=3",
+      "strategy": "manual"
+    },
+    {
+      "timestamp": "2026-05-22T09:12:05.606160+00:00",
+      "task": "solve_captcha",
+      "outcome": "manual_solved",
+      "insight": "captcha_type=wipo_image_grid outcome=manual_solved tier=manual elapsed=4.7s attempts=2",
+      "strategy": "manual"
+    },
+    {
+      "timestamp": "2026-05-22T11:00:35.990509+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=7.0s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-22T11:33:46.721299+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=4.9s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-22T11:43:19.292756+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=6.2s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-22T12:32:54.344237+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=5.7s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-24T16:33:21.738595+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=14.1s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-24T16:44:10.861355+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=5.3s attempts=1",
+      "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-24T17:11:06.359623+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=5.0s attempts=1",
+      "strategy": "vision"
+    }
+  ],
+  "refined_prompts": {},
+  "stats": {
+    "total_runs": 10,
+    "success_rate": 0.0,
+    "avg_execution_time": 8.53
+  }
+}

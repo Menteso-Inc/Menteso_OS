@@ -53,8 +53,10 @@ def _get_run_status(name: str):
             "status": "stopping" if stop_event and stop_event.is_set() else "running",
         }
 
+    # Thread died without the worker's finally block clearing the entry —
+    # treat that as a crashed run and self-heal so the UI can move on.
     RUN_CONTROLS.pop(name, None)
-    return {"status": "idle"}
+    return {"status": "idle", "recovered": True}
 
 # Directories
 PROJECT_DIR = Path(__file__).parent
@@ -681,8 +683,30 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
         return {"ok": False, "response": JSONResponse({"error": msg, "status": status["status"]}, status_code=409)}
 
     stop_event = threading.Event()
-    control = {"stop_event": stop_event, "thread": None, "interruptors": []}
+    # Live fast-mode level shared between the HTTP layer and the running
+    # agent. The slider in the dashboard POSTs to /fast-level which mutates
+    # control["fast_level"] in place; the agent reads it via the callable
+    # we inject below at every chunk boundary, so dragging the slider mid-
+    # run actually changes future chunks.
+    initial_level = payload.get("fast_level")
+    try:
+        initial_level = int(initial_level) if initial_level is not None else None
+    except (TypeError, ValueError):
+        initial_level = None
+    if initial_level is None:
+        # leave to agent's resolve_fast_level() defaults (env / 1)
+        initial_level = 0
+    control = {
+        "stop_event": stop_event,
+        "thread": None,
+        "interruptors": [],
+        "fast_level": initial_level,
+        "emit": emit,
+    }
     payload["stop_requested"] = stop_event.is_set
+    payload["get_live_fast_level"] = (
+        lambda: control.get("fast_level") if control.get("fast_level") else None
+    )
 
     def register_stop_handler(handler):
         if callable(handler):
@@ -1141,6 +1165,42 @@ async def agent_run_status(name: str):
     return _get_run_status(name)
 
 
+@app.get("/api/agents/{name}/fast-level")
+async def get_fast_level(name: str):
+    """Return the currently-active fast-mode level for a run."""
+    control = RUN_CONTROLS.get(name)
+    level = control.get("fast_level") if control else 0
+    return {"level": level or 0, "running": bool(control)}
+
+
+@app.post("/api/agents/{name}/fast-level")
+async def set_fast_level(name: str, payload: dict = Body(...)):
+    """Update fast-mode level mid-run. Clamped to [1, 5]. The agent reads
+    this value at chunk boundaries, so dragging the slider higher causes
+    future chunks to spin up more workers.
+    """
+    raw = payload.get("level")
+    try:
+        level = int(raw)
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "level must be an integer 1-5"}, status_code=400)
+    level = max(1, min(5, level))
+    control = RUN_CONTROLS.get(name)
+    if not control:
+        return JSONResponse(
+            {"error": "Agent is not running — level applies only to active runs"},
+            status_code=409,
+        )
+    control["fast_level"] = level
+    emit = control.get("emit")
+    if callable(emit):
+        try:
+            emit({"type": "fast_level_changed", "level": level})
+        except Exception:
+            pass
+    return {"ok": True, "level": level}
+
+
 def _start_agent_run(name: str, input_data: dict | None = None):
     msg_queue = queue.Queue()
 
@@ -1190,6 +1250,7 @@ async def run_agent_sse(
     file_path: str = None,
     mode: str = None,
     gazette: str = None,
+    fast_level: int = None,
 ):
     input_data = {}
     if file_path:
@@ -1198,6 +1259,8 @@ async def run_agent_sse(
         input_data["mode"] = mode
     if gazette:
         input_data["gazette"] = gazette
+    if fast_level is not None:
+        input_data["fast_level"] = fast_level
     return _start_agent_run(name, input_data)
 
 
@@ -1209,10 +1272,19 @@ async def run_agent_sse_post(name: str, payload: dict = Body(default=None)):
 @app.post("/api/agents/{name}/stop")
 async def stop_agent_run(name: str):
     control = RUN_CONTROLS.get(name)
-    if not control or not control.get("thread") or not control["thread"].is_alive():
-        return JSONResponse({"error": "Agent is not running"}, status_code=409)
+    if not control:
+        return {"status": "idle", "note": "no active run"}
 
-    control["stop_event"].set()
+    thread = control.get("thread")
+    # If the thread is already dead but the entry lingered (e.g. previous
+    # crash before cleanup), treat Stop as a force-clear — no point asking
+    # a dead thread to stop.
+    if not thread or not thread.is_alive():
+        RUN_CONTROLS.pop(name, None)
+        return {"status": "cleared", "note": "stale entry removed"}
+
+    if control.get("stop_event"):
+        control["stop_event"].set()
     interrupt_sent = 0
     for interruptor in list(control.get("interruptors", [])):
         try:
@@ -1221,6 +1293,30 @@ async def stop_agent_run(name: str):
         except Exception:
             pass
     return {"status": "stop_requested", "interrupt_sent": interrupt_sent}
+
+
+@app.post("/api/agents/{name}/force-clear")
+async def force_clear_agent_run(name: str):
+    """Hard-reset an agent's run state. Use when Stop alone doesn't bring
+    the UI back to idle — typically because a previous worker thread
+    crashed or got stuck. We signal stop + interruptors and then drop the
+    entry so the UI can start a fresh run, even if the zombie thread
+    refuses to die (it'll just be orphaned).
+    """
+    control = RUN_CONTROLS.get(name)
+    if not control:
+        return {"status": "idle", "note": "already cleared"}
+    try:
+        if control.get("stop_event"):
+            control["stop_event"].set()
+        for interruptor in list(control.get("interruptors", [])):
+            try:
+                interruptor()
+            except Exception:
+                pass
+    finally:
+        RUN_CONTROLS.pop(name, None)
+    return {"status": "cleared"}
 
 
 # ---------------------------------------------------------------------------
