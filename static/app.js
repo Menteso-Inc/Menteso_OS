@@ -427,7 +427,7 @@ function renderRunMetricsPanel() {
     const warningBar = v.degraded
         ? `<div class="run-metrics-warning">
               ⚠ High not_found rate (${Math.round(v.notFoundRate * 100)}%) —
-              WIPO may be rate-limiting. Try dragging the slider down a level.
+              WIPO may be rate-limiting. The retry pass will re-scrape these rows once the main run finishes.
            </div>`
         : "";
     return `
@@ -476,34 +476,10 @@ function renderRunMetricsPanel() {
 }
 
 function renderFastModeSlider() {
-    // Single source of truth: state.fastLevel (shared with the chip near
-    // the Run button). This slider is always editable — even mid-run —
-    // and POSTs to the live API when the agent is running.
-    const lvl = Math.max(1, Math.min(5, state.fastLevel || 1));
-    const profile = (typeof FAST_LEVELS !== "undefined" ? FAST_LEVELS[lvl] : state.fastModeLevels[lvl]);
-    const changing = state.runMetrics && state.runMetrics.fastLevelChanging;
-    return `
-        <div class="rm-fastmode" id="rm-fastmode-wrap" title="${esc(profile.hint)}">
-            <span class="rm-fastmode-emoji-low">😇</span>
-            <input
-                type="range"
-                min="1"
-                max="5"
-                step="1"
-                value="${lvl}"
-                class="rm-fastmode-slider"
-                id="rm-fastmode-slider"
-                aria-label="Scraping speed mode"
-                oninput="onFastModeSlide(this.value)"
-                onchange="onFastModeCommit(this.value)"
-            />
-            <span class="rm-fastmode-emoji-high">😈</span>
-            <span class="rm-fastmode-current" id="rm-fastmode-current">
-                ${profile.emoji} <strong>L${lvl}</strong> ${esc(profile.label)}
-            </span>
-            ${changing ? `<span class="rm-fastmode-pending">syncing…</span>` : ""}
-        </div>
-    `;
+    // Slider removed: PCT agent now always runs at L5 Max. The backend
+    // (resolve_fast_level in agents/pct_agent/agent.py) ignores any value
+    // a leftover client might still POST.
+    return "";
 }
 
 function onFastModeSlide(rawValue) {
@@ -1750,10 +1726,14 @@ function renderMain() {
     }
 
     // --- Execution Log + Browser Preview (side by side) ---
+    // Scraping Browser stays visible in pool mode too — with N tabs running
+    // it cycles through whichever worker emitted the most recent event,
+    // which is what the user wants ("show what's being scraped right now").
     if (!isSeoAgent || isLiveSeoWorkspace) {
+        const showBrowserPanel = isPCTAgent;
         html += `
             <div class="execution-split">
-                <div class="execution-log-panel${state.pipelineMode || !isPCTAgent ? " full-width" : ""}">
+                <div class="execution-log-panel${showBrowserPanel ? "" : " full-width"}">
                     <div class="section-title">Execution Log</div>
                     <div class="terminal" id="terminal">
                         ${state.executionLog.length === 0 && !state.isRunning
@@ -1763,9 +1743,9 @@ function renderMain() {
                         ${state.isRunning ? '<span class="terminal-cursor"></span>' : ""}
                     </div>
                 </div>
-                ${isPCTAgent && !state.pipelineMode ? `
+                ${showBrowserPanel ? `
                 <div class="browser-preview-panel">
-                    <div class="section-title">Scraping Browser</div>
+                    <div class="section-title">Scraping Browser${state.pipelineMode ? ' <span class="browser-pool-hint">(latest of N parallel tabs)</span>' : ""}</div>
                     <div class="browser-frame">
                         <div class="browser-toolbar">
                             <div class="browser-dots">
@@ -1834,36 +1814,9 @@ function renderMain() {
 // Agent-specific input sections
 // ---------------------------------------------------------------------------
 function renderFastModeControl() {
-    const level = state.fastLevel || 1;
-    const profile = FAST_LEVELS[level] || FAST_LEVELS[1];
-    // Slider is now editable during runs too — dragging it mid-run POSTs
-    // to /api/agents/{name}/fast-level so the agent picks up the change
-    // at the next chunk boundary.
-    const lockedAttr = "";
-    const lockedClass = state.isRunning ? "is-live" : "";
-    const lockedHint = state.isRunning
-        ? `${profile.hint} (Drag mid-run — applies at next chunk)`
-        : profile.hint;
-    return `
-        <div class="fast-mode-chip ${lockedClass}" title="${esc(lockedHint)}">
-            <span class="fast-mode-chip-label">Fast&nbsp;Mode</span>
-            <span class="fast-mode-emoji fast-mode-emoji-left">😇</span>
-            <input
-                type="range"
-                id="fast-mode-slider"
-                class="fast-mode-slider"
-                min="1" max="5" step="1"
-                value="${level}"
-                ${lockedAttr}
-                aria-label="Fast mode level"
-            />
-            <span class="fast-mode-emoji fast-mode-emoji-right">😈</span>
-            <span class="fast-mode-current" id="fast-mode-current">
-                <span class="fast-mode-current-emoji">${profile.emoji}</span>
-                <span class="fast-mode-current-label">L${level} ${esc(profile.label)}</span>
-            </span>
-        </div>
-    `;
+    // Slider removed: PCT agent now always runs at L5 Max. See
+    // resolve_fast_level in agents/pct_agent/agent.py — it's hard-locked.
+    return "";
 }
 
 function renderUploadSection(agent) {
@@ -3095,9 +3048,8 @@ function attachHandlers(agent) {
                     return;
                 }
 
-                const profile = FAST_LEVELS[state.fastLevel] || FAST_LEVELS[1];
                 addLogLine(
-                    `Starting at Fast Mode L${state.fastLevel} ${profile.emoji} ${profile.label} — ${profile.hint}`,
+                    "Starting at Fast Mode L1 Safe — single-browser sequential mode for reliability over speed",
                     "info",
                 );
 
@@ -3105,12 +3057,11 @@ function attachHandlers(agent) {
                     mode: mode,
                     file_path: mode === "upload" ? state.uploadedFilePath : undefined,
                     gazette: mode === "wipo_download" ? state.selectedGazette : undefined,
-                    fast_level: state.fastLevel,
                 });
             } else if (agent.ui_type === "seo_posting") {
                 triggerSeoRun(agent);
             } else {
-                runAgent(agent.module_name, { fast_level: state.fastLevel });
+                runAgent(agent.module_name, {});
             }
         };
     }

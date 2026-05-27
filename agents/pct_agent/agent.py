@@ -29,7 +29,7 @@ from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
 from .browser import PatentBrowser, BrowserStopRequested
 from .pdf_extractor import extract_contacts_from_pdf
-from .pipeline import ChunkedPipelineManager, ProgressFile
+from .pipeline import ChunkedPipelineManager, ProgressFile, RESULT_STATUS_PRIORITY
 from .tests import tests
 
 # Pipeline config
@@ -64,10 +64,12 @@ FAST_MODE_LEVELS = {
     4: {"emoji": "😎", "label": "Aggressive", "fast": True,  "pipelines": 3, "browsers": 6, "downloads": 9,  "ocr": 4, "headless": True},
     5: {"emoji": "😈", "label": "Max",        "fast": True,  "pipelines": 4, "browsers": 8, "downloads": 12, "ocr": 6, "headless": True},
 }
-# Start in Balanced (L3) by default — parallel pool with conservative
-# concurrency. Users can drop to L1 Safe via the slider if WIPO throttles,
-# or push higher (L4/L5) when they have IP rotation in place.
-FAST_MODE_DEFAULT_LEVEL = 3
+# Locked to L1 Safe — single-browser sequential mode. L2+ runs multiple
+# Playwright tabs in parallel which WIPO firewalls at the TCP level (every
+# row comes back nav_failed). One browser making one request at a time
+# looks like a normal user to WIPO and actually delivers data. Throughput
+# is ~6-12 rows/min; user explicitly accepted that tradeoff.
+FAST_MODE_DEFAULT_LEVEL = 1
 
 
 def _resolve_headless(fast_profile):
@@ -85,37 +87,18 @@ def _resolve_headless(fast_profile):
 
 
 def resolve_fast_level(input_data):
-    """Pick the active fast-mode level for this run.
+    """Always return L1 Safe.
 
-    Precedence: input_data['fast_level'] (from UI) > env PCT_FAST_LEVEL >
-    legacy env PCT_FAST_MODE (true → 3, false → 1) > default level 1.
-    Returns a (level_int, profile_dict) tuple.
+    Even L3 (2 pipelines x 4 browsers = 8 concurrent tabs) trips WIPO's
+    connection refusal at the TCP layer — every row fails with
+    nav_failed before WIPO even serves a page. L1 is the only level
+    that uses a SINGLE browser (fast=False, routes to
+    _run_chunked_sequential_mode), which WIPO accepts. Throughput is
+    ~6-12 rows/min; reliability beats throughput when the alternative
+    is zero rows delivered. Inputs/env vars are ignored.
     """
-    level = None
-    if isinstance(input_data, dict):
-        raw = input_data.get("fast_level")
-        if raw is not None:
-            try:
-                level = int(raw)
-            except (TypeError, ValueError):
-                level = None
-    if level is None:
-        env_level = os.getenv("PCT_FAST_LEVEL")
-        if env_level is not None:
-            try:
-                level = int(env_level)
-            except ValueError:
-                level = None
-    if level is None:
-        legacy = (os.getenv("PCT_FAST_MODE") or "").lower()
-        if legacy in ("1", "true", "yes"):
-            level = 3
-        elif legacy in ("0", "false", "no"):
-            level = 1
-    if level is None:
-        level = FAST_MODE_DEFAULT_LEVEL
-    level = max(1, min(5, level))
-    return level, FAST_MODE_LEVELS[level]
+    _ = input_data  # kept for signature compatibility
+    return 1, FAST_MODE_LEVELS[1]
 
 AGENT_CONFIG = {
     "name": "PCT Agent",
@@ -757,6 +740,21 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
         pipeline_error = e
         step(f"[Pipeline] ERROR during run: {e} — saving whatever we have")
 
+    # Retry pass: rows that came back not_found because of a SYSTEM failure
+    # (WIPO throttling, captcha, timeout, download failure) are worth a
+    # second attempt at lower concurrency. Rows where the page loaded fine
+    # but the document genuinely has no RO/101/306/Request-form PDF are NOT
+    # retried — that won't change.
+    if results and not stop_requested():
+        results = _retry_system_failures(
+            results=results,
+            patent_rows=patent_rows,
+            file_path=file_path,
+            on_step=step,
+            stop_requested=stop_requested,
+            max_iterations=int(os.getenv("PCT_RETRY_MAX_ITERATIONS", "2")),
+        )
+
     # Generate Work Report from whatever rows survived.
     output_path = ""
     if results:
@@ -815,6 +813,148 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
     return agent_result
+
+
+# ---------------------------------------------------------------------------
+# Retry pass — re-scrape rows that failed due to SYSTEM issues, not genuine
+# missing documents. Runs after the main pipeline, with smaller concurrency
+# so WIPO has a chance to recover.
+# ---------------------------------------------------------------------------
+
+# Reasons that indicate WIPO/network failure (worth retrying) rather than a
+# genuinely missing document (not worth retrying).
+SYSTEM_FAIL_REASONS = {
+    "throttled",
+    "load_timeout",
+    "nav_failed",
+    "docs_tab",
+    "captcha",
+    "captcha_persistent",
+    "download_failed",
+    "exception",
+}
+
+
+def _classify_result_for_retry(result):
+    """Return True if this result should be retried.
+    Genuine no_pdf_row results are skipped: re-scraping won't change them.
+    """
+    status = result.get("status", "")
+    if status == "found":
+        return False
+    reason = (result.get("reason") or "").lower()
+    # Error rows with no captured reason are also worth one retry.
+    if status == "error" and not reason:
+        return True
+    if status == "error" and "scrape_exception" in reason:
+        return True
+    if status == "not_found":
+        # Compare against the structured reason codes the browser emits.
+        for marker in SYSTEM_FAIL_REASONS:
+            if marker in reason:
+                return True
+        return False
+    return False
+
+
+def _retry_system_failures(results, patent_rows, file_path, on_step,
+                            stop_requested, max_iterations=2):
+    """Re-scrape the subset of `results` flagged as system failures.
+    Loops up to `max_iterations` times, each time with progressively lower
+    concurrency. Merges the recovered rows back into `results` keyed by row
+    number so the final Excel stays aligned.
+    """
+    step = on_step or (lambda m: None)
+    rows_by_id = {row.get("id"): row for row in patent_rows if row.get("id")}
+
+    # Each retry pass uses a smaller worker count than the previous. The
+    # original main run was L5 (4 pipelines x 8 browsers); retries start
+    # at L2/L3 territory so WIPO sees a gentler request stream.
+    retry_profiles = [
+        {"pipelines": 2, "browsers": 4, "downloads": 6, "ocr": 3, "headless": True},
+        {"pipelines": 1, "browsers": 2, "downloads": 3, "ocr": 2, "headless": True},
+    ]
+
+    for iteration in range(max_iterations):
+        if stop_requested():
+            step("[Retry] Stop requested — skipping further retry iterations")
+            break
+
+        # Gather rows still flagged as system failures
+        to_retry = []
+        for r in results:
+            if not _classify_result_for_retry(r):
+                continue
+            patent_id = r.get("patent_id")
+            row = rows_by_id.get(patent_id)
+            if row:
+                # Make sure _row_idx survives the round-trip so merge works
+                row = dict(row)
+                row["_row_idx"] = r.get("row", 0)
+                to_retry.append(row)
+
+        if not to_retry:
+            step("[Retry] No system-failure rows remaining — done")
+            return results
+
+        profile_idx = min(iteration, len(retry_profiles) - 1)
+        profile = retry_profiles[profile_idx]
+        step(
+            f"[Retry {iteration + 1}/{max_iterations}] Re-scraping "
+            f"{len(to_retry)} system-failure row(s) at reduced concurrency "
+            f"(pipelines={profile['pipelines']}, browsers={profile['browsers']})"
+        )
+
+        try:
+            retry_pipeline = ChunkedPipelineManager(
+                patent_rows=to_retry,
+                on_step=step,
+                browser_workers=profile["browsers"],
+                download_workers=profile["downloads"],
+                ocr_workers=profile["ocr"],
+                parallel_pipelines=profile["pipelines"],
+                headless=_resolve_headless(profile),
+                resume_path=None,
+                input_file=f"{file_path}::retry{iteration + 1}",
+            )
+            retry_results = retry_pipeline.run()
+        except Exception as e:
+            step(f"[Retry {iteration + 1}] Pipeline crashed: {e} — keeping prior results")
+            break
+
+        # Merge retry results back into the master list, keyed by row number.
+        # Only upgrade a row if the retry produced a strictly better outcome
+        # (found > not_found > error), so a retry that comes back not_found
+        # never overwrites a previously-found result.
+        merged_by_row = {r.get("row"): r for r in results if r.get("row") is not None}
+        upgraded = 0
+        for new_r in retry_results:
+            row_no = new_r.get("row")
+            if row_no is None:
+                continue
+            old = merged_by_row.get(row_no)
+            if not old:
+                merged_by_row[row_no] = new_r
+                upgraded += 1
+                continue
+            old_score = RESULT_STATUS_PRIORITY.get(old.get("status"), 0)
+            new_score = RESULT_STATUS_PRIORITY.get(new_r.get("status"), 0)
+            if new_score > old_score:
+                merged_by_row[row_no] = new_r
+                upgraded += 1
+
+        results = [merged_by_row[k] for k in sorted(merged_by_row)]
+        step(
+            f"[Retry {iteration + 1}/{max_iterations}] Recovered "
+            f"{upgraded} row(s) on this pass"
+        )
+
+        if upgraded == 0:
+            # Two consecutive no-progress passes would just hammer WIPO. Bail.
+            step("[Retry] No progress this iteration — stopping retry loop")
+            break
+
+    return results
 
 
 # ---------------------------------------------------------------------------
