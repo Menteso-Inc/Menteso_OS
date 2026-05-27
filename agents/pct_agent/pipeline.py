@@ -243,6 +243,35 @@ def _extract_country(appl_no):
     return m.group(1) if m else ""
 
 
+REASON_LABELS = {
+    "no_pdf_row": "no RO/101/306/Request-form PDF on this patent page",
+    "pdf_no_contacts": "PDF found but no email/phone inside",
+    "throttled": "WIPO returned an empty page (throttled)",
+    "load_timeout": "patent page never finished loading",
+    "nav_failed": "navigation to WIPO failed",
+    "docs_tab": "Documents tab did not open",
+    "captcha": "captcha challenge",
+    "captcha_persistent": "captcha unsolved after multiple attempts",
+    "download_failed": "PDF URL found but download failed",
+    "exception": "unhandled scrape exception",
+}
+
+
+def _humanize_reason(reason):
+    """Map a reason code to a short user-facing explanation. Unknown codes
+    fall back to the raw code so they're still visible in the log.
+    """
+    if not reason:
+        return ""
+    raw = reason.strip()
+    # Compound prefixes (e.g. "scrape_exception: ...", "ocr_exception: ...")
+    # — show only the leading category so the log line stays readable.
+    for prefix in ("scrape_exception", "ocr_exception"):
+        if raw.startswith(prefix):
+            return REASON_LABELS.get("exception", prefix)
+    return REASON_LABELS.get(raw, raw)
+
+
 def _make_result(row_data, url, country, status, emails=None, phones=None, name=""):
     return {
         "row": row_data.get("_row_idx", 0),
@@ -300,7 +329,7 @@ class PipelinePCT:
 
     def __init__(self, patent_rows, on_step, browser_workers=20, download_workers=30,
                  ocr_workers=8, headless=True, resume_path=None, input_file="",
-                 live_level_getter=None):
+                 live_level_getter=None, shared_cache=None, shared_captcha=None):
         self.patent_rows = patent_rows
         self.on_step = on_step
         self.n_browser = browser_workers
@@ -317,10 +346,12 @@ class PipelinePCT:
         self.download_queue = queue.Queue(maxsize=200)
         self.ocr_queue = queue.Queue(maxsize=200)
 
-        # Coordination
+        # Coordination — prefer shared objects from ChunkedPipelineManager so
+        # every parallel pipeline pauses together on captcha and reuses
+        # applicant contacts. Fall back to local instances when run standalone.
         self.stats = PipelineStats(len(patent_rows))
-        self.captcha = CaptchaCoordinator(on_step=on_step)
-        self.cache = ContactCache()
+        self.captcha = shared_captcha or CaptchaCoordinator(on_step=on_step)
+        self.cache = shared_cache or ContactCache()
         self._shutdown = threading.Event()
 
         # Resume
@@ -471,12 +502,23 @@ class PipelinePCT:
     # persistent block (IP banned, page changed) from looping forever.
     MAX_CAPTCHA_RETRIES_PER_ROW = 3
 
-    # Adaptive backoff: when WIPO starts rate-limiting (multiple not_found
-    # in a row from a single worker), back off so we don't compound the
-    # problem by hammering harder.
+    # Adaptive backoff: only triggered by SYSTEM-failure reasons (WIPO
+    # throttling, navigation timeouts, captcha blocks). Legitimate misses
+    # (page loaded fine but the patent simply has no RO/101/306/Request-form
+    # PDF) do NOT count — they're just data, not a signal that WIPO is angry.
     BACKOFF_AFTER_FAILURES = 3      # streak threshold
     BACKOFF_BASE_SECONDS = 4.0      # multiplied by (streak - threshold)
     BACKOFF_CAP_SECONDS = 60.0      # never sleep longer than this
+
+    # Reasons that mean "WIPO/network failure" — counts toward the backoff
+    # streak. Anything else (notably "no_pdf_row") is a legitimate miss and
+    # is intentionally excluded.
+    SYSTEM_FAIL_REASONS_BROWSER = (
+        "throttled",
+        "load_timeout",
+        "nav_failed",
+        "docs_tab",
+    )
 
     def _browser_worker(self, wid, page):
         consecutive_failures = 0
@@ -502,15 +544,18 @@ class PipelinePCT:
                     self.browse_queue.put(row_data)
                     break
 
-            # Adaptive backoff after consecutive not_found
+            # Adaptive backoff — only kicks in when the recent failures
+            # were SYSTEM failures (WIPO throttle, nav timeout, captcha
+            # block). A run of genuine "no PDF on this patent page"
+            # results does NOT count and will not slow the worker down.
             if consecutive_failures >= self.BACKOFF_AFTER_FAILURES:
                 backoff = min(
                     self.BACKOFF_CAP_SECONDS,
                     self.BACKOFF_BASE_SECONDS * (consecutive_failures - self.BACKOFF_AFTER_FAILURES + 1),
                 )
                 self.step(
-                    f"[Worker {wid}] {consecutive_failures} consecutive not_found — "
-                    f"backing off {backoff:.0f}s (WIPO may be rate-limiting)"
+                    f"[Worker {wid}] {consecutive_failures} consecutive SYSTEM failures "
+                    f"(WIPO throttle / timeout) — backing off {backoff:.0f}s"
                 )
                 time.sleep(backoff)
 
@@ -544,11 +589,15 @@ class PipelinePCT:
                 self.stats.browse_active += 1
 
             scrape_error = None
+            scrape_reason = ""
             try:
-                pdf_url, cookies, captcha = scrape_pdf_url_only(page, url, on_step=self.step)
+                pdf_url, cookies, captcha, scrape_reason = scrape_pdf_url_only(
+                    page, url, on_step=self.step,
+                )
             except Exception as e:
                 pdf_url, cookies, captcha = None, {}, False
                 scrape_error = str(e)
+                scrape_reason = "exception"
 
             with self.stats._lock:
                 self.stats.browse_active -= 1
@@ -580,12 +629,27 @@ class PipelinePCT:
                 result = _make_result(row_data, url, country, "error")
                 result["reason"] = f"scrape_exception: {scrape_error[:200]}"
                 self._collect_result(result)
+                # An unhandled exception is treated as a system failure.
                 consecutive_failures += 1
                 self._emit_browser_no_pdf(row_data, url, patent_id)
             else:
+                # Stamp the diagnostic reason so the retry pass can decide
+                # whether this row is worth re-scraping, AND so the
+                # backoff streak only triggers on actual system failures.
                 result = _make_result(row_data, url, country, "not_found")
+                final_reason = scrape_reason or "no_pdf_row"
+                result["reason"] = final_reason
                 self._collect_result(result)
-                consecutive_failures += 1
+
+                # Only system failures count toward the backoff streak.
+                # "no_pdf_row" means WIPO served the page correctly and the
+                # patent just doesn't have an RO/101/306/Request-form PDF —
+                # zero reason to sleep the worker over that.
+                if final_reason in self.SYSTEM_FAIL_REASONS_BROWSER:
+                    consecutive_failures += 1
+                else:
+                    consecutive_failures = 0
+
                 self._emit_browser_no_pdf(row_data, url, patent_id)
 
     def _emit_browser_no_pdf(self, row_data, url, patent_id):
@@ -628,7 +692,11 @@ class PipelinePCT:
                 # Push to OCR queue (Stage 3)
                 self.ocr_queue.put((row_data, url, country, pdf_path))
             else:
+                # PDF URL was discovered but HTTP download failed —
+                # treat as a system failure (worth retrying) rather than
+                # a genuine "no document on the page" miss.
                 result = _make_result(row_data, url, country, "not_found")
+                result["reason"] = "download_failed"
                 self._collect_result(result)
 
     # -- Stage 3: OCR workers --
@@ -644,9 +712,11 @@ class PipelinePCT:
             with self.stats._lock:
                 self.stats.ocr_active += 1
 
+            ocr_exception = None
             try:
                 contacts = extract_contacts_from_pdf(pdf_path)
-            except Exception:
+            except Exception as e:
+                ocr_exception = str(e)
                 contacts = {"status": "error", "emails": [], "phones": [], "name": ""}
 
             with self.stats._lock:
@@ -661,6 +731,17 @@ class PipelinePCT:
                 phones=contacts.get("phones", []),
                 name=contacts.get("name", ""),
             )
+            # Stamp the actual reason so the user sees "PDF parsed, no
+            # email/phone inside" rather than a generic not_found. The
+            # retry pass also uses this — pdf_no_contacts is NOT worth
+            # re-scraping (the PDF won't grow new emails on retry).
+            if contacts["status"] == "not_found":
+                result["reason"] = "pdf_no_contacts"
+            elif contacts["status"] == "error":
+                result["reason"] = (
+                    f"ocr_exception: {ocr_exception[:200]}"
+                    if ocr_exception else "ocr_error"
+                )
             self._collect_result(result)
 
             # Fire "contacts" browser event so the dashboard's Scraping
@@ -704,9 +785,15 @@ class PipelinePCT:
         tag = "+" if result["status"] == "found" else "-"
         emails_str = ", ".join(result["emails"][:2]) if result["emails"] else "-"
         src = " [cache]" if from_cache else ""
+        # Surface the diagnostic reason so the user can tell at a glance
+        # WHY a row missed: was WIPO throttling us, did the patent simply
+        # not have a Request-form PDF, or did the PDF have no emails?
+        reason = (result.get("reason") or "").strip()
+        reason_text = _humanize_reason(reason) if reason else ""
+        suffix = f" | {reason_text}" if reason_text else ""
         self.step(
             f"[{tag}] Row {result['row']}: {result['patent_id']} — "
-            f"{result['status']} | {emails_str}{src}"
+            f"{result['status']} | {emails_str}{src}{suffix}"
         )
 
     def _stats_reporter(self):
@@ -791,6 +878,18 @@ class ChunkedPipelineManager:
         self._duplicate_rows_resolved = 0
         self._chunk_errors = []
         self._start_time = time.time()
+
+        # Cross-pipeline coordination: one shared cache + one shared captcha
+        # cooldown for ALL parallel pipelines spawned by this manager. Without
+        # this every PipelinePCT had its own — captcha hits in one pipeline
+        # didn't pause the others, and the same applicant was scraped
+        # multiple times across pipelines.
+        from shared.pct_coordinator import (
+            SharedContactCache,
+            SharedCaptchaCoordinator,
+        )
+        self._shared_cache = SharedContactCache()
+        self._shared_captcha = SharedCaptchaCoordinator(on_step=on_step)
 
     def step(self, msg):
         if self.on_step:
@@ -887,11 +986,19 @@ class ChunkedPipelineManager:
             )
 
             def chunk_step(message):
+                # Pipeline stats are merged into the chunk-manager snapshot.
                 if isinstance(message, dict) and message.get("type") == "pipeline_stats":
                     with self._lock:
                         self._chunk_snapshots[chunk_idx] = message
-                else:
-                    self.step(f"[Chunk {chunk_idx}/{total_chunks}] {message}")
+                    return
+                # Browser events (and any other structured dict) must reach
+                # the UI verbatim — wrapping them in an f-string here was
+                # stringifying them into the execution log and breaking the
+                # Scraping Browser panel in pool mode.
+                if isinstance(message, dict):
+                    self.step(message)
+                    return
+                self.step(f"[Chunk {chunk_idx}/{total_chunks}] {message}")
 
             pipeline = PipelinePCT(
                 patent_rows=chunk_rows,
@@ -903,6 +1010,8 @@ class ChunkedPipelineManager:
                 resume_path=None,
                 input_file=f"{self.input_file}::chunk{chunk_idx}",
                 live_level_getter=self.live_level_getter,
+                shared_cache=self._shared_cache,
+                shared_captcha=self._shared_captcha,
             )
 
             try:

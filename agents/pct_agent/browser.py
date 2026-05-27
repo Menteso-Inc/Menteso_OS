@@ -358,7 +358,15 @@ def scrape_patent_fast(page, url, doc_id, on_step=None):
 def scrape_pdf_url_only(page, url, on_step=None):
     """Scrape a patent page and return ONLY the PDF URL (no download).
     Used for 3-stage pipeline where download is separate.
-    Returns (pdf_url_or_None, cookies_dict, captcha_detected).
+    Returns (pdf_url_or_None, cookies_dict, captcha_detected, reason).
+
+    `reason` is "" on success and one of these strings on miss:
+      - "nav_failed"   : page.goto() threw both attempts (network/timeout)
+      - "load_timeout" : page never produced the PCT Biblio marker
+      - "docs_tab"     : Documents tab was not visible/clickable
+      - "no_pdf_row"   : page loaded fully but no RO/101/306/Request-form PDF
+      - "throttled"    : page loaded but biblio missing AND tr_count==0 — WIPO empty/throttled response
+    The retry pass uses this to decide which rows are worth re-scraping.
     """
     for attempt in range(2):
         _pace()
@@ -368,17 +376,17 @@ def scrape_pdf_url_only(page, url, on_step=None):
             if attempt == 0:
                 time.sleep(0.5)
                 continue
-            return None, {}, False
+            return None, {}, False, "nav_failed"
 
         # Same 60s bump as scrape_patent_fast — pool mode needs the
         # extra patience under parallel-load throttling from WIPO.
         loaded, captcha = wait_for_content_fast(page, timeout=60, on_step=on_step)
         if captcha:
-            return None, {}, True
+            return None, {}, True, "captcha"
         if loaded:
             break
     else:
-        return None, {}, False
+        return None, {}, False, "load_timeout"
 
     try:
         docs_tab = page.locator("a", has_text="Documents").first
@@ -386,11 +394,11 @@ def scrape_pdf_url_only(page, url, on_step=None):
         docs_tab.click()
         page.wait_for_timeout(800)
     except Exception:
-        return None, {}, False
+        return None, {}, False, "docs_tab"
 
     # Solve any captcha that appeared specifically after the Documents click.
     if not _solve_if_captcha(page, on_step=on_step, label="Documents click"):
-        return None, {}, True
+        return None, {}, True, "captcha"
 
     pdf_url = find_pdf_url(page)
     if not pdf_url:
@@ -399,7 +407,10 @@ def scrape_pdf_url_only(page, url, on_step=None):
                 _diag_log_empty(page, on_step, "scrape_pdf_url_only")
             except Exception:
                 pass
-        return None, {}, False
+        # Classify: throttled (empty page) vs. genuine no-PDF (page loaded fine
+        # but the document list lacks RO/101 / 306 / Request form).
+        miss_reason = _classify_no_pdf(page)
+        return None, {}, False, miss_reason
 
     if not pdf_url.startswith("http"):
         pdf_url = "https://patentscope.wipo.int" + pdf_url
@@ -409,7 +420,28 @@ def scrape_pdf_url_only(page, url, on_step=None):
     for c in page.context.cookies():
         cookies[c["name"]] = c["value"]
 
-    return pdf_url, cookies, False
+    return pdf_url, cookies, False, ""
+
+
+def _classify_no_pdf(page):
+    """When find_pdf_url returns None, decide if this is a real not_found
+    or a WIPO throttle/empty response. Used to drive the retry pass:
+    "throttled" rows are worth retrying with reduced concurrency;
+    "no_pdf_row" rows are genuinely missing the document and not worth
+    re-scraping at all.
+    """
+    try:
+        content = page.content() or ""
+    except Exception:
+        content = ""
+    try:
+        tr_count = page.locator("tr").count()
+    except Exception:
+        tr_count = -1
+    has_biblio = "PCT Biblio" in content or "detailMainForm" in content
+    if not has_biblio and tr_count <= 0:
+        return "throttled"
+    return "no_pdf_row"
 
 
 def wait_for_content_fast(page, timeout=20, on_step=None):
