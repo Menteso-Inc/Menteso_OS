@@ -29,12 +29,93 @@ from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
 from .browser import PatentBrowser, BrowserStopRequested
 from .pdf_extractor import extract_contacts_from_pdf
+from .pipeline import ChunkedPipelineManager, ProgressFile
 from .tests import tests
 
 # Pipeline config
-PIPELINE_THRESHOLD = 50     # rows >= this use parallel pipeline
+# Lowered threshold so even small runs benefit from chunked processing.
+PIPELINE_THRESHOLD = 20
 DEFAULT_CHUNK_SIZE = 500
-CHUNK_COOLDOWN_SECONDS = 1.5
+# Short cooldown between chunks (was 1.5s) — captcha solver handles bursts.
+CHUNK_COOLDOWN_SECONDS = 0.3
+
+# Parallel pipeline worker counts. Conservative defaults to keep WIPO happy:
+# 4 simultaneous browsers is enough for ~50-150 rows/min, low enough that
+# WIPO rarely rate-limits a single home IP. Push higher only if you have
+# IP rotation (Tor or paid proxies).
+DEFAULT_BROWSER_WORKERS = 4
+DEFAULT_DOWNLOAD_WORKERS = 6
+DEFAULT_OCR_WORKERS = 3
+
+# Fast-mode level table. Each level maps to a runtime profile.
+# Level 1 (😇) is the safe sequential baseline; level 5 (😈) maxes out
+# parallelism. Worker counts in the fast-mode levels are TOTAL across
+# all parallel pipelines — ChunkedPipelineManager divides them down per
+# chunk pipeline at construction time.
+# All levels run HEADLESS. The captcha solver handles DIY OCR + GPT-4o
+# Vision in the headless worker silently — no Chromium window appears.
+# Only when both auto-tiers fail does manual_fallback open a SEPARATE
+# visible popup Chromium for the human to solve, which closes itself
+# the moment the captcha clears.
+FAST_MODE_LEVELS = {
+    1: {"emoji": "😇", "label": "Safe",       "fast": False, "pipelines": 1, "browsers": 1, "downloads": 1,  "ocr": 1, "headless": True},
+    2: {"emoji": "🙂", "label": "Mild",       "fast": True,  "pipelines": 1, "browsers": 2, "downloads": 3,  "ocr": 2, "headless": True},
+    3: {"emoji": "😏", "label": "Balanced",   "fast": True,  "pipelines": 2, "browsers": 4, "downloads": 6,  "ocr": 3, "headless": True},
+    4: {"emoji": "😎", "label": "Aggressive", "fast": True,  "pipelines": 3, "browsers": 6, "downloads": 9,  "ocr": 4, "headless": True},
+    5: {"emoji": "😈", "label": "Max",        "fast": True,  "pipelines": 4, "browsers": 8, "downloads": 12, "ocr": 6, "headless": True},
+}
+# Start in Balanced (L3) by default — parallel pool with conservative
+# concurrency. Users can drop to L1 Safe via the slider if WIPO throttles,
+# or push higher (L4/L5) when they have IP rotation in place.
+FAST_MODE_DEFAULT_LEVEL = 3
+
+
+def _resolve_headless(fast_profile):
+    """Decide headless mode for this run.
+    Precedence: explicit PCT_HEADLESS_MODE env var (true/false) > profile.headless.
+    """
+    env_raw = (os.getenv("PCT_HEADLESS_MODE") or "").strip().lower()
+    if env_raw in ("1", "true", "yes"):
+        return True
+    if env_raw in ("0", "false", "no"):
+        return False
+    if isinstance(fast_profile, dict):
+        return fast_profile.get("headless", True)
+    return True
+
+
+def resolve_fast_level(input_data):
+    """Pick the active fast-mode level for this run.
+
+    Precedence: input_data['fast_level'] (from UI) > env PCT_FAST_LEVEL >
+    legacy env PCT_FAST_MODE (true → 3, false → 1) > default level 1.
+    Returns a (level_int, profile_dict) tuple.
+    """
+    level = None
+    if isinstance(input_data, dict):
+        raw = input_data.get("fast_level")
+        if raw is not None:
+            try:
+                level = int(raw)
+            except (TypeError, ValueError):
+                level = None
+    if level is None:
+        env_level = os.getenv("PCT_FAST_LEVEL")
+        if env_level is not None:
+            try:
+                level = int(env_level)
+            except ValueError:
+                level = None
+    if level is None:
+        legacy = (os.getenv("PCT_FAST_MODE") or "").lower()
+        if legacy in ("1", "true", "yes"):
+            level = 3
+        elif legacy in ("0", "false", "no"):
+            level = 1
+    if level is None:
+        level = FAST_MODE_DEFAULT_LEVEL
+    level = max(1, min(5, level))
+    return level, FAST_MODE_LEVELS[level]
 
 AGENT_CONFIG = {
     "name": "PCT Agent",
@@ -58,10 +139,13 @@ AGENT_CONFIG = {
             "options": ["Upload Excel", "Download from WIPO"],
         },
     ],
-    "sub_agents": ["Scraper", "PDF Extractor"],
+    "sub_agents": ["Scraper", "PDF Extractor", "CAPTCHA Solver"],
 }
 
-STEP_DELAY = 0.3
+# Decorative pause between major lifecycle steps. Set to 0 in production for
+# maximum throughput; bump to ~0.3 if you want a more visible step-by-step
+# log for demos.
+STEP_DELAY = 0
 
 
 # ---------------------------------------------------------------------------
@@ -348,16 +432,38 @@ def run_agent(input_data=None, on_step=None):
         return _build_partial_result("stopped", [], len(patent_rows), 0, 0, 0)
 
     # --- Step 5: Choose mode — pipeline (large) or sequential (small) ---
+    # fast_level (1-5) controls the runtime profile. Level 1 is the safe
+    # chunked-sequential path (one browser). Levels 2-5 go through the
+    # parallel ChunkedPipelineManager with progressively more workers.
+    fast_level, fast_profile = resolve_fast_level(input_data)
+    step(
+        f"[Mode] fast_level={fast_level} {fast_profile['emoji']} {fast_profile['label']} "
+        f"→ pipelines={fast_profile['pipelines']}, browsers={fast_profile['browsers']}, "
+        f"downloads={fast_profile['downloads']}, ocr={fast_profile['ocr']}"
+    )
+    # Make the live level reader available to dispatcher inner loops so they
+    # can react to mid-run changes at chunk boundaries.
+    live_level_getter = (input_data or {}).get("get_live_fast_level")
     if len(patent_rows) >= PIPELINE_THRESHOLD:
-        return _run_pipeline_mode(
+        if fast_profile["fast"]:
+            return _run_pipeline_mode(
+                patent_rows, file_path, agent_name, strategy,
+                start_time, step, browser_event, stop_requested,
+                (input_data or {}).get("register_stop_handler"),
+                fast_profile=fast_profile,
+                live_level_getter=live_level_getter,
+            )
+        return _run_chunked_sequential_mode(
             patent_rows, file_path, agent_name, strategy,
             start_time, step, browser_event, stop_requested,
             (input_data or {}).get("register_stop_handler"),
+            fast_profile=fast_profile,
+            live_level_getter=live_level_getter,
         )
 
     # --- Sequential mode (< PIPELINE_THRESHOLD rows) ---
-    step("Launching browser for WIPO scraping...")
-    step("A Chromium window will open — solve any CAPTCHAs when prompted.")
+    step("Launching browser for WIPO scraping (headless)...")
+    step("A Chromium popup will only appear if DIY OCR + GPT-4o Vision both fail to solve a captcha.")
     time.sleep(STEP_DELAY)
 
     results = []
@@ -366,7 +472,14 @@ def run_agent(input_data=None, on_step=None):
     error_count = 0
     total = len(patent_rows)
 
-    patent_browser = PatentBrowser(headless=False, on_step=on_step, stop_requested=stop_requested)
+    # All levels run headless by default. Only the manual_fallback tier
+    # opens a separate visible Chromium popup when needed.
+    headless_mode = _resolve_headless(fast_profile)
+    patent_browser = PatentBrowser(
+        headless=headless_mode,
+        on_step=on_step,
+        stop_requested=stop_requested,
+    )
     _register_stop_handler(input_data, patent_browser.force_stop)
     try:
         patent_browser.start()
@@ -374,10 +487,12 @@ def run_agent(input_data=None, on_step=None):
         step(f"ERROR: Could not launch browser: {e}")
         return _failure(f"Browser launch failed: {e}")
 
+    aborted_early = False
     try:
         for idx, row_data in enumerate(patent_rows, start=1):
             if stop_requested():
                 step(f"Stop requested - finishing with {len(results)} processed row(s)")
+                aborted_early = True
                 break
 
             patent_id = row_data["id"]
@@ -400,97 +515,115 @@ def run_agent(input_data=None, on_step=None):
                 "country": country,
             })
 
-            # Use Playwright browser to scrape patent & download RO/101 PDF
-            step(f"[Row {idx}] [Browser] Opening patent page & searching for RO/101 PDF...")
+            # Per-row try/except: any unexpected exception is captured as an
+            # error result and the loop continues — one bad row never kills
+            # the whole run. BrowserStopRequested is the one exception we
+            # honor by breaking out cleanly.
             try:
+                step(f"[Row {idx}] [Browser] Opening patent page & searching for RO/101 PDF...")
                 pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=on_step)
-            except BrowserStopRequested:
-                step(f"[Row {idx}] Stop requested - ending run immediately and saving partial output")
-                break
 
-            if not pdf_path:
+                if not pdf_path:
+                    browser_event({
+                        "event": "no_pdf",
+                        "url": url,
+                        "row": idx,
+                        "total": total,
+                        "patent_id": patent_id,
+                    })
+                    step(f"[Row {idx}] No RO/101 PDF found")
+                    results.append(_row_result(
+                        idx, row_data, url, country, "not_found",
+                        reason="No RO/101 PDF found on patent page",
+                    ))
+                    not_found_count += 1
+                    continue
+
+                # PDF downloaded — extract contacts
                 browser_event({
-                    "event": "no_pdf",
+                    "event": "extracting",
                     "url": url,
                     "row": idx,
                     "total": total,
                     "patent_id": patent_id,
                 })
-                step(f"[Row {idx}] No RO/101 PDF found")
+                step(f"[Row {idx}] [PDF Extractor] Extracting contacts...")
+                contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step)
+
+                emails = contacts.get("emails", [])
+                phones = contacts.get("phones", [])
+                name = contacts.get("name", "")
+                status = contacts["status"]
+
+                browser_event({
+                    "event": "contacts",
+                    "url": url,
+                    "row": idx,
+                    "total": total,
+                    "patent_id": patent_id,
+                    "title": title,
+                    "emails": emails,
+                    "phones": phones,
+                    "name": name,
+                    "status": status,
+                    "found_count": found_count + (1 if status == "found" else 0),
+                    "not_found_count": not_found_count + (1 if status == "not_found" else 0),
+                    "error_count": error_count,
+                })
+
+                if status == "found":
+                    found_count += 1
+                    step(
+                        f"[Row {idx}] FOUND: "
+                        f"{', '.join(emails[:2]) if emails else 'no email'} | "
+                        f"{', '.join(phones[:2]) if phones else 'no phone'}"
+                    )
+                elif status == "not_found":
+                    not_found_count += 1
+                    step(f"[Row {idx}] No contact info found in PDF")
+                else:
+                    error_count += 1
+                    step(f"[Row {idx}] Error: {contacts.get('error', 'Unknown')}")
+
                 results.append(_row_result(
-                    idx, row_data, url, country, "not_found",
-                    reason="No RO/101 PDF found on patent page",
+                    idx, row_data, url, country, status,
+                    emails=emails, phones=phones, name=name,
                 ))
-                not_found_count += 1
-                continue
-
-            # PDF downloaded — extract contacts
-            browser_event({
-                "event": "extracting",
-                "url": url,
-                "row": idx,
-                "total": total,
-                "patent_id": patent_id,
-            })
-            step(f"[Row {idx}] [PDF Extractor] Extracting contacts...")
-            contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step)
-
-            emails = contacts.get("emails", [])
-            phones = contacts.get("phones", [])
-            name = contacts.get("name", "")
-            status = contacts["status"]
-
-            # Dashboard browser preview: contacts result
-            browser_event({
-                "event": "contacts",
-                "url": url,
-                "row": idx,
-                "total": total,
-                "patent_id": patent_id,
-                "title": title,
-                "emails": emails,
-                "phones": phones,
-                "name": name,
-                "status": status,
-                "found_count": found_count + (1 if status == "found" else 0),
-                "not_found_count": not_found_count + (1 if status == "not_found" else 0),
-                "error_count": error_count,
-            })
-
-            if status == "found":
-                found_count += 1
-                step(
-                    f"[Row {idx}] FOUND: "
-                    f"{', '.join(emails[:2]) if emails else 'no email'} | "
-                    f"{', '.join(phones[:2]) if phones else 'no phone'}"
-                )
-            elif status == "not_found":
-                not_found_count += 1
-                step(f"[Row {idx}] No contact info found in PDF")
-            else:
+            except BrowserStopRequested:
+                step(f"[Row {idx}] Stop requested - ending run immediately and saving partial output")
+                aborted_early = True
+                break
+            except Exception as row_exc:
+                step(f"[Row {idx}] UNEXPECTED error: {row_exc} — recording and moving on")
                 error_count += 1
-                step(f"[Row {idx}] Error: {contacts.get('error', 'Unknown')}")
+                results.append(_row_result(
+                    idx, row_data, url, country, "error",
+                    reason=f"row_exception: {str(row_exc)[:300]}",
+                ))
 
-            results.append(_row_result(
-                idx, row_data, url, country, status,
-                emails=emails, phones=phones, name=name,
-            ))
-
-            time.sleep(0.5)
+            # No per-row sleep — pacing is enforced upstream by RequestPacer
+            # at every page.goto, and the captcha solver absorbs any burst.
 
     finally:
         step("[Browser] Closing browser...")
-        patent_browser.close()
+        try:
+            patent_browser.close()
+        except Exception as e:
+            step(f"[Browser] Close raised (ignored): {e}")
 
     # --- Step 6: Generate Work Report Excel ---
     step("Generating Work Report Excel...")
     time.sleep(STEP_DELAY)
 
-    run_status = "stopped" if stop_requested() else "success"
+    run_status = "stopped" if (stop_requested() or aborted_early) else "success"
     output_path = ""
     if results:
-        output_path = generate_work_report(results, on_step=step)
-        step(f"Output saved: {Path(output_path).name}")
+        try:
+            output_path = generate_work_report(results, on_step=step)
+            step(f"Output saved: {Path(output_path).name}")
+        except Exception as e:
+            step(f"[Output] FAILED to write Work Report: {e} — "
+                 f"{len(results)} rows are still in memory but the .xlsx was not produced")
     else:
         step("No processed rows available to write into Work Report")
     time.sleep(STEP_DELAY)
@@ -558,10 +691,20 @@ def run_agent(input_data=None, on_step=None):
 # ---------------------------------------------------------------------------
 def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                        start_time, step, browser_event, stop_requested=lambda: False,
-                       register_stop_handler=None):
+                       register_stop_handler=None, fast_profile=None,
+                       live_level_getter=None):
     """Run the parallel pipeline for 50+ rows.  No artificial delays."""
+    profile = fast_profile or FAST_MODE_LEVELS[3]
+    browser_workers = profile["browsers"]
+    download_workers = profile["downloads"]
+    ocr_workers = profile["ocr"]
+    parallel_pipelines = profile["pipelines"]
+
     step(f"[Pipeline] Large dataset ({len(patent_rows)} rows) — parallel pipeline mode")
-    step(f"[Pipeline] {DEFAULT_BROWSER_WORKERS} browsers + {DEFAULT_DOWNLOAD_WORKERS} downloaders + {DEFAULT_OCR_WORKERS} OCR")
+    step(
+        f"[Pipeline] {browser_workers} browsers + {download_workers} downloaders + "
+        f"{ocr_workers} OCR across {parallel_pipelines} pipeline(s)"
+    )
 
     # Check for resume
     resume_path = ProgressFile.find_latest(file_path)
@@ -571,24 +714,61 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
     else:
         resume_path = None
 
-    # Build and run pipeline
+    # Honor profile's headless setting; PCT_HEADLESS_MODE env can override.
+    headless_mode = _resolve_headless(profile)
+
+    # Pool warm-up: re-use the pacer's "boost after captcha" mechanism to
+    # slow down the first ~5 requests right after pool launch. This avoids
+    # smashing WIPO with a burst of N parallel requests immediately after a
+    # level upgrade (L1 → L5), which the site reads as a bot signature
+    # and reacts to by serving empty/throttled pages — leading to a wave
+    # of false not_found results.
+    try:
+        from shared.pacing import default_pacer as _pacer
+        if _pacer is not None and browser_workers >= 2:
+            _pacer.report_captcha()  # trips the post-captcha multiplier
+            step(
+                f"[Pipeline] Warm-up: throttling the first ~{_pacer.boost_requests} "
+                f"requests so WIPO sees a gradual ramp, not a burst"
+            )
+    except Exception:
+        pass
+
+    # Build and run pipeline. Wrap in try/except so even if the parallel
+    # pipeline dies catastrophically we still write whatever rows finished.
     pipeline = ChunkedPipelineManager(
         patent_rows=patent_rows,
         on_step=step,
-        browser_workers=DEFAULT_BROWSER_WORKERS,
-        download_workers=DEFAULT_DOWNLOAD_WORKERS,
-        ocr_workers=DEFAULT_OCR_WORKERS,
-        headless=True,
+        browser_workers=browser_workers,
+        download_workers=download_workers,
+        ocr_workers=ocr_workers,
+        parallel_pipelines=parallel_pipelines,
+        headless=headless_mode,
         resume_path=resume_path,
         input_file=file_path,
+        live_level_getter=live_level_getter,
     )
 
-    results = pipeline.run()
+    results = []
+    pipeline_error = None
+    try:
+        results = pipeline.run()
+    except Exception as e:
+        pipeline_error = e
+        step(f"[Pipeline] ERROR during run: {e} — saving whatever we have")
 
-    # Generate Work Report (no delay)
-    step("Generating Work Report Excel...")
-    output_path = generate_work_report(results, on_step=step)
-    step(f"Output saved: {Path(output_path).name}")
+    # Generate Work Report from whatever rows survived.
+    output_path = ""
+    if results:
+        step("Generating Work Report Excel...")
+        try:
+            output_path = generate_work_report(results, on_step=step)
+            step(f"Output saved: {Path(output_path).name}")
+        except Exception as e:
+            step(f"[Output] Could not write Work Report: {e} — "
+                 f"{len(results)} rows are in the JSONL log")
+    else:
+        step("No rows processed — Work Report not generated")
 
     # Self-tests
     step("Running self-tests...")
@@ -640,10 +820,21 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
 # ---------------------------------------------------------------------------
 # Output generator — Work Report format
 # ---------------------------------------------------------------------------
-def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
+def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
                        start_time, step, browser_event, stop_requested=lambda: False,
-                       register_stop_handler=None):
-    """Run large datasets in stable sequential chunks."""
+                       register_stop_handler=None, fast_profile=None,
+                       live_level_getter=None):
+    """Run large datasets in stable sequential chunks.
+
+    Single browser, one row at a time, but split into chunks for stability.
+    Slower than _run_pipeline_mode but uses only one connection to WIPO so
+    captcha rate is minimal. Used as the safe fallback when fast_level <= 1.
+
+    `live_level_getter`, if provided, is consulted at chunk boundaries so a
+    user dragging the slider up to fast-mode causes future chunks to be
+    handed off to _run_pipeline_mode instead of being processed here.
+    """
+    profile = fast_profile or FAST_MODE_LEVELS[1]
     total = len(patent_rows)
     total_chunks = max(1, (total + DEFAULT_CHUNK_SIZE - 1) // DEFAULT_CHUNK_SIZE)
 
@@ -661,9 +852,22 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
     error_count = 0
 
     step("Launching browser for chunked WIPO scraping...")
-    step("A Chromium window will open - solve any CAPTCHAs when prompted.")
+    # All levels run headless. A visible Chromium popup only opens if BOTH
+    # DIY OCR and GPT-4o Vision fail to solve a captcha (manual_fallback).
+    headless_mode = _resolve_headless(profile)
+    if headless_mode:
+        step(
+            f"[Mode {profile['emoji']} {profile['label']}] Running headless — "
+            f"only opens a Chromium popup if DIY OCR + GPT-4o Vision both fail."
+        )
+    else:
+        step(f"[Mode {profile['emoji']} {profile['label']}] Headed mode (PCT_HEADLESS_MODE=false) — visible Chromium window will open.")
 
-    patent_browser = PatentBrowser(headless=False, on_step=step, stop_requested=stop_requested)
+    patent_browser = PatentBrowser(
+        headless=headless_mode,
+        on_step=step,
+        stop_requested=stop_requested,
+    )
     if callable(register_stop_handler):
         register_stop_handler(patent_browser.force_stop)
     try:
@@ -672,6 +876,32 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
         step(f"ERROR: Could not launch browser: {e}")
         return _failure(f"Browser launch failed: {e}")
 
+    upgrade_remaining_rows = None
+
+    def _check_live_upgrade(current_row_index):
+        """If the user dragged the slider to a fast level, return the
+        slice of rows we should hand off to the parallel pipeline. Called
+        between rows so switching takes effect within seconds, not chunks.
+        """
+        if not callable(live_level_getter):
+            return None
+        try:
+            live = live_level_getter()
+        except Exception:
+            return None
+        if not live or live not in FAST_MODE_LEVELS:
+            return None
+        if not FAST_MODE_LEVELS[live]["fast"]:
+            return None
+        # Bail with everything from current row onwards.
+        remaining = patent_rows[current_row_index:]
+        new_profile = FAST_MODE_LEVELS[live]
+        step(
+            f"[Mode] Live upgrade to L{live} {new_profile['emoji']} {new_profile['label']} "
+            f"— handing off {len(remaining)} remaining row(s) to the parallel pipeline"
+        )
+        return remaining
+
     try:
         for chunk_index in range(total_chunks):
             if stop_requested():
@@ -679,6 +909,13 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                 break
 
             chunk_start = chunk_index * DEFAULT_CHUNK_SIZE
+
+            # Pre-chunk live-level check — catches the case where the user
+            # upgraded between chunks (including before the very first one).
+            upgrade_remaining_rows = _check_live_upgrade(chunk_start)
+            if upgrade_remaining_rows:
+                break
+
             chunk_rows = patent_rows[chunk_start:chunk_start + DEFAULT_CHUNK_SIZE]
             if not chunk_rows:
                 continue
@@ -691,12 +928,19 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
             )
 
             chunk_results = 0
-            for row_data in chunk_rows:
+            for row_pos, row_data in enumerate(chunk_rows):
                 if stop_requested():
                     step(
                         f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
                         f"finishing with {len(results)} processed row(s)"
                     )
+                    break
+
+                # Per-row live-level check — this is what makes the slider
+                # feel instant. If user upgraded mid-chunk, bail right now
+                # with whatever rows are still unprocessed.
+                upgrade_remaining_rows = _check_live_upgrade(chunk_start + row_pos)
+                if upgrade_remaining_rows:
                     break
 
                 row_no = row_data["_row_idx"]
@@ -723,87 +967,100 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                     "country": country,
                 })
 
-                step(f"[Row {row_no}] [Browser] Opening patent page & searching for RO/101 PDF...")
+                # Per-row try/except: an unexpected exception becomes an
+                # error row, not a crash. Stop requests still break out
+                # cleanly. This is what keeps the PCT agent running through
+                # any single-row failure.
                 try:
+                    step(f"[Row {row_no}] [Browser] Opening patent page & searching for RO/101 PDF...")
                     pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=step)
+
+                    if not pdf_path:
+                        browser_event({
+                            "event": "no_pdf",
+                            "url": url,
+                            "row": row_no,
+                            "total": total,
+                            "patent_id": patent_id,
+                        })
+                        step(f"[Row {row_no}] No RO/101 PDF found")
+                        results.append(_row_result(
+                            row_no, row_data, url, country, "not_found",
+                            reason="No RO/101 PDF found on patent page",
+                        ))
+                        processed_rows.add(row_no)
+                        not_found_count += 1
+                        chunk_results += 1
+                        continue
+
+                    browser_event({
+                        "event": "extracting",
+                        "url": url,
+                        "row": row_no,
+                        "total": total,
+                        "patent_id": patent_id,
+                    })
+                    step(f"[Row {row_no}] [PDF Extractor] Extracting contacts...")
+                    contacts = extract_contacts_from_pdf(pdf_path, on_step=step)
+
+                    emails = contacts.get("emails", [])
+                    phones = contacts.get("phones", [])
+                    name = contacts.get("name", "")
+                    status = contacts["status"]
+
+                    if status == "found":
+                        found_count += 1
+                        step(
+                            f"[Row {row_no}] FOUND: "
+                            f"{', '.join(emails[:2]) if emails else 'no email'} | "
+                            f"{', '.join(phones[:2]) if phones else 'no phone'}"
+                        )
+                    elif status == "not_found":
+                        not_found_count += 1
+                        step(f"[Row {row_no}] No contact info found in PDF")
+                    else:
+                        error_count += 1
+                        step(f"[Row {row_no}] Error: {contacts.get('error', 'Unknown')}")
+
+                    browser_event({
+                        "event": "contacts",
+                        "url": url,
+                        "row": row_no,
+                        "total": total,
+                        "patent_id": patent_id,
+                        "title": title,
+                        "emails": emails,
+                        "phones": phones,
+                        "name": name,
+                        "status": status,
+                        "found_count": found_count,
+                        "not_found_count": not_found_count,
+                        "error_count": error_count,
+                    })
+
+                    results.append(_row_result(
+                        row_no, row_data, url, country, status,
+                        emails=emails, phones=phones, name=name,
+                    ))
+                    processed_rows.add(row_no)
+                    chunk_results += 1
                 except BrowserStopRequested:
                     step(
                         f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
                         "ending run immediately and saving partial output"
                     )
                     break
-
-                if not pdf_path:
-                    browser_event({
-                        "event": "no_pdf",
-                        "url": url,
-                        "row": row_no,
-                        "total": total,
-                        "patent_id": patent_id,
-                    })
-                    step(f"[Row {row_no}] No RO/101 PDF found")
+                except Exception as row_exc:
+                    step(f"[Row {row_no}] UNEXPECTED error: {row_exc} — recording and moving on")
+                    error_count += 1
                     results.append(_row_result(
-                        row_no, row_data, url, country, "not_found",
-                        reason="No RO/101 PDF found on patent page",
+                        row_no, row_data, url, country, "error",
+                        reason=f"row_exception: {str(row_exc)[:300]}",
                     ))
                     processed_rows.add(row_no)
-                    not_found_count += 1
                     chunk_results += 1
-                    continue
 
-                browser_event({
-                    "event": "extracting",
-                    "url": url,
-                    "row": row_no,
-                    "total": total,
-                    "patent_id": patent_id,
-                })
-                step(f"[Row {row_no}] [PDF Extractor] Extracting contacts...")
-                contacts = extract_contacts_from_pdf(pdf_path, on_step=step)
-
-                emails = contacts.get("emails", [])
-                phones = contacts.get("phones", [])
-                name = contacts.get("name", "")
-                status = contacts["status"]
-
-                if status == "found":
-                    found_count += 1
-                    step(
-                        f"[Row {row_no}] FOUND: "
-                        f"{', '.join(emails[:2]) if emails else 'no email'} | "
-                        f"{', '.join(phones[:2]) if phones else 'no phone'}"
-                    )
-                elif status == "not_found":
-                    not_found_count += 1
-                    step(f"[Row {row_no}] No contact info found in PDF")
-                else:
-                    error_count += 1
-                    step(f"[Row {row_no}] Error: {contacts.get('error', 'Unknown')}")
-
-                browser_event({
-                    "event": "contacts",
-                    "url": url,
-                    "row": row_no,
-                    "total": total,
-                    "patent_id": patent_id,
-                    "title": title,
-                    "emails": emails,
-                    "phones": phones,
-                    "name": name,
-                    "status": status,
-                    "found_count": found_count,
-                    "not_found_count": not_found_count,
-                    "error_count": error_count,
-                })
-
-                results.append(_row_result(
-                    row_no, row_data, url, country, status,
-                    emails=emails, phones=phones, name=name,
-                ))
-                processed_rows.add(row_no)
-                chunk_results += 1
-
-                time.sleep(0.5)
+                # No per-row sleep — RequestPacer handles backoff naturally.
 
             step(
                 f"[Chunk {chunk_index + 1}/{total_chunks}] Finished rows "
@@ -814,6 +1071,10 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
             if stop_requested():
                 break
 
+            # If the inner row-loop broke due to a live upgrade, propagate.
+            if upgrade_remaining_rows:
+                break
+
             if chunk_index < total_chunks - 1:
                 step(
                     f"[Chunk {chunk_index + 1}/{total_chunks}] Cooling down "
@@ -822,7 +1083,40 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                 time.sleep(CHUNK_COOLDOWN_SECONDS)
     finally:
         step("[Browser] Closing browser...")
-        patent_browser.close()
+        try:
+            patent_browser.close()
+        except Exception as e:
+            step(f"[Browser] Close raised (ignored): {e}")
+
+    # If the user upgraded to fast mode mid-run, hand the remaining rows
+    # off to the parallel pipeline now. Its results merge with what we
+    # already produced sequentially.
+    if upgrade_remaining_rows and not stop_requested():
+        try:
+            live = live_level_getter() if callable(live_level_getter) else None
+            new_profile = FAST_MODE_LEVELS.get(live or 3, FAST_MODE_LEVELS[3])
+            pipeline_result = _run_pipeline_mode(
+                upgrade_remaining_rows, file_path, agent_name, strategy,
+                start_time, step, browser_event, stop_requested,
+                register_stop_handler,
+                fast_profile=new_profile,
+                live_level_getter=live_level_getter,
+            )
+            # Merge pipeline results with our sequential ones
+            pipeline_rows = (pipeline_result or {}).get("results", []) or []
+            seen_rows = {r.get("row") for r in results}
+            for r in pipeline_rows:
+                if r.get("row") not in seen_rows:
+                    results.append(r)
+                    seen_rows.add(r.get("row"))
+                    if r.get("status") == "found":
+                        found_count += 1
+                    elif r.get("status") == "not_found":
+                        not_found_count += 1
+                    else:
+                        error_count += 1
+        except Exception as e:
+            step(f"[Mode] Pipeline handoff failed: {e} — saving sequential results only")
 
     results = sorted(results, key=lambda item: item.get("row", 0))
     if len(results) != total:
@@ -835,8 +1129,12 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
     run_status = "stopped" if stop_requested() else "success"
     output_path = ""
     if results:
-        output_path = generate_work_report(results, on_step=step)
-        step(f"Output saved: {Path(output_path).name}")
+        try:
+            output_path = generate_work_report(results, on_step=step)
+            step(f"Output saved: {Path(output_path).name}")
+        except Exception as e:
+            step(f"[Output] FAILED to write Work Report: {e} — "
+                 f"results were already streamed to the resumable JSONL log")
     else:
         step("No processed rows available to write into Work Report")
 

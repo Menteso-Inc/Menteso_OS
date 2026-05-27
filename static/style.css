@@ -1548,6 +1548,240 @@ body {
     font-weight: 500;
 }
 
+/* ============================================================
+   Run Metrics — stopwatch + ETA + captcha breakdown
+   ============================================================ */
+.run-metrics-panel {
+    background: var(--bg-secondary, #14181f);
+    border: 1px solid var(--border-color, #232a35);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+}
+.run-metrics-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.40);
+    color: #fbbf24;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    line-height: 1.4;
+}
+.run-metrics-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1.3fr 1.3fr;
+    gap: 18px;
+    align-items: stretch;
+}
+@media (max-width: 1100px) {
+    .run-metrics-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+.run-metrics-stopwatch, .run-metrics-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.run-metrics-stopwatch {
+    border-right: 1px solid var(--border-color, #232a35);
+    padding-right: 18px;
+}
+.run-metrics-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    color: var(--text-muted, #8a93a3);
+}
+.run-metrics-stopwatch-value {
+    font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-primary, #f3f5f8);
+    letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+}
+.run-metrics-eta-value {
+    font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--text-primary, #f3f5f8);
+    font-variant-numeric: tabular-nums;
+}
+.run-metrics-fraction {
+    color: var(--text-muted, #8a93a3);
+    font-size: 18px;
+    font-weight: 500;
+    margin-left: 6px;
+}
+.run-metrics-sub {
+    font-size: 12px;
+    color: var(--text-muted, #8a93a3);
+}
+.run-metrics-progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+.run-metrics-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6c8cff 0%, #8eb6ff 100%);
+    transition: width 0.3s ease-out;
+}
+.run-metrics-tier-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+.rm-tier-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.rm-tier-auto {
+    background: rgba(108, 140, 255, 0.15);
+    color: #8eb6ff;
+}
+.rm-tier-manual {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+.run-metrics-tiers-detail {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color, #232a35);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.rm-tier-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color, #232a35);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font-size: 11px;
+    color: var(--text-secondary, #c6cad3);
+}
+.rm-tier-chip-label {
+    letter-spacing: 0.2px;
+}
+.rm-tier-chip-count {
+    font-weight: 700;
+    color: var(--text-primary, #f3f5f8);
+    font-variant-numeric: tabular-nums;
+}
+.rm-tier-empty {
+    font-size: 11px;
+    color: var(--text-muted, #8a93a3);
+    font-style: italic;
+}
+
+/* Fast-mode slider — sits inline with the captcha tier chips so the user
+   can dial scraping aggressiveness 😇 → 😈 mid-run. */
+.rm-fastmode {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    padding: 4px 10px;
+    background: rgba(108, 140, 255, 0.08);
+    border: 1px solid rgba(108, 140, 255, 0.22);
+    border-radius: 8px;
+    min-height: 28px;
+}
+.rm-fastmode-emoji-low,
+.rm-fastmode-emoji-high {
+    font-size: 14px;
+    line-height: 1;
+    user-select: none;
+}
+.rm-fastmode-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 110px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+}
+.rm-fastmode-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #8eb6ff;
+    border: 2px solid #f3f5f8;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+    cursor: pointer;
+}
+.rm-fastmode-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #8eb6ff;
+    border: 2px solid #f3f5f8;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.18);
+    cursor: pointer;
+}
+.rm-fastmode-current {
+    font-size: 12px;
+    color: var(--text-primary, #f3f5f8);
+    white-space: nowrap;
+    min-width: 110px;
+    font-variant-numeric: tabular-nums;
+}
+.rm-fastmode-current strong {
+    font-weight: 700;
+    color: #8eb6ff;
+    margin: 0 3px;
+}
+.rm-fastmode-pending {
+    font-size: 11px;
+    color: #fbbf24;
+    font-style: italic;
+}
+[data-theme="light"] .rm-fastmode {
+    background: rgba(108, 140, 255, 0.08);
+    border-color: rgba(108, 140, 255, 0.30);
+}
+[data-theme="light"] .rm-fastmode-slider {
+    background: rgba(0, 0, 0, 0.10);
+}
+[data-theme="light"] .rm-fastmode-slider::-webkit-slider-thumb,
+[data-theme="light"] .rm-fastmode-slider::-moz-range-thumb {
+    border-color: #1d2533;
+}
+
+[data-theme="light"] .run-metrics-panel {
+    background: #fff;
+    border-color: #e2e6ec;
+}
+[data-theme="light"] .run-metrics-progress-bar {
+    background: rgba(0, 0, 0, 0.06);
+}
+[data-theme="light"] .rm-tier-chip {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: #e2e6ec;
+}
+
 .captcha-alert-modal {
     position: fixed;
     inset: 0;
@@ -2744,5 +2978,136 @@ body {
 
     .header-actions {
         gap: 8px;
+    }
+}
+
+/* ============================================================
+   Fast Mode chip + slider (sits in the run-actions row, next to
+   the Run/Stop buttons). Range slider from 😇 → 😈, locked
+   while a run is in flight, picks up live changes via localStorage.
+   ============================================================ */
+.fast-mode-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color, #232a35);
+    border-radius: var(--radius, 8px);
+    font-size: 12px;
+    color: var(--text-secondary, #c6cad3);
+    user-select: none;
+    transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.fast-mode-chip.is-locked {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.fast-mode-chip-label {
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    color: var(--text-muted, #8a93a3);
+}
+
+.fast-mode-emoji {
+    font-size: 15px;
+    line-height: 1;
+}
+
+.fast-mode-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 130px;
+    height: 6px;
+    background: linear-gradient(
+        to right,
+        #4ade80 0%,
+        #facc15 50%,
+        #ef4444 100%
+    );
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+.fast-mode-slider:disabled {
+    cursor: not-allowed;
+    filter: grayscale(0.6);
+}
+
+.fast-mode-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border: 2px solid var(--accent, #3b82f6);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.fast-mode-slider:not(:disabled)::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 8px var(--accent-glow, rgba(59, 130, 246, 0.6));
+}
+
+.fast-mode-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border: 2px solid var(--accent, #3b82f6);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.fast-mode-current {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 6px;
+    font-size: 11px;
+    min-width: 88px;
+    justify-content: center;
+}
+
+.fast-mode-current-emoji {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.fast-mode-current-label {
+    font-weight: 600;
+    color: var(--text-primary, #f3f5f8);
+    letter-spacing: 0.2px;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme="light"] .fast-mode-chip {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: #e2e6ec;
+}
+
+[data-theme="light"] .fast-mode-current {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+@media (max-width: 720px) {
+    .fast-mode-slider {
+        width: 90px;
+    }
+    .fast-mode-current {
+        min-width: 0;
     }
 }

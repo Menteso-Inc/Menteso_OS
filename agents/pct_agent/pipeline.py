@@ -299,7 +299,8 @@ class PipelinePCT:
     """
 
     def __init__(self, patent_rows, on_step, browser_workers=20, download_workers=30,
-                 ocr_workers=8, headless=True, resume_path=None, input_file=""):
+                 ocr_workers=8, headless=True, resume_path=None, input_file="",
+                 live_level_getter=None):
         self.patent_rows = patent_rows
         self.on_step = on_step
         self.n_browser = browser_workers
@@ -307,6 +308,9 @@ class PipelinePCT:
         self.n_ocr = ocr_workers
         self.headless = headless
         self.input_file = input_file
+        # Lets pool workers detect when the user dragged the slider down to
+        # L1 Safe mid-run so they can drain instead of hammering WIPO.
+        self.live_level_getter = live_level_getter
 
         # Bounded queues — prevent memory bloat
         self.browse_queue = queue.Queue()
@@ -461,11 +465,54 @@ class PipelinePCT:
 
     # -- Stage 1: Browser workers --
 
+    # Cap how many times a single row can be re-queued after a captcha-failed
+    # scrape. After this many tries we accept that the solver can't get past
+    # it for this row, record an error result, and move on. This prevents a
+    # persistent block (IP banned, page changed) from looping forever.
+    MAX_CAPTCHA_RETRIES_PER_ROW = 3
+
+    # Adaptive backoff: when WIPO starts rate-limiting (multiple not_found
+    # in a row from a single worker), back off so we don't compound the
+    # problem by hammering harder.
+    BACKOFF_AFTER_FAILURES = 3      # streak threshold
+    BACKOFF_BASE_SECONDS = 4.0      # multiplied by (streak - threshold)
+    BACKOFF_CAP_SECONDS = 60.0      # never sleep longer than this
+
     def _browser_worker(self, wid, page):
+        consecutive_failures = 0
         while True:
             row_data = self.browse_queue.get()
             if row_data is None:
                 break
+
+            # Live downgrade check — if the user dragged the slider to Safe
+            # (L1) mid-run, this worker stops pulling new rows. The pool
+            # drains naturally as workers exit.
+            if callable(self.live_level_getter):
+                try:
+                    live = self.live_level_getter()
+                except Exception:
+                    live = None
+                if live == 1:
+                    self.step(
+                        f"[Worker {wid}] User dragged to L1 Safe — "
+                        f"exiting pool worker, remaining rows will re-queue"
+                    )
+                    # Put row back so a future sequential pass can pick it up
+                    self.browse_queue.put(row_data)
+                    break
+
+            # Adaptive backoff after consecutive not_found
+            if consecutive_failures >= self.BACKOFF_AFTER_FAILURES:
+                backoff = min(
+                    self.BACKOFF_CAP_SECONDS,
+                    self.BACKOFF_BASE_SECONDS * (consecutive_failures - self.BACKOFF_AFTER_FAILURES + 1),
+                )
+                self.step(
+                    f"[Worker {wid}] {consecutive_failures} consecutive not_found — "
+                    f"backing off {backoff:.0f}s (WIPO may be rate-limiting)"
+                )
+                time.sleep(backoff)
 
             self.captcha.wait_if_cooling()
 
@@ -474,30 +521,87 @@ class PipelinePCT:
             doc_id = patent_id.replace("/", "_")
             country = _extract_country(row_data["appl_no"])
 
+            # Fire a "navigate" browser event so the Scraping Browser
+            # preview panel shows what this pool worker is currently
+            # working on (otherwise the preview just sits idle in pool
+            # mode, even though many rows are being scraped).
+            try:
+                self.on_step({
+                    "type": "browser",
+                    "event": "navigate",
+                    "url": url,
+                    "row": row_data.get("_row_idx", 0),
+                    "total": self.stats.total,
+                    "patent_id": patent_id,
+                    "title": row_data.get("title", ""),
+                    "applicant": row_data.get("applicant", ""),
+                    "country": country,
+                })
+            except Exception:
+                pass
+
             with self.stats._lock:
                 self.stats.browse_active += 1
 
+            scrape_error = None
             try:
-                pdf_url, cookies, captcha = scrape_pdf_url_only(page, url)
-            except Exception:
+                pdf_url, cookies, captcha = scrape_pdf_url_only(page, url, on_step=self.step)
+            except Exception as e:
                 pdf_url, cookies, captcha = None, {}, False
+                scrape_error = str(e)
 
             with self.stats._lock:
                 self.stats.browse_active -= 1
 
             if captcha:
                 self.captcha.report_captcha()
-                self.browse_queue.put(row_data)
+                retries = row_data.get("_captcha_retries", 0) + 1
+                row_data["_captcha_retries"] = retries
+                if retries >= self.MAX_CAPTCHA_RETRIES_PER_ROW:
+                    self.step(
+                        f"[Pipeline] Row {row_data.get('_row_idx', '?')} "
+                        f"({patent_id}) — captcha unsolved after {retries} attempts, "
+                        f"recording as error and moving on"
+                    )
+                    result = _make_result(row_data, url, country, "error")
+                    result["reason"] = "captcha_persistent"
+                    self._collect_result(result)
+                else:
+                    self.browse_queue.put(row_data)
                 continue
-            else:
-                self.captcha.report_clear()
+
+            self.captcha.report_clear()
 
             if pdf_url:
                 # Push to download queue (Stage 2)
                 self.download_queue.put((row_data, url, country, doc_id, pdf_url, cookies))
+                consecutive_failures = 0  # success path resets the counter
+            elif scrape_error:
+                result = _make_result(row_data, url, country, "error")
+                result["reason"] = f"scrape_exception: {scrape_error[:200]}"
+                self._collect_result(result)
+                consecutive_failures += 1
+                self._emit_browser_no_pdf(row_data, url, patent_id)
             else:
                 result = _make_result(row_data, url, country, "not_found")
                 self._collect_result(result)
+                consecutive_failures += 1
+                self._emit_browser_no_pdf(row_data, url, patent_id)
+
+    def _emit_browser_no_pdf(self, row_data, url, patent_id):
+        """Surface a 'no_pdf' status in the Scraping Browser panel so the
+        preview shows what each pool worker just produced."""
+        try:
+            self.on_step({
+                "type": "browser",
+                "event": "no_pdf",
+                "url": url,
+                "row": row_data.get("_row_idx", 0),
+                "total": self.stats.total,
+                "patent_id": patent_id,
+            })
+        except Exception:
+            pass
 
     # -- Stage 2: Download workers --
 
@@ -558,6 +662,29 @@ class PipelinePCT:
                 name=contacts.get("name", ""),
             )
             self._collect_result(result)
+
+            # Fire "contacts" browser event so the dashboard's Scraping
+            # Browser panel reflects the latest extraction (was idle in
+            # pool mode before this).
+            try:
+                self.on_step({
+                    "type": "browser",
+                    "event": "contacts",
+                    "url": url,
+                    "row": row_data.get("_row_idx", 0),
+                    "total": self.stats.total,
+                    "patent_id": row_data.get("id", ""),
+                    "title": row_data.get("title", ""),
+                    "emails": contacts.get("emails", []),
+                    "phones": contacts.get("phones", []),
+                    "name": contacts.get("name", ""),
+                    "status": contacts.get("status", ""),
+                    "found_count": self.stats.found,
+                    "not_found_count": self.stats.not_found,
+                    "error_count": self.stats.errors,
+                })
+            except Exception:
+                pass
 
             # Cleanup PDF to save disk space
             try:
@@ -627,6 +754,7 @@ class ChunkedPipelineManager:
         ocr_workers=4,
         headless=False,
         resume_path=None,
+        live_level_getter=None,
     ):
         self.patent_rows = patent_rows
         self.on_step = on_step
@@ -637,6 +765,7 @@ class ChunkedPipelineManager:
         self.download_workers = max(1, download_workers)
         self.ocr_workers = max(1, ocr_workers)
         self.resume_path = resume_path
+        self.live_level_getter = live_level_getter
 
         for idx, row in enumerate(self.patent_rows, start=1):
             row["_row_idx"] = idx
@@ -649,8 +778,10 @@ class ChunkedPipelineManager:
         self.browser_workers = max(2, self.browser_workers // self.parallel_pipelines)
         self.download_workers = max(3, self.download_workers // self.parallel_pipelines)
         self.ocr_workers = max(2, self.ocr_workers // self.parallel_pipelines)
-        # WIPO is significantly more reliable in headed mode for heavy runs.
-        self.headless = False if len(self.chunks) >= 1 else headless
+        # Honor whatever the caller passed in. Previously forced to False
+        # because WIPO captchas required a human; now the captcha_solver
+        # sub-agent handles them so headless is fine and 2-3× faster.
+        self.headless = headless
 
         self._lock = threading.Lock()
         self._shutdown = threading.Event()
@@ -725,6 +856,24 @@ class ChunkedPipelineManager:
 
     def _chunk_worker(self, worker_id, total_chunks):
         while True:
+            # Live downgrade check BEFORE pulling another chunk. If the
+            # user dragged the slider to L1 Safe, stop launching new
+            # PipelinePCT instances — otherwise the chunk loop keeps
+            # creating pools that immediately exit, spamming the log
+            # and producing no useful work.
+            if callable(self.live_level_getter):
+                try:
+                    live = self.live_level_getter()
+                except Exception:
+                    live = None
+                if live == 1:
+                    self.step(
+                        f"[Chunk Manager worker {worker_id}] User at L1 Safe — "
+                        f"stopping chunk dispatch. Remaining rows will be "
+                        f"handed back to sequential mode."
+                    )
+                    return
+
             item = self._chunk_queue.get()
             if item is None:
                 return
@@ -753,6 +902,7 @@ class ChunkedPipelineManager:
                 headless=self.headless,
                 resume_path=None,
                 input_file=f"{self.input_file}::chunk{chunk_idx}",
+                live_level_getter=self.live_level_getter,
             )
 
             try:

@@ -3,10 +3,31 @@
    ============================================================ */
 
 // ---------------------------------------------------------------------------
+// Fast-mode level table (mirrors FAST_MODE_LEVELS in agents/pct_agent/agent.py).
+// Level 1 = safe sequential, level 5 = max parallel. Sent with run requests
+// so the backend picks the right runtime profile.
+// ---------------------------------------------------------------------------
+const FAST_LEVELS = {
+    1: { emoji: "😇", label: "Safe",       hint: "1 browser, headless. Slowest, safest." },
+    2: { emoji: "🙂", label: "Mild",       hint: "1 pipeline, 2 browsers, headless." },
+    3: { emoji: "😏", label: "Balanced",   hint: "2 pipelines, 4 browsers, headless. ~50 rows/min." },
+    4: { emoji: "😎", label: "Aggressive", hint: "3 pipelines, 6 browsers, headless. ~100 rows/min." },
+    5: { emoji: "😈", label: "Max",        hint: "4 pipelines, 8 browsers, headless. ~150 rows/min." },
+};
+
+function readStoredFastLevel() {
+    const raw = parseInt(localStorage.getItem("menteso-fast-level"), 10);
+    if (Number.isFinite(raw) && raw >= 1 && raw <= 5) return raw;
+    // Match the Python-side FAST_MODE_DEFAULT_LEVEL — start in Balanced (L3).
+    return 3;
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 const state = {
     theme: localStorage.getItem("menteso-theme") || "dark",
+    fastLevel: readStoredFastLevel(),
     agents: [],
     selectedAgent: null,
     isRunning: false,
@@ -56,6 +77,45 @@ const state = {
         active: false,
         message: "",
         resolvedMessage: "",
+    },
+    // Mirror of FAST_MODE_LEVELS in agents/pct_agent/agent.py so the
+    // dashboard slider shows the same emoji + label the agent uses.
+    fastModeLevels: {
+        1: { emoji: "😇", label: "Safe",       hint: "1 browser, headless. Slowest, safest." },
+        2: { emoji: "🙂", label: "Mild",       hint: "2 browsers, headless. Slight speedup." },
+        3: { emoji: "😏", label: "Balanced",   hint: "4 browsers, headless. ~50 rows/min." },
+        4: { emoji: "😎", label: "Aggressive", hint: "6 browsers, headless. ~100 rows/min." },
+        5: { emoji: "😈", label: "Max",        hint: "8 browsers, headless. ~150 rows/min." },
+    },
+
+    // Run metrics — fed by browser events. Stopwatch + ETA + captcha tier
+    // breakdown so the operator can see real-time progress and which tier
+    // is actually clearing each challenge.
+    runMetrics: {
+        startedAt: null,
+        finishedAt: null,
+        totalRows: 0,
+        processedRows: 0,
+        foundRows: 0,
+        notFoundRows: 0,
+        errorRows: 0,
+        captchaTotals: { vision: 0, openai: 0, audio: 0, diy: 0, manual: 0, other: 0 },
+        captchaCount: 0,
+        lastTickAt: 0,
+        // Active fast-mode level (1-5). User can drag the slider mid-run
+        // and the backend will pick up the new level at the next chunk.
+        fastLevel: 1,
+        fastLevelChanging: false,
+        // Rolling window of row-completion timestamps (ms). Used so the ETA
+        // reflects the *current* rate rather than the cumulative average,
+        // which is wrecked by any captcha early in the run.
+        rowTimestamps: [],
+        // When the user last changed the fast-mode level. After a mode
+        // change the rolling window is cleared so the ETA reflects the
+        // NEW rate rather than the average of old + new rates.
+        modeChangedAt: null,
+        rowsAtModeChange: 0,
+        recalibrating: false,
     },
     browser: {
         url: "",
@@ -248,6 +308,371 @@ async function playCaptchaAlertSound() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Run Metrics — stopwatch + ETA + captcha tier breakdown
+// ---------------------------------------------------------------------------
+let runMetricsTickerId = null;
+
+function startRunMetricsTicker() {
+    stopRunMetricsTicker();
+    runMetricsTickerId = setInterval(() => {
+        if (state.runMetrics) state.runMetrics.lastTickAt = Date.now();
+        updateRunMetricsPanel();
+    }, 1000);
+}
+
+function stopRunMetricsTicker() {
+    if (runMetricsTickerId !== null) {
+        clearInterval(runMetricsTickerId);
+        runMetricsTickerId = null;
+    }
+}
+
+function formatStopwatch(ms) {
+    if (!ms || ms < 0) ms = 0;
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function computeRunMetricsView(rm) {
+    const now = rm.finishedAt || Date.now();
+    const elapsedMs = rm.startedAt ? Math.max(0, now - rm.startedAt) : 0;
+    const elapsedSec = elapsedMs / 1000;
+
+    const processed = rm.processedRows || 0;
+    const total = rm.totalRows || 0;
+    const remaining = Math.max(0, total - processed);
+
+    // Rolling-window ETA: look at the last N row completions and use that
+    // rate to project the remaining time. Avoids the "first captcha eats
+    // 15s" skew that made the cumulative ETA say 16 hours. On mode change
+    // the window is cleared so old-rate samples don't pollute the new
+    // estimate.
+    const samples = rm.rowTimestamps || [];
+    const MIN_SAMPLES_FOR_ETA = 5;
+    let ratePerMin = 0;
+    let etaText = "—";
+
+    // Mode-change-aware baseline: after a slider change the cumulative
+    // fallback should measure from the change point, not from the run start.
+    const baselineStart = rm.modeChangedAt || rm.startedAt;
+    const baselineProcessed = (rm.processedRows || 0) - (rm.rowsAtModeChange || 0);
+    const baselineElapsedSec = baselineStart ? Math.max(0, (now - baselineStart) / 1000) : 0;
+    const isRecalibrating = !!rm.recalibrating;
+
+    if (samples.length >= MIN_SAMPLES_FOR_ETA) {
+        const first = samples[0];
+        const last = samples[samples.length - 1];
+        const windowMs = Math.max(1, last - first);
+        const rowsInWindow = samples.length - 1; // intervals, not points
+        ratePerMin = (rowsInWindow / windowMs) * 60_000;
+        if (remaining > 0 && ratePerMin > 0) {
+            const etaMs = (remaining / ratePerMin) * 60_000;
+            etaText = formatStopwatch(etaMs);
+        } else if (remaining === 0) {
+            etaText = "0";
+        }
+        // Enough fresh samples — recalibration is complete.
+        if (isRecalibrating) rm.recalibrating = false;
+    } else if (baselineProcessed > 0 && baselineElapsedSec > 0) {
+        // Not enough samples yet — use the post-mode-change baseline so
+        // the rate shown is from THIS mode's work, not a stale average.
+        ratePerMin = (baselineProcessed / baselineElapsedSec) * 60;
+        etaText = remaining > 0
+            ? (isRecalibrating ? "recalibrating…" : "calculating…")
+            : "0";
+    } else if (isRecalibrating) {
+        etaText = "recalibrating…";
+    } else if (processed > 0 && elapsedSec > 0) {
+        // Fresh-run fallback before the very first row even completes.
+        ratePerMin = (processed / elapsedSec) * 60;
+        etaText = remaining > 0 ? "calculating…" : "0";
+    }
+
+    // Auto-solved vs manual breakdown
+    const totals = rm.captchaTotals || {};
+    const autoSolved =
+        (totals.vision || 0) +
+        (totals.openai || 0) +
+        (totals.audio || 0) +
+        (totals.diy || 0);
+    const manualSolved = totals.manual || 0;
+
+    // Throttle warning: high not_found rate after the warm-up window
+    // means WIPO is rate-limiting us. Surface it in the UI so the user
+    // knows to back off the speed level.
+    const recentProcessed = processed - (rm.rowsAtModeChange || 0);
+    const notFoundRate = recentProcessed > 0
+        ? (rm.notFoundRows || 0) / Math.max(1, processed)
+        : 0;
+    const degraded = processed >= 20 && notFoundRate > 0.7;
+
+    return {
+        elapsedText: formatStopwatch(elapsedMs),
+        etaText,
+        ratePerMin: ratePerMin.toFixed(1),
+        processed,
+        degraded,
+        notFoundRate,
+        total,
+        remaining,
+        foundRows: rm.foundRows || 0,
+        notFoundRows: rm.notFoundRows || 0,
+        errorRows: rm.errorRows || 0,
+        captchaCount: rm.captchaCount || 0,
+        autoSolved,
+        manualSolved,
+        tiers: {
+            vision: totals.vision || 0,
+            openai: totals.openai || 0,
+            audio: totals.audio || 0,
+            diy: totals.diy || 0,
+            manual: totals.manual || 0,
+            other: totals.other || 0,
+        },
+        running: !rm.finishedAt && state.isRunning,
+    };
+}
+
+function renderRunMetricsPanel() {
+    if (!state.runMetrics || !state.runMetrics.startedAt) {
+        return "";
+    }
+    const v = computeRunMetricsView(state.runMetrics);
+    const progressPct = v.total > 0
+        ? Math.min(100, Math.round((v.processed / v.total) * 100))
+        : 0;
+    const warningBar = v.degraded
+        ? `<div class="run-metrics-warning">
+              ⚠ High not_found rate (${Math.round(v.notFoundRate * 100)}%) —
+              WIPO may be rate-limiting. Try dragging the slider down a level.
+           </div>`
+        : "";
+    return `
+        <div class="run-metrics-panel" id="run-metrics-panel">
+            ${warningBar}
+            <div class="run-metrics-grid">
+                <div class="run-metrics-stopwatch">
+                    <div class="run-metrics-label">${v.running ? "ELAPSED" : "FINAL TIME"}</div>
+                    <div class="run-metrics-stopwatch-value" id="rm-elapsed">${v.elapsedText}</div>
+                    <div class="run-metrics-sub">
+                        <span id="rm-rate">${v.ratePerMin}</span> rows/min
+                    </div>
+                </div>
+                <div class="run-metrics-block">
+                    <div class="run-metrics-label">ETA</div>
+                    <div class="run-metrics-eta-value" id="rm-eta">${v.etaText}</div>
+                    <div class="run-metrics-sub"><span id="rm-remaining">${v.remaining}</span> rows left</div>
+                </div>
+                <div class="run-metrics-block">
+                    <div class="run-metrics-label">PROGRESS</div>
+                    <div class="run-metrics-eta-value">
+                        <span id="rm-processed">${v.processed}</span>
+                        <span class="run-metrics-fraction">/ <span id="rm-total">${v.total}</span></span>
+                    </div>
+                    <div class="run-metrics-progress-bar">
+                        <div class="run-metrics-progress-fill" id="rm-progress" style="width:${progressPct}%"></div>
+                    </div>
+                </div>
+                <div class="run-metrics-block">
+                    <div class="run-metrics-label">CAPTCHAS SOLVED</div>
+                    <div class="run-metrics-eta-value" id="rm-captcha-count">${v.captchaCount}</div>
+                    <div class="run-metrics-tier-row">
+                        <span class="rm-tier-badge rm-tier-auto" title="GPT-4o Vision / OCR / Whisper"
+                              id="rm-tier-auto">Auto&nbsp;${v.autoSolved}</span>
+                        <span class="rm-tier-badge rm-tier-manual" title="Solved by human"
+                              id="rm-tier-manual">Manual&nbsp;${v.manualSolved}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="run-metrics-tiers-detail" id="rm-tiers-detail">
+                ${renderTierBreakdown(v.tiers)}
+                ${renderFastModeSlider()}
+            </div>
+        </div>
+    `;
+}
+
+function renderFastModeSlider() {
+    // Single source of truth: state.fastLevel (shared with the chip near
+    // the Run button). This slider is always editable — even mid-run —
+    // and POSTs to the live API when the agent is running.
+    const lvl = Math.max(1, Math.min(5, state.fastLevel || 1));
+    const profile = (typeof FAST_LEVELS !== "undefined" ? FAST_LEVELS[lvl] : state.fastModeLevels[lvl]);
+    const changing = state.runMetrics && state.runMetrics.fastLevelChanging;
+    return `
+        <div class="rm-fastmode" id="rm-fastmode-wrap" title="${esc(profile.hint)}">
+            <span class="rm-fastmode-emoji-low">😇</span>
+            <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value="${lvl}"
+                class="rm-fastmode-slider"
+                id="rm-fastmode-slider"
+                aria-label="Scraping speed mode"
+                oninput="onFastModeSlide(this.value)"
+                onchange="onFastModeCommit(this.value)"
+            />
+            <span class="rm-fastmode-emoji-high">😈</span>
+            <span class="rm-fastmode-current" id="rm-fastmode-current">
+                ${profile.emoji} <strong>L${lvl}</strong> ${esc(profile.label)}
+            </span>
+            ${changing ? `<span class="rm-fastmode-pending">syncing…</span>` : ""}
+        </div>
+    `;
+}
+
+function onFastModeSlide(rawValue) {
+    // Live preview while dragging — show the new emoji/label without
+    // hitting the network on every pixel.
+    const lvl = Math.max(1, Math.min(5, parseInt(rawValue, 10) || 1));
+    const profile = (typeof FAST_LEVELS !== "undefined" ? FAST_LEVELS[lvl] : state.fastModeLevels[lvl]);
+    if (!profile) return;
+    const label = document.getElementById("rm-fastmode-current");
+    if (label) {
+        label.innerHTML = `${profile.emoji} <strong>L${lvl}</strong> ${esc(profile.label)}`;
+    }
+    const wrap = document.getElementById("rm-fastmode-wrap");
+    if (wrap) wrap.title = profile.hint;
+}
+
+async function onFastModeCommit(rawValue) {
+    const lvl = Math.max(1, Math.min(5, parseInt(rawValue, 10) || 1));
+    const previous = state.fastLevel;
+    state.fastLevel = lvl;
+    try { localStorage.setItem("menteso-fast-level", String(lvl)); } catch {}
+
+    const profile = (typeof FAST_LEVELS !== "undefined" ? FAST_LEVELS[lvl] : state.fastModeLevels[lvl]);
+
+    // Also sync the OTHER slider (the chip near the Run button) so both
+    // controls show the same value.
+    const otherSlider = document.getElementById("fast-mode-slider");
+    if (otherSlider && otherSlider.value !== String(lvl)) {
+        otherSlider.value = String(lvl);
+    }
+
+    // If the agent isn't running, the level applies on the next run.
+    if (!state.isRunning || !state.selectedAgent) {
+        addLogLine(
+            `[Mode] Scraping speed set to ${profile.emoji} L${lvl} ${profile.label} ` +
+            `— applies on the next run`,
+            "step",
+        );
+        if (state.runMetrics) updateRunMetricsPanel();
+        return;
+    }
+
+    if (state.runMetrics) {
+        state.runMetrics.fastLevelChanging = true;
+        updateRunMetricsPanel();
+    }
+    try {
+        const res = await fetch(
+            `/api/agents/${state.selectedAgent.module_name}/fast-level`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ level: lvl }),
+            },
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        addLogLine(
+            `[Mode] Live upgrade to ${profile.emoji} L${lvl} ${profile.label} ` +
+            `— takes effect on the next chunk. Recomputing ETA from the new rate…`,
+            "success",
+        );
+        // Reset the rolling window so the ETA reflects the NEW rate within
+        // a few rows, rather than averaging old (slow) + new (fast) rates.
+        if (state.runMetrics && lvl !== previous) {
+            resetRunMetricsForModeChange();
+        }
+    } catch (e) {
+        state.fastLevel = previous;
+        try { localStorage.setItem("menteso-fast-level", String(previous)); } catch {}
+        addLogLine(`[Mode] Could not update speed level: ${e.message}`, "error");
+    } finally {
+        if (state.runMetrics) {
+            state.runMetrics.fastLevelChanging = false;
+            updateRunMetricsPanel();
+        }
+    }
+}
+
+function resetRunMetricsForModeChange() {
+    const rm = state.runMetrics;
+    if (!rm) return;
+    rm.rowTimestamps = [];
+    rm.modeChangedAt = Date.now();
+    rm.rowsAtModeChange = rm.processedRows || 0;
+    rm.recalibrating = true;
+}
+
+function renderTierBreakdown(tiers) {
+    const labels = {
+        vision: "Vision (GPT-4o)",
+        openai: "OpenAI",
+        audio: "Whisper Audio",
+        diy: "DIY OCR",
+        manual: "Manual",
+        other: "Other",
+    };
+    const parts = [];
+    for (const [key, label] of Object.entries(labels)) {
+        const n = tiers[key] || 0;
+        if (n === 0) continue;
+        parts.push(
+            `<span class="rm-tier-chip"><span class="rm-tier-chip-label">${label}</span>` +
+            `<span class="rm-tier-chip-count">${n}</span></span>`
+        );
+    }
+    if (parts.length === 0) {
+        return `<span class="rm-tier-empty">No captchas hit yet</span>`;
+    }
+    return parts.join("");
+}
+
+function updateRunMetricsPanel() {
+    const panel = document.getElementById("run-metrics-panel");
+    if (!panel || !state.runMetrics || !state.runMetrics.startedAt) return;
+    const v = computeRunMetricsView(state.runMetrics);
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+    setText("rm-elapsed", v.elapsedText);
+    setText("rm-rate", v.ratePerMin);
+    setText("rm-eta", v.etaText);
+    setText("rm-remaining", String(v.remaining));
+    setText("rm-processed", String(v.processed));
+    setText("rm-total", String(v.total));
+    setText("rm-captcha-count", String(v.captchaCount));
+    setText("rm-tier-auto", `Auto ${v.autoSolved}`);
+    setText("rm-tier-manual", `Manual ${v.manualSolved}`);
+    const bar = document.getElementById("rm-progress");
+    if (bar) {
+        const pct = v.total > 0
+            ? Math.min(100, Math.round((v.processed / v.total) * 100))
+            : 0;
+        bar.style.width = `${pct}%`;
+    }
+    const tiersEl = document.getElementById("rm-tiers-detail");
+    if (tiersEl) {
+        tiersEl.innerHTML =
+            renderTierBreakdown(v.tiers) +
+            renderFastModeSlider();
+    }
+
+    const label = panel.querySelector(".run-metrics-stopwatch .run-metrics-label");
+    if (label) label.textContent = v.running ? "ELAPSED" : "FINAL TIME";
+}
+
 async function loadWipoGazettes(force = false) {
     if (state.wipoGazettesLoading) return;
     if (state.wipoGazettesLoaded && !force) return;
@@ -288,6 +713,11 @@ async function uploadFile(file) {
 
 async function stopAgent(name) {
     const res = await fetch(`/api/agents/${name}/stop`, { method: "POST" });
+    return await res.json();
+}
+
+async function forceClearAgent(name) {
+    const res = await fetch(`/api/agents/${name}/force-clear`, { method: "POST" });
     return await res.json();
 }
 
@@ -341,6 +771,25 @@ async function runAgent(name, params = {}) {
         country: "", row: 0, total: 0, pdf_url: "", emails: [], phones: [],
         name: "", status: "", found_count: 0, not_found_count: 0, error_count: 0,
     };
+    state.runMetrics = {
+        startedAt: Date.now(),
+        finishedAt: null,
+        totalRows: 0,
+        processedRows: 0,
+        foundRows: 0,
+        notFoundRows: 0,
+        errorRows: 0,
+        captchaTotals: { vision: 0, openai: 0, audio: 0, diy: 0, manual: 0, other: 0 },
+        captchaCount: 0,
+        lastTickAt: Date.now(),
+        fastLevel: (state.runMetrics && state.runMetrics.fastLevel) || 1,
+        fastLevelChanging: false,
+        rowTimestamps: [],
+        modeChangedAt: null,
+        rowsAtModeChange: 0,
+        recalibrating: false,
+    };
+    startRunMetricsTicker();
     if (state.selectedAgent?.ui_type === "seo_posting") {
         resetSeoWorkflow();
         handleSeoWorkflowEvent({
@@ -356,6 +805,9 @@ async function runAgent(name, params = {}) {
     if (params.file_path) queryParams.file_path = params.file_path;
     if (params.mode) queryParams.mode = params.mode;
     if (params.gazette) queryParams.gazette = params.gazette;
+    if (params.fast_level !== undefined && params.fast_level !== null) {
+        queryParams.fast_level = params.fast_level;
+    }
 
     const query = new URLSearchParams();
     Object.entries(queryParams).forEach(([key, value]) => {
@@ -385,7 +837,10 @@ async function runAgent(name, params = {}) {
             state.isRunning = false;
             state.stopRequested = false;
             state.browser.event = "done";
+            if (state.runMetrics) state.runMetrics.finishedAt = Date.now();
+            stopRunMetricsTicker();
             updateBrowserPreview();
+            updateRunMetricsPanel();
             renderMain();
             return;
         }
@@ -418,7 +873,12 @@ async function runAgent(name, params = {}) {
     state.stopRequested = false;
     state.agentRunStatus = "idle";
     state.browser.event = "done";
+    if (state.runMetrics) {
+        state.runMetrics.finishedAt = Date.now();
+    }
+    stopRunMetricsTicker();
     updateBrowserPreview();
+    updateRunMetricsPanel();
 
     await loadAgents();
     if (state.selectedAgent) {
@@ -467,17 +927,106 @@ function handleSSEEvent(data) {
         if (state.selectedAgent?.ui_type === "seo_posting") {
             handleSeoWorkflowEvent(data, "warning");
         }
+    } else if (data.type === "fast_level_changed") {
+        // Server confirms the new level; sync local state in case another
+        // client or session changed it.
+        const lvl = Math.max(1, Math.min(5, parseInt(data.level, 10) || 1));
+        if (state.runMetrics && state.runMetrics.fastLevel !== lvl) {
+            state.runMetrics.fastLevel = lvl;
+            state.fastLevel = lvl;
+            // Reset rolling window so ETA recomputes from the new rate.
+            resetRunMetricsForModeChange();
+            updateRunMetricsPanel();
+        }
     }
 }
 
 function handlePipelineStats(data) {
     state.pipelineMode = true;
     state.pipeline = data;
+    // Pool/parallel mode reports row counts through this snapshot, not via
+    // per-row browser events. Mirror them into runMetrics so the stopwatch
+    // panel works in both modes.
+    if (state.runMetrics) {
+        if (typeof data.total === "number" && data.total > 0) {
+            state.runMetrics.totalRows = data.total;
+        }
+        const completed = (data.found || 0) + (data.not_found || 0) + (data.errors || 0);
+        const previouslyProcessed = state.runMetrics.processedRows;
+        const newlyProcessed = Math.max(0, completed - previouslyProcessed);
+        state.runMetrics.processedRows = completed;
+        state.runMetrics.foundRows = data.found || 0;
+        state.runMetrics.notFoundRows = data.not_found || 0;
+        state.runMetrics.errorRows = data.errors || 0;
+        // Snapshots arrive every ~2s; record an approximate row completion
+        // timestamp for each new row so the rolling-window ETA still works.
+        const now = Date.now();
+        for (let i = 0; i < newlyProcessed; i++) {
+            pushRowCompletionTimestamp(now);
+        }
+    }
     updatePipelinePanel();
+    updateRunMetricsPanel();
 }
+
+function pushRowCompletionTimestamp(ts) {
+    const rm = state.runMetrics;
+    if (!rm) return;
+    rm.rowTimestamps.push(ts || Date.now());
+    // Keep only the last 100 samples — enough for a stable rolling rate,
+    // small enough to stay light on memory.
+    const MAX_SAMPLES = 100;
+    if (rm.rowTimestamps.length > MAX_SAMPLES) {
+        rm.rowTimestamps.splice(0, rm.rowTimestamps.length - MAX_SAMPLES);
+    }
+}
+
+// Browser events that prove the agent is actively making progress past the
+// captcha point — if any of these arrive while the banner is up, the captcha
+// is definitively gone and we drop the alert immediately.
+const CAPTCHA_PROGRESS_EVENTS = new Set([
+    "navigate",
+    "extracting",
+    "contacts",
+    "pdf_found",
+    "no_pdf",
+    "downloading",
+    "done",
+]);
 
 function handleBrowserEvent(data) {
     Object.assign(state.browser, data);
+
+    // --- Run metrics: tier-attribution & row-progress accounting ---
+    if (state.runMetrics) {
+        if (typeof data.total === "number" && data.total > 0) {
+            state.runMetrics.totalRows = data.total;
+        }
+        if (data.event === "solver_succeeded") {
+            const tier = (data.tier || "other").toLowerCase();
+            const totals = state.runMetrics.captchaTotals;
+            if (totals[tier] === undefined) totals[tier] = 0;
+            totals[tier] += 1;
+            state.runMetrics.captchaCount += 1;
+            updateRunMetricsPanel();
+        }
+        // contacts is the per-row terminal event in headed sequential mode;
+        // in pool mode pipeline stats provide processed counts.
+        if (data.event === "contacts") {
+            state.runMetrics.processedRows += 1;
+            if (data.status === "found") state.runMetrics.foundRows += 1;
+            else if (data.status === "not_found") state.runMetrics.notFoundRows += 1;
+            else state.runMetrics.errorRows += 1;
+            pushRowCompletionTimestamp();
+            updateRunMetricsPanel();
+        } else if (data.event === "no_pdf") {
+            state.runMetrics.processedRows += 1;
+            state.runMetrics.notFoundRows += 1;
+            pushRowCompletionTimestamp();
+            updateRunMetricsPanel();
+        }
+    }
+
     if (data.event === "captcha_detected") {
         const wasActive = state.captcha.active;
         state.captcha.active = true;
@@ -490,6 +1039,13 @@ function handleBrowserEvent(data) {
     } else if (data.event === "captcha_cleared") {
         state.captcha.active = false;
         state.captcha.resolvedMessage = data.message || "CAPTCHA cleared - resuming from the same row";
+        renderMain();
+    } else if (state.captcha.active && CAPTCHA_PROGRESS_EVENTS.has(data.event)) {
+        // Safety net: a stale banner can happen if the captcha-cleared event
+        // is missed (network blip, agent moved on). Any forward-progress
+        // browser event proves the agent is past the challenge.
+        state.captcha.active = false;
+        state.captcha.resolvedMessage = "CAPTCHA cleared - resuming from the same row";
         renderMain();
     }
     updateBrowserPreview();
@@ -1221,6 +1777,12 @@ function renderMain() {
         html += renderPipelineSection();
     }
 
+    // --- Run Metrics panel (stopwatch + ETA + captcha tier breakdown) ---
+    // Only for PCT agent (where rows + captchas matter).
+    if (isPCTAgent && state.runMetrics && state.runMetrics.startedAt) {
+        html += renderRunMetricsPanel();
+    }
+
     // --- Execution Log + Browser Preview (side by side) ---
     if (!isSeoAgent || isLiveSeoWorkspace) {
         html += `
@@ -1305,6 +1867,39 @@ function renderMain() {
 // ---------------------------------------------------------------------------
 // Agent-specific input sections
 // ---------------------------------------------------------------------------
+function renderFastModeControl() {
+    const level = state.fastLevel || 1;
+    const profile = FAST_LEVELS[level] || FAST_LEVELS[1];
+    // Slider is now editable during runs too — dragging it mid-run POSTs
+    // to /api/agents/{name}/fast-level so the agent picks up the change
+    // at the next chunk boundary.
+    const lockedAttr = "";
+    const lockedClass = state.isRunning ? "is-live" : "";
+    const lockedHint = state.isRunning
+        ? `${profile.hint} (Drag mid-run — applies at next chunk)`
+        : profile.hint;
+    return `
+        <div class="fast-mode-chip ${lockedClass}" title="${esc(lockedHint)}">
+            <span class="fast-mode-chip-label">Fast&nbsp;Mode</span>
+            <span class="fast-mode-emoji fast-mode-emoji-left">😇</span>
+            <input
+                type="range"
+                id="fast-mode-slider"
+                class="fast-mode-slider"
+                min="1" max="5" step="1"
+                value="${level}"
+                ${lockedAttr}
+                aria-label="Fast mode level"
+            />
+            <span class="fast-mode-emoji fast-mode-emoji-right">😈</span>
+            <span class="fast-mode-current" id="fast-mode-current">
+                <span class="fast-mode-current-emoji">${profile.emoji}</span>
+                <span class="fast-mode-current-label">L${level} ${esc(profile.label)}</span>
+            </span>
+        </div>
+    `;
+}
+
 function renderUploadSection(agent) {
     const uploaded = state.uploadedFilePath;
     const types = (agent.upload_types || []).join(",");
@@ -1392,6 +1987,7 @@ function renderUploadSection(agent) {
 
                 <!-- Run -->
                 <div class="run-actions">
+                    ${renderFastModeControl()}
                     <button type="button" class="run-btn" id="run-btn" ${(state.isRunning || state.agentRunStatus !== "idle") ? "disabled" : ""}>
                         ${state.isRunning
                             ? '<span class="spinner"></span> Processing...'
@@ -2595,6 +3191,35 @@ function renderMemorySection(learnings) {
 // Event Handlers
 // ---------------------------------------------------------------------------
 function attachHandlers(agent) {
+    // Fast-mode slider — updates state + localStorage live. Editable
+    // even mid-run; the change handler delegates to onFastModeCommit
+    // which POSTs to the live API when the agent is running.
+    const fastSlider = document.getElementById("fast-mode-slider");
+    if (fastSlider) {
+        fastSlider.oninput = (e) => {
+            const raw = parseInt(e.target.value, 10);
+            const level = Number.isFinite(raw) ? Math.max(1, Math.min(5, raw)) : 1;
+            const cur = document.getElementById("fast-mode-current");
+            if (cur) {
+                const profile = FAST_LEVELS[level] || FAST_LEVELS[1];
+                cur.innerHTML =
+                    `<span class="fast-mode-current-emoji">${profile.emoji}</span>` +
+                    `<span class="fast-mode-current-label">L${level} ${esc(profile.label)}</span>`;
+            }
+            const chip = fastSlider.closest(".fast-mode-chip");
+            if (chip) {
+                const profile = FAST_LEVELS[level] || FAST_LEVELS[1];
+                chip.setAttribute("title", profile.hint);
+            }
+            // Live preview the metrics-panel slider too
+            onFastModeSlide(String(level));
+        };
+        fastSlider.onchange = (e) => {
+            // POST + persist via the shared commit path.
+            onFastModeCommit(e.target.value);
+        };
+    }
+
     // Run button
     const runBtn = document.getElementById("run-btn");
     if (runBtn && !state.isRunning) {
@@ -2626,15 +3251,22 @@ function attachHandlers(agent) {
                     return;
                 }
 
+                const profile = FAST_LEVELS[state.fastLevel] || FAST_LEVELS[1];
+                addLogLine(
+                    `Starting at Fast Mode L${state.fastLevel} ${profile.emoji} ${profile.label} — ${profile.hint}`,
+                    "info",
+                );
+
                 runAgent(agent.module_name, {
                     mode: mode,
                     file_path: mode === "upload" ? state.uploadedFilePath : undefined,
                     gazette: mode === "wipo_download" ? state.selectedGazette : undefined,
+                    fast_level: state.fastLevel,
                 });
             } else if (agent.ui_type === "seo_posting") {
                 triggerSeoRun(agent);
             } else {
-                runAgent(agent.module_name);
+                runAgent(agent.module_name, { fast_level: state.fastLevel });
             }
         };
     }
@@ -2700,7 +3332,13 @@ function attachHandlers(agent) {
     }
 
     const stopBtn = document.getElementById("stop-btn");
-    if (stopBtn && state.isRunning && !state.stopRequested) {
+    // Attach handler whenever the button is enabled — that includes the
+    // case where state.isRunning is false locally but the server still
+    // believes the agent is running (zombie run).
+    const stopBtnEnabled = state.isRunning
+        || state.agentRunStatus === "running"
+        || state.agentRunStatus === "stopping";
+    if (stopBtn && stopBtnEnabled && !state.stopRequested) {
         stopBtn.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -2715,8 +3353,18 @@ function attachHandlers(agent) {
                 );
                 renderMain();
                 const response = await stopAgent(agent.module_name);
-                if (response.status !== "stop_requested") {
+                // Acceptable responses: stop_requested (alive thread), cleared (zombie),
+                // idle (already cleared). Anything else is a real error.
+                if (!["stop_requested", "cleared", "idle"].includes(response.status)) {
                     throw new Error(response.error || "Stop request failed");
+                }
+                if (response.status === "cleared" || response.status === "idle") {
+                    // Server self-healed a zombie run — sync our local state.
+                    state.isRunning = false;
+                    state.stopRequested = false;
+                    state.agentRunStatus = "idle";
+                    addLogLine("Server cleared stale state — agent is now idle.", "step");
+                    renderMain();
                 }
             } catch (err) {
                 state.stopRequested = false;

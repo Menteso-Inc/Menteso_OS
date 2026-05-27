@@ -25,6 +25,20 @@ try:
 except ImportError:
     HAS_WINSOUND = False
 
+try:
+    from shared.pacing import default_pacer
+except Exception:  # shared.pacing should always import, but be defensive
+    default_pacer = None
+
+
+def _pace():
+    """Apply request pacing before every outbound navigation."""
+    if default_pacer is not None:
+        try:
+            default_pacer.wait()
+        except Exception:
+            pass
+
 DOWNLOADS_DIR = Path(tempfile.gettempdir()) / "pct_pdfs"
 
 UA = (
@@ -42,24 +56,24 @@ class BrowserStopRequested(RuntimeError):
     """Raised when the current browser run is force-stopped."""
 
 
+# High-confidence markers only. Generic strings like "captcha", "challenge",
+# or "please select" appear in normal WIPO page markup (dropdown placeholders,
+# JS variable names, CSS classes) and used to trigger false-positive banners.
 CAPTCHA_TEXT_MARKERS = [
     "pscaptchaform",
-    "please select",
-    "captcha",
-    "challenge",
     "verify you are human",
+    "please verify you are not a robot",
+    "are you a human",
 ]
 
+# DOM selectors that unambiguously identify an active CAPTCHA challenge.
+# We additionally require the matched element to be visible before firing.
 CAPTCHA_SELECTORS = [
     "#psCaptchaForm",
-    "form[id*='captcha']",
-    "iframe[src*='captcha']",
     "iframe[src*='recaptcha']",
-    "iframe[title*='challenge']",
-    ".g-recaptcha",
-    ".h-captcha",
-    "[id*='captcha']",
-    "[class*='captcha']",
+    "iframe[src*='hcaptcha']",
+    "div.g-recaptcha",
+    "div.h-captcha",
 ]
 
 
@@ -79,30 +93,98 @@ def _content_has_captcha_markers(content):
 
 
 def _page_has_captcha_selectors(page):
+    """Return True only when a CAPTCHA element is actually visible on the page.
+    Hidden/leftover DOM nodes (e.g. preloaded recaptcha scripts) do not count.
+    """
     for selector in CAPTCHA_SELECTORS:
         try:
-            if page.locator(selector).count() > 0:
-                return True
+            locator = page.locator(selector)
+            count = locator.count()
         except Exception:
             continue
+        for idx in range(min(count, 5)):
+            try:
+                if locator.nth(idx).is_visible():
+                    return True
+            except Exception:
+                continue
     return False
+
+
+def _title_looks_like_captcha(page):
+    try:
+        title = (page.title() or "").lower()
+    except Exception:
+        return False
+    # Be strict — only obvious challenge pages, not pages with "captcha" in a
+    # subtitle or breadcrumb.
+    return (
+        title.startswith("captcha")
+        or "human verification" in title
+        or "are you human" in title
+        or title == "challenge"
+    )
 
 
 def _is_captcha_present(page, content=""):
     if _content_has_captcha_markers(content):
         return True
-    try:
-        title = (page.title() or "").lower()
-    except Exception:
-        title = ""
-    if "captcha" in title or "challenge" in title:
+    if _title_looks_like_captcha(page):
         return True
     return _page_has_captcha_selectors(page)
 
 
+def _solve_if_captcha(page, on_step=None, label="post-action"):
+    """If a captcha is visible on the page right now, invoke the solver
+    synchronously. Returns True when the page is captcha-free (either no
+    captcha was present, or the solver cleared it). Returns False only when
+    a captcha existed and every solver tier failed.
+    """
+    try:
+        content = page.content()
+    except Exception:
+        return True  # if we can't read content, no point invoking the solver
+
+    if not _is_captcha_present(page, content):
+        return True
+
+    step = on_step or (lambda *_a, **_k: None)
+    step(f"[Browser] CAPTCHA detected after {label} — delegating to solver")
+
+    if default_pacer is not None:
+        try:
+            default_pacer.report_captcha()
+        except Exception:
+            pass
+
+    try:
+        from .captcha_solver import solve_captcha
+    except Exception as e:
+        step(f"[Browser] Could not import captcha solver: {e}")
+        return False
+
+    try:
+        url = page.url
+    except Exception:
+        url = ""
+    try:
+        return solve_captcha(page, on_step=on_step, source_url=url)
+    except Exception as e:
+        step(f"[Browser] Captcha solver crashed at {label}: {e}")
+        return False
+
+
 def _route_handler(route):
-    """Abort non-essential resources to speed up page loads."""
-    if route.request.resource_type in _BLOCKED_TYPES:
+    """Abort non-essential resources to speed up page loads.
+    Exception: always allow captcha/challenge images through — the solver
+    agent needs to see them to OCR or vision-classify the challenge.
+    """
+    req = route.request
+    if req.resource_type in _BLOCKED_TYPES:
+        url_lower = (req.url or "").lower()
+        if "captcha" in url_lower or "challenge" in url_lower or "recaptcha" in url_lower or "hcaptcha" in url_lower:
+            route.continue_()
+            return
         route.abort()
     else:
         route.continue_()
@@ -112,7 +194,14 @@ def _launch_browser(playwright, headless=True):
     """
     Launch a browser that WIPO is more likely to accept.
     Headed mode prefers real installed browser channels.
+    Honors the shared proxy pool (Tor / user-supplied list) when configured.
     """
+    try:
+        from shared.proxy_pool import get_proxy
+        proxy = get_proxy()
+    except Exception:
+        proxy = None
+
     attempts = []
     if headless:
         attempts.append({"headless": True})
@@ -123,18 +212,19 @@ def _launch_browser(playwright, headless=True):
             {"headless": False},
         ])
 
+    base_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+    ]
+
     last_error = None
     for launch_kwargs in attempts:
+        if proxy:
+            launch_kwargs = {**launch_kwargs, "proxy": proxy}
         try:
-            return playwright.chromium.launch(
-                **launch_kwargs,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                ],
-            )
+            return playwright.chromium.launch(**launch_kwargs, args=base_args)
         except Exception as exc:
             last_error = exc
 
@@ -159,6 +249,16 @@ def create_browser_pool(n_pages=20, headless=True):
     pw = sync_playwright().start()
     browser = _launch_browser(pw, headless=headless)
 
+    # Image/CSS/font blocking is OFF by default — empirically it broke the
+    # WIPO documents tab in pool mode (every row returned not_found). Opt in
+    # via PCT_POOL_BLOCK_RESOURCES=true when you've confirmed it works for
+    # your setup.
+    import os as _os
+    block_resources = (
+        (_os.getenv("PCT_POOL_BLOCK_RESOURCES") or "false").lower()
+        in ("1", "true", "yes")
+    )
+
     pages = []
     for _ in range(n_pages):
         ctx = browser.new_context(
@@ -171,8 +271,9 @@ def create_browser_pool(n_pages=20, headless=True):
         page.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
         )
-        # Block images, CSS, fonts — massive speed boost
-        page.route("**/*", _route_handler)
+        if block_resources:
+            # Aggressive bandwidth saving — but risky against WIPO.
+            page.route("**/*", _route_handler)
         pages.append(page)
 
     return pw, browser, pages
@@ -195,12 +296,13 @@ def close_browser_pool(pw, browser):
 # ---------------------------------------------------------------------------
 # Standalone fast-scraping — used by pipeline workers
 # ---------------------------------------------------------------------------
-def scrape_patent_fast(page, url, doc_id):
+def scrape_patent_fast(page, url, doc_id, on_step=None):
     """Scrape a patent page: navigate → find PDF URL → download.
     Returns (pdf_path_or_None, captcha_detected).
     """
     # Navigate (1 retry)
     for attempt in range(2):
+        _pace()
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=15000)
         except Exception:
@@ -209,7 +311,10 @@ def scrape_patent_fast(page, url, doc_id):
                 continue
             return None, False
 
-        loaded, captcha = wait_for_content_fast(page, timeout=20)
+        # Bumped from 20s to 60s: under parallel-pool load WIPO serves
+        # pages slower; 20s wasn't enough so every row was timing out and
+        # find_pdf_url ran on a half-loaded page → returned None → not_found.
+        loaded, captcha = wait_for_content_fast(page, timeout=60, on_step=on_step)
         if captcha:
             return None, True
         if loaded:
@@ -226,9 +331,23 @@ def scrape_patent_fast(page, url, doc_id):
     except Exception:
         return None, False
 
+    # WIPO sometimes serves a captcha specifically when the Documents tab is
+    # clicked. If so, run the solver before giving up.
+    if not _solve_if_captcha(page, on_step=on_step, label="Documents click"):
+        return None, True
+
     # Find PDF URL
     pdf_url = find_pdf_url(page)
     if not pdf_url:
+        # Diagnostic: when nothing is found, log what WIPO actually served.
+        # Most useful when not_found rate spikes — tells us if pages are
+        # genuinely empty (rate-limited), captcha-walled, or just lacking
+        # any RO/101 / 306 / Request-form document.
+        if callable(on_step):
+            try:
+                _diag_log_empty(page, on_step, "scrape_patent_fast")
+            except Exception:
+                pass
         return None, False
 
     # Download PDF
@@ -236,12 +355,13 @@ def scrape_patent_fast(page, url, doc_id):
     return pdf_path, False
 
 
-def scrape_pdf_url_only(page, url):
+def scrape_pdf_url_only(page, url, on_step=None):
     """Scrape a patent page and return ONLY the PDF URL (no download).
     Used for 3-stage pipeline where download is separate.
     Returns (pdf_url_or_None, cookies_dict, captcha_detected).
     """
     for attempt in range(2):
+        _pace()
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=15000)
         except Exception:
@@ -250,7 +370,9 @@ def scrape_pdf_url_only(page, url):
                 continue
             return None, {}, False
 
-        loaded, captcha = wait_for_content_fast(page, timeout=20)
+        # Same 60s bump as scrape_patent_fast — pool mode needs the
+        # extra patience under parallel-load throttling from WIPO.
+        loaded, captcha = wait_for_content_fast(page, timeout=60, on_step=on_step)
         if captcha:
             return None, {}, True
         if loaded:
@@ -266,8 +388,17 @@ def scrape_pdf_url_only(page, url):
     except Exception:
         return None, {}, False
 
+    # Solve any captcha that appeared specifically after the Documents click.
+    if not _solve_if_captcha(page, on_step=on_step, label="Documents click"):
+        return None, {}, True
+
     pdf_url = find_pdf_url(page)
     if not pdf_url:
+        if callable(on_step):
+            try:
+                _diag_log_empty(page, on_step, "scrape_pdf_url_only")
+            except Exception:
+                pass
         return None, {}, False
 
     if not pdf_url.startswith("http"):
@@ -281,11 +412,17 @@ def scrape_pdf_url_only(page, url):
     return pdf_url, cookies, False
 
 
-def wait_for_content_fast(page, timeout=20):
-    """Wait for patent page content.  Returns (loaded, captcha_detected).
-    Fast polling with 300ms intervals.
+def wait_for_content_fast(page, timeout=20, on_step=None):
+    """Wait for patent page content. Returns (loaded, captcha_detected).
+    Fast polling with 300ms intervals. On a confirmed captcha (2 hits) the
+    solver agent is invoked; if it clears the challenge we keep polling and
+    eventually return (True, False).
     """
     deadline = time.time() + timeout
+    captcha_streak = 0
+    solver_attempted = False
+    step = on_step or (lambda *_a, **_k: None)
+
     while time.time() < deadline:
         try:
             content = page.content()
@@ -295,8 +432,22 @@ def wait_for_content_fast(page, timeout=20):
 
         if "PCT Biblio" in content or "detailMainForm" in content:
             return True, False
+
         if _is_captcha_present(page, content):
-            return False, True
+            captcha_streak += 1
+            if captcha_streak >= 2 and not solver_attempted:
+                solver_attempted = True
+                if _invoke_solver_pool(page, step, deadline):
+                    captcha_streak = 0
+                    continue
+                # Solver gave up — bubble the captcha signal so the caller
+                # can re-queue and apply pipeline-level backoff.
+                return False, True
+            time.sleep(0.3)
+            continue
+
+        captcha_streak = 0
+
         if "403" in (page.title() or ""):
             try:
                 page.reload(wait_until="domcontentloaded", timeout=8000)
@@ -307,6 +458,57 @@ def wait_for_content_fast(page, timeout=20):
         time.sleep(0.3)
 
     return False, False
+
+
+def _invoke_solver_pool(page, step, deadline):
+    """Pool-mode solver invocation. Same contract as PatentBrowser._invoke_solver
+    but for the standalone page objects used by pipeline workers.
+    """
+    if default_pacer is not None:
+        try:
+            default_pacer.report_captcha()
+        except Exception:
+            pass
+    try:
+        from .captcha_solver import solve_captcha
+    except Exception as e:
+        step(f"[Browser] Could not import captcha solver: {e}")
+        return False
+
+    remaining = max(15, int(deadline - time.time()))
+    try:
+        url = page.url
+    except Exception:
+        url = ""
+    try:
+        return solve_captcha(page, on_step=step, max_seconds=remaining, source_url=url)
+    except Exception as e:
+        step(f"[Browser] Captcha solver crashed: {e}")
+        return False
+
+
+def _diag_log_empty(page, on_step, where):
+    """When find_pdf_url returns None, log what kind of page WIPO served.
+    Helps distinguish 'legitimately no RO/101 PDF' from 'rate-limited /
+    blocked / empty page'. Used only on failure — zero cost on success.
+    """
+    try:
+        title = page.title() or ""
+    except Exception:
+        title = "?"
+    try:
+        tr_count = page.locator("tr").count()
+    except Exception:
+        tr_count = -1
+    try:
+        has_biblio = "PCT Biblio" in (page.content() or "")
+    except Exception:
+        has_biblio = False
+    on_step(
+        f"[Diag:{where}] no PDF — title={title!r}, tr_count={tr_count}, "
+        f"has_biblio={has_biblio} (if tr_count=0 and !has_biblio, WIPO likely "
+        f"rate-throttled this request — back off the speed level)"
+    )
 
 
 def find_pdf_url(page):
@@ -469,6 +671,7 @@ class PatentBrowser:
         loaded = False
         for attempt in range(2):
             self._check_stop()
+            _pace()
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=8000)
             except Exception as e:
@@ -498,12 +701,18 @@ class PatentBrowser:
             docs_tab = page.locator("a", has_text="Documents").first
             docs_tab.wait_for(state="visible", timeout=3000)
             docs_tab.click()
-            page.wait_for_timeout(750)
+            page.wait_for_timeout(800)
             step("[Browser] Documents tab opened")
         except Exception as e:
             if self.is_stop_requested():
                 raise BrowserStopRequested("Stop requested")
             step(f"[Browser] Could not open Documents tab: {e}")
+            return None
+
+        # WIPO sometimes serves a captcha specifically after the Documents
+        # click. Run the solver before trying to find the PDF link.
+        if not _solve_if_captcha(page, on_step=step, label="Documents click"):
+            step("[Browser] Captcha after Documents click could not be solved")
             return None
 
         # --- Step 4: Find RO/101 PDF link ---
@@ -517,10 +726,19 @@ class PatentBrowser:
         return pdf_path
 
     def _wait_for_content(self, timeout=120, on_step=None):
-        """Wait for the patent page to fully load. Handles CAPTCHA."""
+        """Wait for the patent page to fully load. On confirmed CAPTCHA the
+        captcha_solver sub-agent (agents/pct_agent/captcha_solver/) is
+        invoked synchronously — it walks through DIY OCR, OpenAI vision,
+        and manual fallback tiers and emits its own UI events. We just
+        resume polling once it returns.
+        """
         step = on_step or (lambda m: None)
         deadline = time.time() + timeout
-        captcha_warned = False
+        # Require 2 consecutive positive detections before delegating to the
+        # solver — this debounces transient false positives during page load.
+        captcha_streak = 0
+        CAPTCHA_CONFIRM_HITS = 2
+        solver_attempted = False
 
         while time.time() < deadline:
             self._check_stop()
@@ -534,31 +752,26 @@ class PatentBrowser:
 
             # Success: patent content loaded
             if "PCT Biblio" in content or "detailMainForm" in content:
-                if captcha_warned:
-                    step("CAPTCHA cleared - resuming from the same row")
-                    step({
-                        "type": "browser",
-                        "event": "captcha_cleared",
-                        "message": "CAPTCHA cleared - resuming from the same row",
-                        "captcha_active": False,
-                    })
                 return True
 
-            # CAPTCHA detected
+            # CAPTCHA candidate
             if _is_captcha_present(self._page, content):
-                if not captcha_warned:
-                    _play_captcha_alert()
-                    step("CAPTCHA detected - action required")
-                    step({
-                        "type": "browser",
-                        "event": "captcha_detected",
-                        "message": "CAPTCHA detected - action required",
-                        "captcha_active": True,
-                    })
-                    step("[Browser] CAPTCHA detected — please solve it in the browser window")
-                    captcha_warned = True
+                captcha_streak += 1
+                if captcha_streak >= CAPTCHA_CONFIRM_HITS and not solver_attempted:
+                    solver_attempted = True
+                    if not self._invoke_solver(step, deadline):
+                        return False
+                    # Solver finished. Let the loop poll again and confirm
+                    # content; reset streak so any future captcha gets its
+                    # own debounce.
+                    captcha_streak = 0
+                    continue
                 time.sleep(0.5)
                 continue
+
+            # No captcha on this poll — reset streak so a single transient
+            # match doesn't latch.
+            captcha_streak = 0
 
             # 403 error
             if "403" in (self._page.title() or ""):
@@ -574,6 +787,37 @@ class PatentBrowser:
             time.sleep(0.25)
 
         return False
+
+    def _invoke_solver(self, step, deadline):
+        """Call the captcha solver synchronously. Returns True if the solver
+        believes the challenge is cleared (caller should keep polling), or
+        False if every tier failed (caller should abandon this row).
+        """
+        if default_pacer is not None:
+            try:
+                default_pacer.report_captcha()
+            except Exception:
+                pass
+        try:
+            from .captcha_solver import solve_captcha
+        except Exception as e:
+            step(f"[Browser] Could not import captcha solver: {e} — falling back to manual beep")
+            _play_captcha_alert()
+            return False
+
+        remaining = max(15, int(deadline - time.time()))
+        try:
+            url = self._page.url
+        except Exception:
+            url = ""
+        try:
+            return solve_captcha(
+                self._page, on_step=step,
+                max_seconds=remaining, source_url=url,
+            )
+        except Exception as e:
+            step(f"[Browser] Captcha solver crashed: {e}")
+            return False
 
     def _find_ro101_pdf(self, on_step=None):
         """Find the RO/101, 306, or Request form PDF link on the Documents tab.
