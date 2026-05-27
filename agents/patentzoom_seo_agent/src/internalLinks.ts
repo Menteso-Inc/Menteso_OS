@@ -39,7 +39,7 @@ export function insertInternalLinks(
       .map((post) => ({ post, score: keywordScore(target, post) }))
       .sort((a, b) => b.score - a.score);
 
-    const best = ranked.find((entry) => entry.score > 0);
+    const best = ranked.find((entry) => entry.score > 0) || ranked[0];
     const placeholder = `<!-- INTERNAL_LINK:${target} -->`;
     if (!best) {
       updatedHtml = updatedHtml.replace(placeholder, "");

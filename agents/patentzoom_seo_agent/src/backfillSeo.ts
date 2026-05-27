@@ -110,7 +110,7 @@ async function main(): Promise<void> {
     }
 
     const baseArticle = buildArticle(entry, post);
-    const optimized = validateAndOptimizeArticle(baseArticle).article;
+    const optimized = validateAndOptimizeArticle(baseArticle, config).article;
     const linked = insertInternalLinks(optimized, recentPosts);
     linked.slug = post.slug;
 

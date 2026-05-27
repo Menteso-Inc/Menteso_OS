@@ -1,11 +1,39 @@
 export type PublishOverride = "draft" | "publish";
 
+export interface WorkflowConfigOverrides {
+  workspaceId?: string;
+  workspaceName?: string;
+  siteName?: string;
+  brandTone?: string;
+  wpBaseUrl?: string;
+  wpUsername?: string;
+  wpApplicationPassword?: string;
+  autoPublish?: boolean;
+  defaultCategory?: string;
+  defaultAuthor?: number | null;
+  enableFeaturedImage?: boolean;
+  enableGoogleIndexing?: boolean;
+  googleServiceAccountJson?: string;
+  googleSearchConsoleProperty?: string;
+  paths?: {
+    stateDir?: string;
+    runtimeDir?: string;
+    generatedPostsFile?: string;
+    indexingStatusFile?: string;
+    topicDiscoveryFile?: string;
+    logsDir?: string;
+    imagesDir?: string;
+  };
+}
+
 export interface WorkflowInput {
   topicOverride?: string;
   publishOverride: PublishOverride;
   enableFeaturedImage: boolean;
   dryRun: boolean;
   bypassDailyLimit?: boolean;
+  workspaceId?: string;
+  configOverrides?: WorkflowConfigOverrides;
   source: string;
   strategy?: string;
 }

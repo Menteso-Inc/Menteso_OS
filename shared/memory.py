@@ -23,12 +23,28 @@ def _default_memory(agent_name):
     }
 
 
+def _write_memory_file(path, memory):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(memory, f, indent=2)
+
+
 def load_memory(agent_name):
     """Load an agent's memory. Returns default if no memory file exists."""
     path = _memory_path(agent_name)
     if path.exists():
-        with open(path) as f:
-            return json.load(f)
+        try:
+            raw = path.read_text(encoding="utf-8", errors="ignore")
+            cleaned = raw.replace("\x00", "").strip()
+            if cleaned:
+                return json.loads(cleaned)
+        except Exception:
+            pass
+
+        memory = _default_memory(agent_name)
+        _write_memory_file(path, memory)
+        return memory
+
     return _default_memory(agent_name)
 
 
@@ -62,9 +78,7 @@ def save_learning(agent_name, task, outcome, insight, strategy, execution_time=0
     ) if total_runs else 0.0
 
     path = _memory_path(agent_name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(memory, f, indent=2)
+    _write_memory_file(path, memory)
 
     return memory
 

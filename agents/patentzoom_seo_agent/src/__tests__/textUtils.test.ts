@@ -18,6 +18,8 @@ describe("textUtils moderate duplicate logic", () => {
     expect(inferIntentCluster("provisional patent filing checklist")).toBe("provisional patents");
     expect(inferIntentCluster("software patent filing cost for saas startups")).toBe("software and ai patents");
     expect(inferIntentCluster("office action response timeline")).toBe("office actions");
+    expect(inferIntentCluster("USPTO patent drawing requirements checklist")).toBe("patent drawing rules");
+    expect(inferIntentCluster("how ip docketing prevents missed deadlines")).toBe("ip docketing");
   });
 
   it("flags exact and same-intent recent duplicates with moderate protection", () => {
@@ -63,6 +65,27 @@ describe("textUtils moderate duplicate logic", () => {
 
     expect(exactReason).toBeTruthy();
     expect(sameIntentReason).toBeTruthy();
+  });
+
+  it("blocks same-intent keyword variations already covered by recent WordPress titles", () => {
+    const reason = findModerateDuplicateReason(
+      {
+        primaryKeyword: "trademark docketing software",
+        fingerprint: topicFingerprint("IP Docketing Services", "search demand", "trademark docketing software"),
+        slug: "trademark-docketing-software",
+        intentCluster: "ip docketing",
+      },
+      [],
+      [
+        {
+          title: "Best Trademark Docketing Software for Law Firms",
+          slug: "best-trademark-docketing-software-for-law-firms",
+        },
+      ] as any,
+      new Date("2026-05-22T00:00:00Z"),
+    );
+
+    expect(reason).toBeTruthy();
   });
 
   it("allows related follow-up topics when the angle materially differs", () => {

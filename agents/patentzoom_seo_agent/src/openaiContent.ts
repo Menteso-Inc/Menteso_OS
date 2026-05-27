@@ -6,6 +6,171 @@ import { withRetry } from "./retry";
 import { ArticleOutline, GeneratedArticle, TopicSelection } from "./types";
 import { slugify, uniqueStrings } from "./textUtils";
 
+function workspaceAudienceGuidance(config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "patent-drawing-experts") {
+    return "Write for inventors, patent attorneys, law firms, prosecution teams, and businesses that need USPTO-compliant patent drawings and illustrations.";
+  }
+  if (workspaceId === "ip-docketers") {
+    return "Write for law firms, in-house IP teams, docketing managers, prosecution teams, and legal operations professionals responsible for IP deadlines and workflow accuracy.";
+  }
+  return "Write for founders, inventors, product teams, and businesses considering patent protection in the United States or internationally.";
+}
+
+function workspaceTopicGuidance(config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "patent-drawing-experts") {
+    return "Stay tightly focused on patent drawings, design patent drawings, utility patent drawings, USPTO drawing rules, patent illustrations, figure preparation, objections, corrections, and inventor drawing readiness.";
+  }
+  if (workspaceId === "ip-docketers") {
+    return "Stay tightly focused on IP docketing, patent prosecution workflow, missed-deadline prevention, docketing-system integrations, outsourced docketing support, and IP paralegal operations for law firms and in-house IP teams.";
+  }
+  return "Stay tightly focused on practical patent, filing, prosecution, and IP-protection topics relevant to the active site.";
+}
+
+function workspaceDefaultCta(config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "patent-drawing-experts") {
+    return "Patent Drawing Experts can help you prepare USPTO-compliant utility and design patent drawings before filing.";
+  }
+  if (workspaceId === "ip-docketers") {
+    return "IP Docketers can help law firms and IP teams improve deadline control, prosecution workflow, and docketing support across systems.";
+  }
+  return `${config.siteName} can help you evaluate timing, scope, and next filing steps.`;
+}
+
+function workspaceDefaultTags(config: AppConfig, topic: TopicSelection): string[] {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "patent-drawing-experts") {
+    return [
+      topic.theme,
+      "Patent Drawings",
+      "USPTO Drawing Requirements",
+      "Patent Illustrations",
+    ];
+  }
+  if (workspaceId === "ip-docketers") {
+    return [
+      topic.theme,
+      "IP Docketing",
+      "Patent Prosecution",
+      "Law Firm Operations",
+    ];
+  }
+  return [
+    topic.theme,
+    "Patent Strategy",
+    "Startup IP",
+    "Patent Filing",
+  ];
+}
+
+function workspaceDefaultInternalTargets(config: AppConfig): string[] {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "patent-drawing-experts") {
+    return [
+      "utility patent drawings",
+      "design patent drawings",
+      "patent drawing FAQs",
+      "patent drawing samples",
+    ];
+  }
+  if (workspaceId === "ip-docketers") {
+    return [
+      "ip docketing services",
+      "ip prosecution paralegal services",
+      "support for all ip docketing systems",
+      "virtual ip litigation paralegal",
+    ];
+  }
+  return [
+    "provisional patent filing",
+    "patent filing costs",
+    "startup IP protection",
+  ];
+}
+
+function workspaceFallbackTitle(topic: TopicSelection, config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return `${topic.primaryKeyword}: A Practical Guide for Law Firms and IP Teams`;
+  }
+  if (workspaceId === "patent-drawing-experts") {
+    return `${topic.primaryKeyword}: A Practical Guide for Inventors and Patent Teams`;
+  }
+  return `${topic.primaryKeyword}: A Practical Guide for Startups and Inventors`;
+}
+
+function workspaceFallbackHeadings(config: AppConfig): string[] {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return [
+      "Why this workflow matters for law firms and IP teams",
+      "Where deadline risk appears in daily docketing operations",
+      "Common docketing mistakes to avoid",
+      "Operational and system considerations",
+      "Integration and reporting best practices",
+      "Frequently Asked Questions",
+    ];
+  }
+  return [
+    "What this strategy means for startups",
+    "When to file and why timing matters",
+    "Common filing mistakes to avoid",
+    "Cost and process considerations",
+    "International planning and future options",
+    "Frequently Asked Questions",
+  ];
+}
+
+function workspaceFallbackFaqs(topic: TopicSelection, config: AppConfig): string[] {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return [
+      `What is the best ${topic.primaryKeyword} approach for law firms?`,
+      `How much does ${topic.primaryKeyword} usually cost?`,
+      `What operational mistakes should teams avoid with ${topic.primaryKeyword}?`,
+    ];
+  }
+  return [
+    `What is the best ${topic.primaryKeyword} approach for startups?`,
+    `How much does ${topic.primaryKeyword} usually cost?`,
+    `What mistakes should founders avoid with ${topic.primaryKeyword}?`,
+  ];
+}
+
+function workspaceFallbackMetaDescription(primaryKeyword: string, config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return `${primaryKeyword} explained for law firms and IP teams, including workflow design, deadline control, system integration, and next operational steps.`;
+  }
+  return `${primaryKeyword} explained for startups and inventors, including timing, filing strategy, cost considerations, and next steps.`;
+}
+
+function workspaceFallbackExcerpt(primaryKeyword: string, config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return `${primaryKeyword} can improve deadline control, workflow accuracy, and team coordination for law firms and in-house IP operations.`;
+  }
+  return `${primaryKeyword} can shape how startups protect innovation, manage cost, and prepare for future filings.`;
+}
+
+function workspaceFallbackImagePrompt(config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return "Professional editorial illustration of an IP operations team managing docketing software dashboards, deadline workflows, and patent prosecution calendars in a clean legal-tech office setting.";
+  }
+  return "Professional editorial illustration about patent filing strategy, innovation, startup IP protection, clean blue legal-tech visual.";
+}
+
+function workspaceArticleExampleInstruction(config: AppConfig): string {
+  const workspaceId = String(config.workspaceId || "").trim().toLowerCase();
+  if (workspaceId === "ip-docketers") {
+    return "- include practical examples for law firms, docketing managers, and in-house IP teams";
+  }
+  return "- include practical examples for founders and inventors";
+}
+
 const outlineSchema = z.object({
   title: z.string().min(10),
   slug: z.string().min(5),
@@ -106,35 +271,19 @@ function normalizeOutlinePayload(raw: unknown, topic: TopicSelection, config: Ap
   const title = pickString(
     source,
     ["title", "headline", "articleTitle", "article_title", "seoTitle"],
-    `${topic.primaryKeyword}: A Practical Guide for Startups and Inventors`,
+    workspaceFallbackTitle(topic, config),
   );
-  const headingPlan = pickStringArray(source, ["headingPlan", "heading_plan", "headings"], [
-    "What this strategy means for startups",
-    "When to file and why timing matters",
-    "Common filing mistakes to avoid",
-    "Cost and process considerations",
-    "International planning and future options",
-    "Frequently Asked Questions",
-  ]);
-  const faqQuestions = pickStringArray(source, ["faqQuestions", "faq_questions", "faqs"], [
-    `What is the best ${topic.primaryKeyword} approach for startups?`,
-    `How much does ${topic.primaryKeyword} usually cost?`,
-    `What mistakes should founders avoid with ${topic.primaryKeyword}?`,
-  ]);
+  const headingPlan = pickStringArray(source, ["headingPlan", "heading_plan", "headings"], workspaceFallbackHeadings(config));
+  const faqQuestions = pickStringArray(source, ["faqQuestions", "faq_questions", "faqs"], workspaceFallbackFaqs(topic, config));
   const secondaryKeywords = pickStringArray(source, ["secondaryKeywords", "secondary_keywords", "supportingKeywords"], [
     ...topic.secondaryKeywords,
     ...topic.relatedSearches,
   ]).filter((item) => item.toLowerCase() !== primaryKeyword.toLowerCase());
   const tags = pickStringArray(source, ["tags", "tagList", "tag_list"], [
-    topic.theme,
-    "Patent Strategy",
-    "Startup IP",
-    "Patent Filing",
+    ...workspaceDefaultTags(config, topic),
   ]);
   const internalLinkTargets = pickStringArray(source, ["internalLinkTargets", "internal_link_targets", "internalLinks"], [
-    "provisional patent filing",
-    "patent filing costs",
-    "startup IP protection",
+    ...workspaceDefaultInternalTargets(config),
   ]);
 
   return {
@@ -144,12 +293,12 @@ function normalizeOutlinePayload(raw: unknown, topic: TopicSelection, config: Ap
     metaDescription: pickString(
       source,
       ["metaDescription", "meta_description", "seoDescription"],
-      `${primaryKeyword} explained for startups and inventors, including timing, filing strategy, cost considerations, and next steps.`,
+      workspaceFallbackMetaDescription(primaryKeyword, config),
     ),
     excerpt: pickString(
       source,
       ["excerpt", "summary", "introSummary"],
-      `${primaryKeyword} can shape how startups protect innovation, manage cost, and prepare for future filings.`,
+      workspaceFallbackExcerpt(primaryKeyword, config),
     ),
     primaryKeyword,
     secondaryKeywords: uniqueStrings(secondaryKeywords, 6).slice(0, 6),
@@ -160,18 +309,18 @@ function normalizeOutlinePayload(raw: unknown, topic: TopicSelection, config: Ap
     cta: pickString(
       source,
       ["cta", "callToAction", "call_to_action"],
-      "If you want help deciding the right next filing step, PatentZoom can help you evaluate timing, scope, and protection strategy.",
+      workspaceDefaultCta(config),
     ),
     internalLinkTargets: uniqueStrings(internalLinkTargets, 5).slice(0, 5),
     imagePrompt: pickString(
       source,
       ["imagePrompt", "image_prompt"],
-      "Professional editorial illustration about patent filing strategy, innovation, startup IP protection, clean blue legal-tech visual.",
+      workspaceFallbackImagePrompt(config),
     ),
     imageAltText: pickString(
       source,
       ["imageAltText", "image_alt_text", "altText"],
-      `${title} featured image for PatentZoom`,
+      `${title} featured image for ${config.siteName}`,
     ),
   };
 }
@@ -319,7 +468,8 @@ export async function generateArticle(
   const systemPrompt = [
     `You are the editorial strategist and writer for ${config.siteName}.`,
     `Brand tone: ${config.brandTone}.`,
-    "Write for founders, inventors, product teams, and businesses considering patent protection in the United States or internationally.",
+    workspaceAudienceGuidance(config),
+    workspaceTopicGuidance(config),
     "Never say 'as an AI'.",
     "Do not invent legal citations, court decisions, or statistics.",
     "This article must be practical, authoritative, SEO-optimized, and readable.",
@@ -332,7 +482,7 @@ export async function generateArticle(
     logger,
     `${systemPrompt} Return one flat JSON object with exactly these keys: title, slug, metaTitle, metaDescription, excerpt, primaryKeyword, secondaryKeywords, tags, category, headingPlan, faqQuestions, cta, internalLinkTargets, imagePrompt, imageAltText.`,
     [
-      "Create a JSON-only content brief for a PatentZoom blog article.",
+      `Create a JSON-only content brief for a ${config.siteName} blog article.`,
       `Primary topic: ${topic.primaryKeyword}`,
       `Theme: ${topic.theme}`,
       `Intent cluster: ${topic.intentCluster}`,
@@ -349,7 +499,7 @@ export async function generateArticle(
       "- meta title and description must be search-friendly",
       "- include 3-5 internal link targets as plain phrases",
       "- include an FAQ section plan",
-      "- include one CTA aimed at PatentZoom consultations",
+      `- include one CTA aimed at ${config.siteName} consultations`,
       "- category should be specific but usable in WordPress",
     ].join("\n"),
     (raw) => normalizeOutlinePayload(raw, topic, config),
@@ -387,12 +537,12 @@ export async function generateArticle(
       `{"title":"","slug":"","metaTitle":"","metaDescription":"","excerpt":"","primaryKeyword":"","secondaryKeywords":[""],"tags":[""],"category":"","articleHtml":"","faqSchemaJsonLd":"","imagePrompt":"","imageAltText":""}`,
       "Article rules:",
       "- articleHtml must be valid HTML with one <h1> and multiple <h2>/<h3> headings",
-      "- include practical examples for founders and inventors",
+      workspaceArticleExampleInstruction(config),
       "- include a checklist or a simple HTML table where useful",
       "- include an FAQ section near the end",
       "- add 3-5 placeholders in this exact format: <!-- INTERNAL_LINK:target phrase -->",
       "- include this disclaimer verbatim near the end: This article is for informational purposes only and does not constitute legal advice.",
-      "- include a clear CTA for PatentZoom in the conclusion",
+      `- include a clear CTA for ${config.siteName} in the conclusion`,
       "- keep tone human, confident, and practical",
       "- return faqSchemaJsonLd as a JSON-LD string with FAQPage markup",
     ].join("\n"),
@@ -418,6 +568,8 @@ export async function rewriteArticleForSeo(
   const systemPrompt = [
     `You are the senior SEO editor for ${config.siteName}.`,
     `Brand tone: ${config.brandTone}.`,
+    workspaceAudienceGuidance(config),
+    workspaceTopicGuidance(config),
     "You repair near-complete blog drafts so they can pass publish-quality SEO checks.",
     "Never say 'as an AI'.",
     "Do not invent legal citations, court decisions, or statistics.",
@@ -434,7 +586,7 @@ export async function rewriteArticleForSeo(
     logger,
     `${systemPrompt} Return one flat JSON object with exactly these keys: title, slug, metaTitle, metaDescription, excerpt, primaryKeyword, secondaryKeywords, tags, category, articleHtml, faqSchemaJsonLd, imagePrompt, imageAltText.`,
     [
-      "Rewrite the following PatentZoom article draft so it clears all publish checks.",
+      `Rewrite the following ${config.siteName} article draft so it clears all publish checks.`,
       `Primary keyword: ${article.primaryKeyword || topic.primaryKeyword}`,
       `Required blockers to fix: ${blockers.join(" | ")}`,
       `Current title: ${article.title}`,
@@ -459,7 +611,7 @@ export async function rewriteArticleForSeo(
       "- Include a practical checklist or simple HTML table",
       "- Include at least one external reference link to an authoritative source such as USPTO or WIPO when useful",
       "- Include this disclaimer verbatim near the end: This article is for informational purposes only and does not constitute legal advice.",
-      "- Include a clear PatentZoom CTA in the conclusion",
+      `- Include a clear ${config.siteName} CTA in the conclusion`,
       "- Return faqSchemaJsonLd as a valid FAQPage JSON-LD string",
     ].join("\n"),
     (raw) =>
@@ -478,8 +630,8 @@ export async function rewriteArticleForSeo(
           category: article.category || config.defaultCategory,
           headingPlan: [],
           faqQuestions: [],
-          cta: "PatentZoom can help you evaluate timing, scope, and next filing steps.",
-          internalLinkTargets: ["provisional patent filing", "patent filing costs", "startup IP protection"],
+          cta: workspaceDefaultCta(config),
+          internalLinkTargets: workspaceDefaultInternalTargets(config),
           imagePrompt: article.imagePrompt,
           imageAltText: article.imageAltText,
         },

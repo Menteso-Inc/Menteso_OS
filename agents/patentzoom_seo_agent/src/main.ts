@@ -8,7 +8,7 @@ import { RunLogger } from "./logger";
 import { generateArticle, rewriteArticleForSeo } from "./openaiContent";
 import { validateAndOptimizeArticle } from "./seoOptimizer";
 import { chooseTopic, loadGeneratedPosts, saveGeneratedPosts } from "./topicEngine";
-import { GeneratedArticle, GeneratedPostRecord, IndexingStatus, RecentPost, TopicSelection, WorkflowInput, WorkflowResult } from "./types";
+import { GeneratedArticle, GeneratedPostRecord, IndexingStatus, RecentPost, TopicSelection, WorkflowConfigOverrides, WorkflowInput, WorkflowResult } from "./types";
 import { WordPressClient } from "./wordpressClient";
 
 class StopRequestedError extends Error {
@@ -69,6 +69,8 @@ function parseInput(): WorkflowInput {
           : payload.bypass_daily_limit !== undefined
             ? Boolean(payload.bypass_daily_limit)
             : parsedTopicOverride.bypassDailyLimit,
+      workspaceId: String(payload.workspaceId ?? payload.workspace_id ?? "").trim() || undefined,
+      configOverrides: (payload.configOverrides ?? payload.config_overrides ?? undefined) as WorkflowConfigOverrides | undefined,
       source: String(payload.source ?? "").trim() || (process.env.GITHUB_ACTIONS ? "github_actions" : "dashboard"),
       strategy: String(payload.strategy ?? "").trim() || undefined,
     };
@@ -159,6 +161,7 @@ function evaluateSeoReadiness(
   article: GeneratedArticle,
   topic: TopicSelection,
   baseUrl: string,
+  siteName: string,
   featuredImageExpected: boolean,
 ): {
   score: number;
@@ -213,7 +216,7 @@ function evaluateSeoReadiness(
     {
       label: "External references added",
       passed: hasExternalLinks(article.articleHtml, baseUrl),
-      required: false,
+      required: true,
     },
     {
       label: "FAQ section added",
@@ -234,7 +237,7 @@ function evaluateSeoReadiness(
     },
     {
       label: "CTA included",
-      passed: /patentzoom/i.test(article.articleHtml),
+      passed: new RegExp(siteName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(article.articleHtml),
       required: true,
     },
   ];
@@ -250,8 +253,8 @@ function evaluateSeoReadiness(
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
   const input = parseInput();
+  const config = loadConfig(input.configOverrides);
   const logger = new RunLogger(config, randomUUID());
   const wpClient = new WordPressClient(config, logger);
   const ledger = loadGeneratedPosts(config.paths.generatedPostsFile);
@@ -273,15 +276,15 @@ async function main(): Promise<void> {
   let indexingStatus: IndexingStatus | null = null;
 
   try {
-    logger.step("PatentZoom SEO workflow started.", {
+    logger.step(`${config.siteName} SEO workflow started.`, {
       stage: "readiness",
       status: "active",
     });
-    logger.step("Loading recent PatentZoom posts from WordPress...");
+    logger.step(`Loading recent ${config.siteName} posts from WordPress...`);
     let recentPosts: RecentPost[] = [];
     try {
       recentPosts = await wpClient.fetchRecentPosts(20);
-      logger.step(`Loaded ${recentPosts.length} recent PatentZoom posts for duplicate checks and internal links.`, {
+      logger.step(`Loaded ${recentPosts.length} recent ${config.siteName} posts for duplicate checks and internal links.`, {
         stage: "readiness",
         status: "complete",
         recentPosts: recentPosts.length,
@@ -349,7 +352,7 @@ async function main(): Promise<void> {
     }
 
     const optimizeArticle = (article: GeneratedArticle, logSummary = true) => {
-      const validation = validateAndOptimizeArticle(article);
+      const validation = validateAndOptimizeArticle(article, config);
       validation.issues.forEach((issue) => logger.warn(`SEO optimizer: ${issue}`));
       const linked = insertInternalLinks(validation.article, recentPosts);
       logger.step("Inserted natural internal links into the article.");
@@ -371,6 +374,7 @@ async function main(): Promise<void> {
       linkedArticle,
       topic,
       config.wpBaseUrl,
+      config.siteName,
       config.enableFeaturedImage && input.enableFeaturedImage,
     );
     logger.step(`SEO validation score: ${seoReadiness.score}/100.`, {
@@ -392,6 +396,7 @@ async function main(): Promise<void> {
         linkedArticle,
         topic,
         config.wpBaseUrl,
+        config.siteName,
         config.enableFeaturedImage && input.enableFeaturedImage,
       );
       logger.step(`Post-rewrite SEO validation score: ${seoReadiness.score}/100.`, {

@@ -116,7 +116,65 @@ export class WordPressClient {
     return (await response.json()) as T;
   }
 
-  async fetchRecentPosts(limit = 20): Promise<RecentPost[]> {
+  private toRecentPost(post: Record<string, unknown>): RecentPost {
+    return {
+      id: Number(post.id),
+      slug: String(post.slug || ""),
+      url: String(post.link || ""),
+      title: decodeHtml(String((post.title as Record<string, unknown>)?.rendered || "")),
+      excerpt: decodeHtml(String((post.excerpt as Record<string, unknown>)?.rendered || "")),
+    };
+  }
+
+  private async fetchDrawingWorkspaceTargets(): Promise<RecentPost[]> {
+    const requestFn = this.isConfigured() ? this.request.bind(this) : this.publicRequest.bind(this);
+    const [products, pages] = await Promise.all([
+      requestFn<Array<Record<string, unknown>>>("/product?per_page=20&_fields=id,slug,link,title,excerpt"),
+      requestFn<Array<Record<string, unknown>>>("/pages?per_page=50&_fields=id,slug,link,title,excerpt"),
+    ]);
+
+    const usefulPageSlugs = new Set([
+      "contact-us",
+      "patent-drawing-faqs",
+      "samples",
+      "utility-patent-drawings-samples",
+      "design-patent-drawings-samples",
+      "how-it-works",
+      "resources",
+    ]);
+
+    return [
+      ...products.map((item) => this.toRecentPost(item)),
+      ...pages.filter((item) => usefulPageSlugs.has(String(item.slug || ""))).map((item) => this.toRecentPost(item)),
+    ];
+  }
+
+  private async fetchIpDocketersWorkspaceTargets(): Promise<RecentPost[]> {
+    const requestFn = this.isConfigured() ? this.request.bind(this) : this.publicRequest.bind(this);
+    const pages = await requestFn<Array<Record<string, unknown>>>("/pages?per_page=100&_fields=id,slug,link,title,excerpt");
+
+    const usefulPageSlugs = new Set([
+      "ip-docketing-services",
+      "ip-prosecution-paralegal-services",
+      "virtual-ip-litigation-paralegal",
+      "admin-team-law-firm-support",
+      "support-for-all-ip-docketing-systems",
+      "anaqua",
+      "cpi",
+      "flextrac",
+      "pattsy",
+      "dockettrak",
+      "patricia",
+      "webtms",
+      "appcoll",
+      "blog",
+      "case-study",
+    ]);
+
+    return pages.filter((item) => usefulPageSlugs.has(String(item.slug || ""))).map((item) => this.toRecentPost(item));
+  }
+
+  async fetchRecentPosts(limit = 50): Promise<RecentPost[]> {
     const path = `/posts?per_page=${limit}&orderby=date&order=desc&_fields=id,slug,link,title,excerpt`;
     let posts: Array<Record<string, unknown>>;
     if (this.isConfigured()) {
@@ -133,13 +191,42 @@ export class WordPressClient {
     } else {
       posts = await this.publicRequest<Array<Record<string, unknown>>>(path);
     }
-    return posts.map((post) => ({
-      id: Number(post.id),
-      slug: String(post.slug || ""),
-      url: String(post.link || ""),
-      title: decodeHtml(String((post.title as Record<string, unknown>)?.rendered || "")),
-      excerpt: decodeHtml(String((post.excerpt as Record<string, unknown>)?.rendered || "")),
-    }));
+    const recentPosts = posts.map((post) => this.toRecentPost(post));
+    try {
+      if (this.config.workspaceId === "patent-drawing-experts") {
+        const workspaceTargets = await this.fetchDrawingWorkspaceTargets();
+        const merged = [...workspaceTargets, ...recentPosts];
+        const seen = new Set<string>();
+        return merged.filter((item) => {
+          const key = `${item.url}|${item.slug}`.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      if (this.config.workspaceId === "ip-docketers") {
+        const workspaceTargets = await this.fetchIpDocketersWorkspaceTargets();
+        const merged = [...workspaceTargets, ...recentPosts];
+        const seen = new Set<string>();
+        return merged.filter((item) => {
+          const key = `${item.url}|${item.slug}`.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      return recentPosts;
+    } catch (error) {
+      const workspaceLabel = this.config.workspaceId === "ip-docketers" ? "IP Docketers" : "Patent Drawing Experts";
+      this.logger.warn(
+        `${workspaceLabel} service-page fetch failed. Falling back to recent posts only. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return recentPosts;
+    }
   }
 
   private async ensureTerm(type: "categories" | "tags", name: string): Promise<number> {

@@ -56,6 +56,15 @@ export function stemmedOverlap(left: string, right: string): number {
 export function inferIntentCluster(value: string): string {
   const normalized = normalizeKeyword(value);
   const checks: Array<[string, RegExp]> = [
+    ["ip docketing", /\bip docketing|trademark docketing|patent docketing|docketing software|docketing systems?|deadline management|deadline tracking|missed deadlines?|docketing workflow|portfolio management\b/],
+    ["ip prosecution support", /\bip prosecution|patent prosecution|trademark prosecution|prosecution workflow|office action workflow|prosecution support|patent filing workflow\b/],
+    ["ip paralegal services", /\bip paralegal|prosecution paralegal|docketing paralegal|litigation paralegal|admin support|law firm support\b/],
+    ["docketing integrations", /\banaqua|pattsy|patricia|webtms|cpi|dockettrak|flextrac|appcoll|integration|integrations\b/],
+    ["utility patent drawings", /\butility patent drawing|utility drawing|patent drawing sheet|figure set\b/],
+    ["design patent drawings", /\bdesign patent drawing|design drawing|ornamental drawing\b/],
+    ["patent drawing rules", /\bpatent drawing rules|drawing requirements|uspto drawing requirements|reference numerals|line rules|shading\b/],
+    ["patent illustrations", /\bpatent illustration|patent illustrator|patent sketch|technical illustration\b/],
+    ["patent drawing costs", /\bpatent drawing cost|drawing fees|illustration pricing\b/],
     ["provisional patents", /\bprovisional\b/],
     ["software and ai patents", /\b(ai|software|saas|machine learning|artificial intelligence)\b/],
     ["patent costs", /\b(cost|fees|budget|price)\b/],
@@ -151,11 +160,13 @@ export function findModerateDuplicateReason(
   const candidateKeyword = String(candidate.primaryKeyword || "");
   const candidateSlug = slugify(candidate.slug || candidateKeyword);
   const candidateCluster = String(candidate.intentCluster || inferIntentCluster(candidateKeyword));
+  const normalizedCandidate = normalizeKeyword(candidateKeyword);
 
   for (const entry of ledger) {
     const days = Math.abs(currentTime - new Date(entry.date).getTime()) / (1000 * 60 * 60 * 24);
     const entryKeyword = String(entry.primaryKeyword || "");
     const entryCluster = String(entry.intentCluster || inferIntentCluster(entryKeyword));
+    const normalizedEntry = normalizeKeyword(entryKeyword);
 
     if (entry.fingerprint === candidate.fingerprint) return "Exact topic fingerprint already used";
     if (slugify(entry.slug || entryKeyword) === candidateSlug) return "Slug already used recently";
@@ -166,6 +177,12 @@ export function findModerateDuplicateReason(
     if (days <= 90 && entryCluster === candidateCluster) {
       const overlap = jaccardSimilarity(entryKeyword, candidateKeyword);
       if (overlap >= 0.8) return "Recent topic with the same search intent already exists";
+      if (
+        stemmedOverlap(entryKeyword, candidateKeyword) >= 2 &&
+        (normalizedEntry.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedEntry))
+      ) {
+        return "Recent topic already covers this same-intent keyword variation";
+      }
       if (stemmedOverlap(entryKeyword, candidateKeyword) >= 3 && overlap >= 0.6) {
         return "Recent topic uses the same core patent-intent terms";
       }
@@ -175,6 +192,7 @@ export function findModerateDuplicateReason(
   for (const post of recentPosts) {
     const postTitle = String(post.title || "");
     const postSlug = String(post.slug || "");
+    const normalizedPostTitle = normalizeKeyword(postTitle);
     if (slugify(postSlug || postTitle) === candidateSlug) return "Recent WordPress post already uses this slug";
     if (keywordStem(postTitle) === keywordStem(candidateKeyword)) return "Recent WordPress post already targets this keyword";
     if (
@@ -182,6 +200,13 @@ export function findModerateDuplicateReason(
       jaccardSimilarity(postTitle, candidateKeyword) >= 0.8
     ) {
       return "Recent WordPress post covers a near-identical intent";
+    }
+    if (
+      inferIntentCluster(postTitle) === candidateCluster &&
+      stemmedOverlap(postTitle, candidateKeyword) >= 2 &&
+      (normalizedPostTitle.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedPostTitle))
+    ) {
+      return "Recent WordPress post already covers this same-intent keyword variation";
     }
     if (
       inferIntentCluster(postTitle) === candidateCluster &&
