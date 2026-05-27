@@ -98,12 +98,19 @@
       "outcome": "solved",
       "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=5.6s attempts=1",
       "strategy": "vision"
+    },
+    {
+      "timestamp": "2026-05-27T09:00:23.916654+00:00",
+      "task": "solve_captcha",
+      "outcome": "solved",
+      "insight": "captcha_type=wipo_image_grid outcome=solved tier=vision elapsed=7.8s attempts=1",
+      "strategy": "vision"
     }
   ],
   "refined_prompts": {},
   "stats": {
-    "total_runs": 14,
+    "total_runs": 15,
     "success_rate": 0.0,
-    "avg_execution_time": 9.451
+    "avg_execution_time": 9.34
   }
 }
