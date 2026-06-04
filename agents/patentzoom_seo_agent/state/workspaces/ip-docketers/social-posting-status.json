@@ -1,0 +1,115 @@
+{
+  "history": [
+    {
+      "workspaceId": "ip-docketers",
+      "workspaceName": "IP Docketers",
+      "autoPostEnabled": true,
+      "articleUrl": "https://ipdocketers.com/mastering-patent-prosecution-with-ai-office-actions-guide/",
+      "title": "AI In Patent Prosecution Guide for Law Firms and IP Teams",
+      "primaryKeyword": "ai in patent prosecution",
+      "imageUrl": "https://ipdocketers.com/wp-content/uploads/2026/06/mastering-patent-prosecution-with-ai-office-actions-guide-1024x683.png",
+      "postedAt": "2026-06-04T07:07:25.436738+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1305315432837215_1402688228550607",
+          "response": {
+            "id": "1305315432837215_1402688228550607"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    },
+    {
+      "workspaceId": "ip-docketers",
+      "workspaceName": "IP Docketers",
+      "autoPostEnabled": true,
+      "articleUrl": "https://ipdocketers.com/mastering-patent-prosecution-with-ai-office-actions-guide/",
+      "title": "AI In Patent Prosecution Guide for Law Firms and IP Teams",
+      "primaryKeyword": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "imageUrl": "https://ipdocketers.com/wp-content/uploads/2026/06/mastering-patent-prosecution-with-ai-office-actions-guide-1024x683.png",
+      "postedAt": "2026-06-04T06:21:57.470653+00:00",
+      "results": {
+        "facebook": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1305315432837215/feed"
+        }
+      },
+      "ok": false,
+      "errors": [
+        "facebook: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1305315432837215/feed"
+      ]
+    },
+    {
+      "workspaceId": "ip-docketers",
+      "workspaceName": "IP Docketers",
+      "autoPostEnabled": true,
+      "articleUrl": "https://ipdocketers.com/manual-override-in-docketing/",
+      "title": "Manual Override in Docketing: Essential Guide for Law Firms and IP",
+      "primaryKeyword": "how trademark docketing software reduces missed deadlines",
+      "imageUrl": "https://ipdocketers.com/wp-content/uploads/2026/05/manual-override-in-docketing-1024x683.png",
+      "postedAt": "2026-05-26T14:51:52.203813+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1305315432837215_1394715559347874",
+          "response": {
+            "id": "1305315432837215_1394715559347874"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    },
+    {
+      "workspaceId": "ip-docketers",
+      "workspaceName": "IP Docketers",
+      "autoPostEnabled": true,
+      "articleUrl": "https://ipdocketers.com/comprehensive-guide-trademark-docketing-software/",
+      "title": "Comprehensive Guide to Trademark Docketing Software: Streamlining IP",
+      "primaryKeyword": "Trademark docketing software",
+      "imageUrl": "https://ipdocketers.com/wp-content/uploads/2026/05/comprehensive-guide-trademark-docketing-software-1024x683.png",
+      "postedAt": "2026-05-26T14:23:03.963367+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1305315432837215_1394696132683150",
+          "response": {
+            "id": "1305315432837215_1394696132683150"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    },
+    {
+      "workspaceId": "ip-docketers",
+      "workspaceName": "IP Docketers",
+      "autoPostEnabled": true,
+      "articleUrl": "https://ipdocketers.com/anaqua-docketing-integrations-best-practices/",
+      "title": "Anaqua Docketing Integrations: Best Practices for Law Firms and IP Teams",
+      "primaryKeyword": "Anaqua docketing",
+      "imageUrl": "https://ipdocketers.com/wp-content/uploads/2026/05/maximizing-efficiency-anaqua-docketing-integrations-1024x683.png",
+      "postedAt": "2026-05-26T14:01:45.368807+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1305315432837215_1394680406018056",
+          "response": {
+            "id": "1305315432837215_1394680406018056"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    }
+  ],
+  "updatedAt": "2026-06-04T07:07:25.437737+00:00",
+  "workspaceId": "ip-docketers"
+}

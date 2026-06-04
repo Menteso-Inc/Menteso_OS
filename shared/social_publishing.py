@@ -1,5 +1,7 @@
+import hashlib
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +35,9 @@ WORKSPACE_SOCIAL = {
         "base_hashtags": ["#AIAutomation", "#Operations", "#Menteso"],
     },
 }
+
+_META_TOKEN_HEALTH_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_META_TOKEN_HEALTH_TTL_SECONDS = 300
 
 
 def _now_iso() -> str:
@@ -203,6 +208,70 @@ def get_social_config(workspace_id: str | None, env: dict[str, Any]) -> dict[str
     }
 
 
+def _meta_token_health(config: dict[str, Any]) -> dict[str, Any]:
+    token = _clean_text(config.get("metaAccessToken"))
+    if not token:
+        return {"checked": False, "valid": False, "status": "missing", "detail": "Meta token is not configured."}
+
+    page_id = _clean_text(config.get("facebookPageId"))
+    if not page_id:
+        return {"checked": False, "valid": False, "status": "missing", "detail": "Facebook Page ID is not configured."}
+
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    cache_key = f"{config.get('workspaceId')}:{page_id}:{token_hash}"
+    cached = _META_TOKEN_HEALTH_CACHE.get(cache_key)
+    now = time.monotonic()
+    if cached and now - cached[0] < _META_TOKEN_HEALTH_TTL_SECONDS:
+        return dict(cached[1])
+
+    try:
+        response = requests.get(
+            f"https://graph.facebook.com/{config['metaGraphVersion']}/{page_id}",
+            params={"fields": "id,name", "access_token": token},
+            timeout=5,
+        )
+        data = response.json()
+        if response.ok:
+            result = {
+                "checked": True,
+                "valid": True,
+                "status": "valid",
+                "detail": f"Meta token is valid for {data.get('name') or 'this page'}.",
+            }
+            _META_TOKEN_HEALTH_CACHE[cache_key] = (now, result)
+            return dict(result)
+
+        error = data.get("error") if isinstance(data, dict) else {}
+        message = _clean_text((error or {}).get("message") or response.text[:300])
+        code = str((error or {}).get("code") or "")
+        subcode = str((error or {}).get("error_subcode") or (error or {}).get("subcode") or "")
+        status = "expired" if code == "190" or "expired" in message.lower() else "invalid"
+        result = {
+            "checked": True,
+            "valid": False,
+            "status": status,
+            "detail": message or "Meta token validation failed.",
+            "code": code,
+            "subcode": subcode,
+        }
+        _META_TOKEN_HEALTH_CACHE[cache_key] = (now, result)
+        return dict(result)
+    except Exception as exc:
+        result = {
+            "checked": True,
+            "valid": False,
+            "status": "check_failed",
+            "detail": f"Could not check Meta token: {exc}",
+        }
+        if cached:
+            stale = dict(cached[1])
+            stale["checked"] = True
+            stale["stale"] = True
+            stale["detail"] = f"{stale.get('detail', 'Using last token health result.')} Latest check failed: {exc}"
+            return stale
+        return result
+
+
 def read_social_state(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"history": [], "updatedAt": "", "workspaceId": ""}
@@ -230,6 +299,7 @@ def append_social_history(path: Path, workspace_id: str, entry: dict[str, Any]) 
 
 def social_status_snapshot(workspace_id: str | None, env: dict[str, Any], state_path: Path | None = None) -> dict[str, Any]:
     config = get_social_config(workspace_id, env)
+    meta_health = _meta_token_health(config)
     history = []
     updated_at = ""
     if state_path:
@@ -245,6 +315,15 @@ def social_status_snapshot(workspace_id: str | None, env: dict[str, Any], state_
         "platforms": config["platforms"],
         "configured": config["configured"],
         "configuredPlatformCount": config["configuredPlatformCount"],
+        "tokenHealth": {
+            "meta": meta_health,
+            "linkedin": {
+                "checked": False,
+                "valid": bool(config.get("linkedinAccessToken")),
+                "status": "configured" if config.get("linkedinAccessToken") else "missing",
+                "detail": "LinkedIn token health check is pending setup.",
+            },
+        },
         "updatedAt": updated_at,
         "recentHistory": history[:10],
     }

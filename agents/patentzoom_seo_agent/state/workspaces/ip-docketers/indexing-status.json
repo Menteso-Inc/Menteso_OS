@@ -1,0 +1,179 @@
+{
+  "urls": {
+    "https://ipdocketers.com/anaqua-docketing-integrations-best-practices/": {
+      "postUrl": "https://ipdocketers.com/anaqua-docketing-integrations-best-practices/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml",
+        "https://ipdocketers.com/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "URL is unknown to Google",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Aipdocketers.com&id=OJHliQjAjnP4fPXiUS49RA",
+      "requestCompletedAt": "2026-05-25T07:51:37.949515Z",
+      "error": ""
+    },
+    "https://ipdocketers.com/comprehensive-guide-trademark-docketing-software/": {
+      "postUrl": "https://ipdocketers.com/comprehensive-guide-trademark-docketing-software/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml",
+        "https://ipdocketers.com/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "URL is unknown to Google",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Aipdocketers.com&id=2j3wm2fOY35mTtIJkUVneg",
+      "requestCompletedAt": "2026-05-26T14:24:22.979845Z",
+      "error": ""
+    },
+    "https://ipdocketers.com/manual-override-in-docketing/": {
+      "postUrl": "https://ipdocketers.com/manual-override-in-docketing/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml",
+        "https://ipdocketers.com/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "URL is unknown to Google",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Aipdocketers.com&id=LI36SYyAUymyagKqNFNfQQ",
+      "requestCompletedAt": "2026-05-26T14:51:45.900540Z",
+      "error": ""
+    },
+    "https://ipdocketers.com/intellectual-property-docketing-complete-guide-patent-deadline-management/": {
+      "postUrl": "https://ipdocketers.com/intellectual-property-docketing-complete-guide-patent-deadline-management/",
+      "source": "auto",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml",
+        "https://ipdocketers.com/sitemap.xml",
+        "https"
+      ],
+      "sitemapPinged": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "URL is unknown to Google",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "requestCompletedAt": "2026-05-27T05:45:23.628Z"
+    },
+    "https://ipdocketers.com/mastering-patent-prosecution-with-ai-office-actions-guide/": {
+      "postUrl": "https://ipdocketers.com/mastering-patent-prosecution-with-ai-office-actions-guide/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml",
+        "https://ipdocketers.com/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://ipdocketers.com/sitemap_index.xml",
+        "https://ipdocketers.com/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": false,
+      "inspected": false,
+      "inspection": null,
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": false,
+      "browserFallbackStatus": "button_not_found",
+      "browserFallbackMessage": "The Request Indexing action was not available on the Search Console inspection page.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console?resource_id=sc-domain%3Apatentzoom.us",
+      "requestCompletedAt": "2026-06-04T06:22:26.237958Z",
+      "error": "400 Client Error: Bad Request for url: https://oauth2.googleapis.com/token"
+    }
+  }
+}

@@ -1,62 +1,688 @@
 {
-  "generatedAt": "2026-05-21T08:47:11.955Z",
+  "generatedAt": "2026-06-04T06:20:02.940Z",
   "mode": "mixed_signal_dynamic",
   "selectedTopic": {
-    "topicId": "manual-ai-patent-licensing-strategy-for-startups",
-    "pillar": "Software and AI Patent Protection",
-    "cluster": "software and ai patents",
-    "angle": "manual override",
-    "theme": "Software and AI Patent Protection",
-    "primaryKeyword": "AI patent licensing strategy for startups",
+    "topicId": "patent-filing-strategy-why-your-startup-needs-a-patent-strategy",
+    "pillar": "Patent Filing Strategy",
+    "cluster": "patent filing strategy",
+    "angle": "competitor gap",
+    "theme": "Patent Filing Strategy",
+    "primaryKeyword": "Why your startup needs a patent strategy",
     "secondaryKeywords": [],
     "serpQuestions": [],
     "relatedSearches": [],
-    "score": 100,
-    "fingerprint": "software-and-ai-patent-protection::manual-override::ai patent licens strategy startup",
-    "intentCluster": "software and ai patents",
+    "score": 14.149999999999999,
+    "fingerprint": "patent-filing-strategy::competitor-gap::why your startup need patent strategy",
+    "intentCluster": "patent filing strategy",
     "sourceTypes": [
-      "manual_override"
+      "competitor_article"
     ],
     "sourceEvidence": [
-      "Operator supplied a manual topic override."
+      "Competitor article surfaced for \"patent filing strategy startups\"",
+      "https://www.balderton.com/resources/why-your-startup-needs-a-patent-strategy/"
     ],
-    "demandScore": 20,
-    "freshnessScore": 10,
+    "demandScore": 15,
+    "freshnessScore": 4,
     "commercialRelevanceScore": 15,
     "brandFitScore": 8,
-    "competitorGapScore": 8,
-    "runDate": "2026-05-21"
+    "competitorGapScore": 14,
+    "runDate": "2026-06-04"
   },
   "shortlist": [
     {
-      "topicId": "manual-ai-patent-licensing-strategy-for-startups",
-      "pillar": "Software and AI Patent Protection",
-      "cluster": "software and ai patents",
-      "angle": "manual override",
-      "theme": "Software and AI Patent Protection",
-      "primaryKeyword": "AI patent licensing strategy for startups",
+      "topicId": "patent-filing-strategy-why-your-startup-needs-a-patent-strategy",
+      "pillar": "Patent Filing Strategy",
+      "cluster": "patent filing strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Filing Strategy",
+      "primaryKeyword": "Why your startup needs a patent strategy",
       "secondaryKeywords": [],
       "serpQuestions": [],
       "relatedSearches": [],
-      "score": 100,
-      "fingerprint": "software-and-ai-patent-protection::manual-override::ai patent licens strategy startup",
-      "intentCluster": "software and ai patents",
+      "score": 14.149999999999999,
+      "fingerprint": "patent-filing-strategy::competitor-gap::why your startup need patent strategy",
+      "intentCluster": "patent filing strategy",
       "sourceTypes": [
-        "manual_override"
+        "competitor_article"
       ],
       "sourceEvidence": [
-        "Operator supplied a manual topic override."
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://www.balderton.com/resources/why-your-startup-needs-a-patent-strategy/"
       ],
-      "demandScore": 20,
-      "freshnessScore": 10,
+      "demandScore": 15,
+      "freshnessScore": 4,
       "commercialRelevanceScore": 15,
       "brandFitScore": 8,
-      "competitorGapScore": 8,
-      "runDate": "2026-05-21"
+      "competitorGapScore": 14
+    },
+    {
+      "topicId": "patent-filing-strategy-patent-strategy-for-tech-startups-protecting-intellectual-property",
+      "pillar": "Patent Filing Strategy",
+      "cluster": "patent filing strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Filing Strategy",
+      "primaryKeyword": "Patent strategy for tech startups: Protecting intellectual property",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 14.149999999999999,
+      "fingerprint": "patent-filing-strategy::competitor-gap::patent strategy tech startup protect intellectual property",
+      "intentCluster": "patent filing strategy",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://learn.marsdd.com/article/patent-strategy/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 8,
+      "competitorGapScore": 14
+    },
+    {
+      "topicId": "patent-filing-strategy-developing-a-patent-strategy-for-startups-key-tips",
+      "pillar": "Patent Filing Strategy",
+      "cluster": "patent filing strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Filing Strategy",
+      "primaryKeyword": "Developing a Patent Strategy for Startups: Key Tips",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 13.7,
+      "fingerprint": "patent-filing-strategy::competitor-gap::develop patent strategy startup key tip",
+      "intentCluster": "patent filing strategy",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://lumenci.com/blogs/patent-strategy-startups-key-tips/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 5,
+      "competitorGapScore": 14
+    },
+    {
+      "topicId": "patent-filing-strategy-patent-strategy-for-biotech-startups-a-complete-guide",
+      "pillar": "Patent Filing Strategy",
+      "cluster": "patent filing strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Filing Strategy",
+      "primaryKeyword": "Patent Strategy for Biotech Startups - A Complete Guide",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 13.7,
+      "fingerprint": "patent-filing-strategy::competitor-gap::patent strategy biotech startup complete guide",
+      "intentCluster": "patent filing strategy",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://outlierpatentattorneys.com/patent-strategy-for-biotech-startups"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 5,
+      "competitorGapScore": 14
+    },
+    {
+      "topicId": "software-and-ai-patents-ai-patent-search",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "search demand",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "Ai patent search",
+      "secondaryKeywords": [
+        "ai patent search"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Ai patent search"
+      ],
+      "score": 13.45,
+      "fingerprint": "software-and-ai-patent-protection::search-demand::ai patent search",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"AI patent\"",
+        "Autocomplete suggestion for \"AI patent\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 8,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "software-and-ai-patents-ai-patent-generator",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "search demand",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "AI patent Generator",
+      "secondaryKeywords": [
+        "ai patent generator"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "AI patent Generator"
+      ],
+      "score": 13.45,
+      "fingerprint": "software-and-ai-patent-protection::search-demand::ai patent generator",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"AI patent\"",
+        "Autocomplete suggestion for \"AI patent\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 8,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "software-and-ai-patents-ai-patent-drafting-tools",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "search demand",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "AI patent drafting tools",
+      "secondaryKeywords": [
+        "ai patent drafting tools"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "AI patent drafting tools"
+      ],
+      "score": 13.45,
+      "fingerprint": "software-and-ai-patent-protection::search-demand::ai patent draft tool",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"AI patent\"",
+        "Autocomplete suggestion for \"AI patent\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 8,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "ip-prosecution-support-ai-patent-prosecution",
+      "pillar": "IP Prosecution Support",
+      "cluster": "ip prosecution support",
+      "angle": "search demand",
+      "theme": "IP Prosecution Support",
+      "primaryKeyword": "ai patent prosecution",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "ai patent prosecution"
+      ],
+      "score": 12.499999999999998,
+      "fingerprint": "ip-prosecution-support::search-demand::ai patent prosecution",
+      "intentCluster": "ip prosecution support",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Autocomplete suggestion for \"AI patent\""
+      ],
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 12,
+      "competitorGapScore": 4
     }
   ],
-  "rejectedTopics": [],
-  "liveSignals": [],
-  "sourceHealth": [],
-  "degradedSources": []
+  "rejectedTopics": [
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-fees",
+      "primaryKeyword": "provisional patent filing fees",
+      "intentCluster": "provisional patents",
+      "score": 14,
+      "reason": "Exact topic fingerprint already used",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-fees-in-india",
+      "primaryKeyword": "provisional patent filing fees in india",
+      "intentCluster": "provisional patents",
+      "score": 14,
+      "reason": "Recent topic with the same search intent already exists",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-process",
+      "primaryKeyword": "provisional patent filing process",
+      "intentCluster": "provisional patents",
+      "score": 14,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-uspto",
+      "primaryKeyword": "provisional patent filing uspto",
+      "intentCluster": "provisional patents",
+      "score": 13,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-in-india",
+      "primaryKeyword": "provisional patent filing in india",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-online",
+      "primaryKeyword": "provisional patent filing online",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-service",
+      "primaryKeyword": "provisional patent filing service",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-requirements",
+      "primaryKeyword": "provisional patent filing requirements",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-receipt",
+      "primaryKeyword": "provisional patent filing receipt",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-patent-filing-us",
+      "primaryKeyword": "provisional patent filing us",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "provisional-patents-provisional-application-for-patent",
+      "primaryKeyword": "Provisional Application for Patent",
+      "intentCluster": "provisional patents",
+      "score": 12,
+      "reason": "Recent topic uses the same core patent-intent terms",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    },
+    {
+      "topicId": "software-and-ai-patents-software-patent",
+      "primaryKeyword": "Software patent",
+      "intentCluster": "software and ai patents",
+      "score": 10,
+      "reason": "Recent topic already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    }
+  ],
+  "liveSignals": [
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-fees",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing fees",
+      "query": "provisional patent filing fees",
+      "title": "provisional patent filing fees",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 15,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-fees-in-india",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing fees in india",
+      "query": "provisional patent filing fees in india",
+      "title": "provisional patent filing fees in india",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 15,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "competitor-article-why-your-startup-needs-a-patent-strategy-https-www-balderton-com-resources-why-your-startup-needs-a-patent-strategy",
+      "sourceType": "competitor_article",
+      "label": "Why your startup needs a patent strategy",
+      "query": "Why your startup needs a patent strategy",
+      "title": "Why your startup needs a patent strategy",
+      "url": "https://www.balderton.com/resources/why-your-startup-needs-a-patent-strategy/",
+      "snippet": "Putting in place a patent strategy and starting to build a patent portfolio is an important way to defend your startup's core IP and to protect yourself from ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 8,
+      "competitorGapScore": 14,
+      "freshnessDays": null,
+      "intentCluster": "patent filing strategy",
+      "evidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://www.balderton.com/resources/why-your-startup-needs-a-patent-strategy/"
+      ]
+    },
+    {
+      "id": "competitor-article-patent-strategy-for-tech-startups-protecting-intellectual-property-https-learn-marsdd-com-article-patent-strategy",
+      "sourceType": "competitor_article",
+      "label": "Patent strategy for tech startups: Protecting intellectual property",
+      "query": "Patent strategy for tech startups: Protecting intellectual property",
+      "title": "Patent strategy for tech startups: Protecting intellectual property",
+      "url": "https://learn.marsdd.com/article/patent-strategy/",
+      "snippet": "Where your startup files a patent depends on where your market is, where your competitor's market is, where you can enforce the patent and how many ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 8,
+      "competitorGapScore": 14,
+      "freshnessDays": null,
+      "intentCluster": "patent filing strategy",
+      "evidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://learn.marsdd.com/article/patent-strategy/"
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-process",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing process",
+      "query": "provisional patent filing process",
+      "title": "provisional patent filing process",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "competitor-article-developing-a-patent-strategy-for-startups-key-tips-https-lumenci-com-blogs-patent-strategy-startups-key-tips",
+      "sourceType": "competitor_article",
+      "label": "Developing a Patent Strategy for Startups: Key Tips",
+      "query": "Developing a Patent Strategy for Startups: Key Tips",
+      "title": "Developing a Patent Strategy for Startups: Key Tips",
+      "url": "https://lumenci.com/blogs/patent-strategy-startups-key-tips/",
+      "snippet": "Invest in patent strategy to safeguard startup innovations. Set goals, assess patentable inventions, and file applications strategically.",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 5,
+      "competitorGapScore": 14,
+      "freshnessDays": null,
+      "intentCluster": "patent filing strategy",
+      "evidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://lumenci.com/blogs/patent-strategy-startups-key-tips/"
+      ]
+    },
+    {
+      "id": "competitor-article-patent-strategy-for-biotech-startups-a-complete-guide-https-outlierpatentattorneys-com-patent-strategy-for-biotech-startups",
+      "sourceType": "competitor_article",
+      "label": "Patent Strategy for Biotech Startups - A Complete Guide",
+      "query": "Patent Strategy for Biotech Startups - A Complete Guide",
+      "title": "Patent Strategy for Biotech Startups - A Complete Guide",
+      "url": "https://outlierpatentattorneys.com/patent-strategy-for-biotech-startups",
+      "snippet": "You should begin preparing for national stage filing by the 2.5-year mark out from day 0. In this stage, you choose which countries to pursue ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 15,
+      "brandFitScore": 5,
+      "competitorGapScore": 14,
+      "freshnessDays": null,
+      "intentCluster": "patent filing strategy",
+      "evidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://outlierpatentattorneys.com/patent-strategy-for-biotech-startups"
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-uspto",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing uspto",
+      "query": "provisional patent filing uspto",
+      "title": "provisional patent filing uspto",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 16,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-related-question-what-are-the-disadvantages-of-a-provisional-patent-application",
+      "sourceType": "serp_related_question",
+      "label": "What are the disadvantages of a provisional patent application?",
+      "query": "What are the disadvantages of a provisional patent application?",
+      "title": "What are the disadvantages of a provisional patent application?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "People also ask signal for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-ai-patent-prosecution",
+      "sourceType": "serp_autocomplete",
+      "label": "ai patent prosecution",
+      "query": "ai patent prosecution",
+      "title": "ai patent prosecution",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "ip prosecution support",
+      "evidence": [
+        "Autocomplete suggestion for \"AI patent\""
+      ]
+    },
+    {
+      "id": "competitor-article-developing-a-patent-strategy-a-guide-for-new-https-gr8bigideas-com-developing-a-patent-strategy-a-guide-for-new-entrepreneurs",
+      "sourceType": "competitor_article",
+      "label": "Developing a Patent Strategy: A Guide for New ...",
+      "query": "Developing a Patent Strategy: A Guide for New ...",
+      "title": "Developing a Patent Strategy: A Guide for New ...",
+      "url": "https://gr8bigideas.com/developing-a-patent-strategy-a-guide-for-new-entrepreneurs/",
+      "snippet": "1. Identify What to Patent · 2. Time Your Patent Filing Wisely · 3. Research Competitor Patents · 4. Strengthen Your Patent Claims for Maximum ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 14,
+      "freshnessDays": null,
+      "intentCluster": "patent filing strategy",
+      "evidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://gr8bigideas.com/developing-a-patent-strategy-a-guide-for-new-entrepreneurs/"
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-in-india",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing in india",
+      "query": "provisional patent filing in india",
+      "title": "provisional patent filing in india",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-online",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing online",
+      "query": "provisional patent filing online",
+      "title": "provisional patent filing online",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-service",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing service",
+      "query": "provisional patent filing service",
+      "title": "provisional patent filing service",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-requirements",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing requirements",
+      "query": "provisional patent filing requirements",
+      "title": "provisional patent filing requirements",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-provisional-patent-filing-receipt",
+      "sourceType": "serp_autocomplete",
+      "label": "provisional patent filing receipt",
+      "query": "provisional patent filing receipt",
+      "title": "provisional patent filing receipt",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 12,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "provisional patents",
+      "evidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ]
+    }
+  ],
+  "sourceHealth": [
+    {
+      "source": "search_console",
+      "ok": false,
+      "detail": "Search Console OAuth is not fully configured."
+    },
+    {
+      "source": "serpapi_keywords",
+      "ok": true,
+      "detail": "Loaded 36 keyword-demand signals from SerpAPI."
+    },
+    {
+      "source": "competitor_search",
+      "ok": true,
+      "detail": "Loaded 12 live competitor article signals."
+    }
+  ],
+  "degradedSources": [
+    "search_console"
+  ]
 }

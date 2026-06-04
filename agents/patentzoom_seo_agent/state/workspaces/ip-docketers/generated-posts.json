@@ -1,0 +1,169 @@
+{
+  "generatedPosts": [
+    {
+      "date": "2026-05-22",
+      "topicId": "manual-how-support-for-all-ip-docketing-systems-reduces-missed-deadlines-for-law-firms",
+      "pillar": "IP Docketing Services",
+      "angle": "manual override",
+      "theme": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "primaryKeyword": "How support for all IP docketing systems reduces missed deadlines for law firms",
+      "secondaryKeywords": [],
+      "slug": "comprehensive-support-ip-docketing-systems-minimizes-missed-deadlines",
+      "wpPostId": 7977,
+      "wpUrl": "https://ipdocketers.com/?p=7977",
+      "status": "draft",
+      "source": "dashboard",
+      "fingerprint": "ip-docketing-services::manual-override::support all ip docket system reduc miss deadlin law firm",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "intentCluster": "ip docketing"
+    },
+    {
+      "date": "2026-05-25",
+      "topicId": "docketing-integrations-anaqua-docketing",
+      "pillar": "Docketing System Integrations",
+      "angle": "search demand",
+      "theme": "Docketing System Integrations",
+      "cluster": "docketing integrations",
+      "primaryKeyword": "Anaqua docketing",
+      "secondaryKeywords": [
+        "Anaqua docketing"
+      ],
+      "slug": "maximizing-efficiency-anaqua-docketing-integrations",
+      "wpPostId": 7980,
+      "wpUrl": "https://ipdocketers.com/?p=7980",
+      "status": "draft",
+      "source": "dashboard",
+      "fingerprint": "docketing-system-integrations::search-demand::anaqua docket",
+      "sourceTypes": [
+        "serp_related_search",
+        "search_console_query"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"free patent docketing software\"",
+        "Related Google search for \"trademark docketing software\"",
+        "Search Console query with 1 impressions",
+        "Current traction on https://ipdocketers.com/anaqua-ip-docketing-integration/",
+        "Current traction on https://ipdocketers.com/patent-docketing-software-review/"
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "docketing integrations"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "ip-docketing-trademark-docketing-software",
+      "pillar": "IP Docketing Services",
+      "angle": "search demand",
+      "theme": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "primaryKeyword": "Trademark docketing software",
+      "secondaryKeywords": [
+        "Trademark docketing software"
+      ],
+      "slug": "comprehensive-guide-trademark-docketing-software",
+      "wpPostId": 7984,
+      "wpUrl": "https://ipdocketers.com/comprehensive-guide-trademark-docketing-software/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "ip-docketing-services::search-demand::trademark docket software",
+      "sourceTypes": [
+        "serp_related_search",
+        "search_console_query"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"free patent docketing software\"",
+        "Related Google search for \"affordable docketing services\"",
+        "Search Console query with 48 impressions",
+        "Current traction on https://ipdocketers.com/best-trademark-docketing-software/"
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "ip docketing"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "manual-how-trademark-docketing-software-reduces-missed-deadlines",
+      "pillar": "IP Docketing Services",
+      "angle": "manual override",
+      "theme": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "primaryKeyword": "how trademark docketing software reduces missed deadlines",
+      "secondaryKeywords": [],
+      "slug": "manual-override-in-docketing",
+      "wpPostId": 7987,
+      "wpUrl": "https://ipdocketers.com/manual-override-in-docketing/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "ip-docketing-services::manual-override::trademark docket software reduc miss deadlin",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "intentCluster": "ip docketing"
+    },
+    {
+      "date": "2026-05-27",
+      "topicId": "patent-strategy-intellectual-property-docketing-a-complete-guide",
+      "pillar": "Patent Strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "Intellectual Property Docketing: A Complete Guide",
+      "secondaryKeywords": [],
+      "slug": "intellectual-property-docketing-complete-guide-patent-deadline-management",
+      "wpPostId": 7990,
+      "wpUrl": "https://ipdocketers.com/intellectual-property-docketing-complete-guide-patent-deadline-management/",
+      "status": "publish",
+      "source": "manual_catchup",
+      "fingerprint": "patent-strategy::competitor-gap::intellectual property docket complete guide",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"accurate ip docketing\"",
+        "https://teakipservices.com/intellectual-property-docketing-guide/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-06-04",
+      "topicId": "ip-prosecution-support-mastering-patent-prosecution-with-ai-office-actions-guide",
+      "pillar": "IP Prosecution Support",
+      "angle": "competitor gap",
+      "theme": "IP Prosecution Support",
+      "cluster": "ip prosecution support",
+      "primaryKeyword": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "secondaryKeywords": [],
+      "slug": "mastering-patent-prosecution-with-ai-office-actions-guide",
+      "wpPostId": 7995,
+      "wpUrl": "https://ipdocketers.com/mastering-patent-prosecution-with-ai-office-actions-guide/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "ip-prosecution-support::competitor-gap::master patent prosecution ai office action guide",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://www.deepip.ai/blog/patent-prosecution-ai-guide"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "ip prosecution support"
+    }
+  ]
+}

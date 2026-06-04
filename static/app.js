@@ -2641,8 +2641,9 @@ function renderSEOOverviewSection() {
                             <div>
                                 <div class="seo-status-name">Auto Social Posting</div>
                                 <div class="seo-status-detail">${socialStatus.autoPostEnabled ? "Published articles are shared automatically after a successful live publish." : "Automatic social posting is turned off for this workspace."}</div>
+                                <div class="seo-status-detail">Token health: ${esc(socialStatus.healthStatus || "Not checked")}</div>
                             </div>
-                            <span class="seo-status-pill ${socialStatus.autoPostEnabled ? "ready" : "blocked"}">${socialStatus.autoPostEnabled ? "Enabled" : "Disabled"}</span>
+                            <span class="seo-status-pill ${socialStatus.reconnectRequired ? "blocked" : socialStatus.autoPostEnabled ? "ready" : "blocked"}">${socialStatus.reconnectRequired ? "Reconnect" : socialStatus.autoPostEnabled ? "Enabled" : "Disabled"}</span>
                         </div>
                         <div class="seo-status-item">
                             <div>
@@ -2656,8 +2657,9 @@ function renderSEOOverviewSection() {
                                 <div>
                                     <div class="seo-status-name">${esc(item.label || "-")}</div>
                                     <div class="seo-status-detail">${esc(item.detail || "")}${item.postId ? ` • Post ID: ${esc(item.postId)}` : ""}</div>
+                                    ${item.tokenStatus ? `<div class="seo-status-detail">Token: ${esc(item.tokenStatus)}</div>` : ""}
                                 </div>
-                                <span class="seo-status-pill ${item.status === "Posted" ? "ready" : "blocked"}">${esc(item.status || "-")}</span>
+                                <span class="seo-status-pill ${item.status === "Posted" || item.tokenValid === true ? "ready" : "blocked"}">${esc(item.status || "-")}</span>
                             </div>
                         `).join("")}
                         ${(socialStatus.pendingPlatforms || []).length

@@ -1,0 +1,180 @@
+{
+  "history": [
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/why-your-startup-needs-a-patent-strategy/",
+      "title": "Patent Strategy For Startups: Why Your Startup Needs a Patent",
+      "primaryKeyword": "patent strategy for startups",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/06/why-your-startup-needs-a-patent-strategy-1024x683.png",
+      "postedAt": "2026-06-04T07:07:04.591881+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1428838110751003_1553582096777481",
+          "response": {
+            "id": "1428838110751003_1553582096777481"
+          }
+        },
+        "instagram": {
+          "ok": true,
+          "platform": "instagram",
+          "creationId": "18020694416840642",
+          "postId": "18222523099321494",
+          "response": {
+            "id": "18222523099321494"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    },
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/why-your-startup-needs-a-patent-strategy/",
+      "title": "Patent Strategy For Startups: Why Your Startup Needs a Patent",
+      "primaryKeyword": "Why your startup needs a patent strategy",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/06/why-your-startup-needs-a-patent-strategy-1024x683.png",
+      "postedAt": "2026-06-04T06:22:17.834669+00:00",
+      "results": {
+        "facebook": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed"
+        },
+        "instagram": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+        }
+      },
+      "ok": false,
+      "errors": [
+        "facebook: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed",
+        "instagram: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+      ]
+    },
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/intellectual-property-docketing-complete-guide/",
+      "title": "Intellectual Property Docketing: The Complete Guide to Streamlined",
+      "primaryKeyword": "Intellectual Property Docketing: A Complete Guide",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/05/intellectual-property-docketing-complete-guide-1024x683.png",
+      "postedAt": "2026-05-27T05:40:14.120572+00:00",
+      "results": {
+        "facebook": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed"
+        },
+        "instagram": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+        }
+      },
+      "ok": false,
+      "errors": [
+        "facebook: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed",
+        "instagram: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+      ]
+    },
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/intellectual-property-docketing-complete-guide-patent-strategy/",
+      "title": "Intellectual Property Docketing: The Complete Guide for Effective",
+      "primaryKeyword": "Intellectual Property Docketing: A Complete Guide",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/05/intellectual-property-docketing-complete-guide-patent-strategy-1024x683.png",
+      "postedAt": "2026-05-27T05:40:01.316039+00:00",
+      "results": {
+        "facebook": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed"
+        },
+        "instagram": {
+          "ok": false,
+          "status": "failed",
+          "message": "400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+        }
+      },
+      "ok": false,
+      "errors": [
+        "facebook: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/1428838110751003/feed",
+        "instagram: 400 Client Error: Bad Request for url: https://graph.facebook.com/v23.0/17841455219245675/media"
+      ]
+    },
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/how-startups-can-protect-ai-software-with-patents/",
+      "title": "AI Software Patent Protection: How Startups Can Protect AI Software",
+      "primaryKeyword": "how startups can protect ai software with patents",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/05/how-startups-can-protect-ai-software-with-patents-1024x683.png",
+      "postedAt": "2026-05-26T14:42:35.742562+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1428838110751003_1545124757623215",
+          "response": {
+            "id": "1428838110751003_1545124757623215"
+          }
+        },
+        "instagram": {
+          "ok": true,
+          "platform": "instagram",
+          "creationId": "18019536635840642",
+          "postId": "18086019518576539",
+          "response": {
+            "id": "18086019518576539"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    },
+    {
+      "workspaceId": "patentzoom",
+      "workspaceName": "PatentZoom",
+      "autoPostEnabled": true,
+      "articleUrl": "https://patentzoom.us/best-patent-docketing-software-accurate-ip-management-2024/",
+      "title": "Patent Docketing Software",
+      "primaryKeyword": "Patent docketing software",
+      "imageUrl": "https://patentzoom.us/wp-content/uploads/2026/05/best-patent-docketing-software-accurate-ip-management-2024-1024x683.png",
+      "postedAt": "2026-05-26T14:02:05.950696+00:00",
+      "results": {
+        "facebook": {
+          "ok": true,
+          "platform": "facebook",
+          "postId": "1428838110751003_1545090710959953",
+          "response": {
+            "id": "1428838110751003_1545090710959953"
+          }
+        },
+        "instagram": {
+          "ok": true,
+          "platform": "instagram",
+          "creationId": "18019532219840642",
+          "postId": "17985626783826519",
+          "response": {
+            "id": "17985626783826519"
+          }
+        }
+      },
+      "ok": true,
+      "errors": []
+    }
+  ],
+  "updatedAt": "2026-06-04T07:07:04.591881+00:00",
+  "workspaceId": "patentzoom"
+}

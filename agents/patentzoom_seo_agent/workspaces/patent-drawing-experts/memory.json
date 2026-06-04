@@ -1,0 +1,81 @@
+{
+  "agent": "patentzoom_seo_agent/workspaces/patent-drawing-experts",
+  "learnings": [
+    {
+      "timestamp": "2026-05-22T11:14:10.370925+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=patent drawings services post_status=dry-run",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-22T11:26:28.723189+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=patent drawings services post_status=draft",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-25T06:15:53.950372+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=patent drawing experts post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-25T06:19:45.150660+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=How much does a patent filing cost post_status=already-published-today",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-26T05:03:32.246976+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent drawing Services near me post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-26T05:03:56.503427+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent drawing Services near me post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-26T14:45:33.547236+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=common USPTO patent drawing objections and how to avoid them post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-27T05:42:40.086753+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent drawing examples post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-27T05:42:42.039565+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent drawing examples post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-06-04T06:25:12.811446+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Design patent drawing examples post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    }
+  ],
+  "refined_prompts": {},
+  "stats": {
+    "total_runs": 10,
+    "success_rate": 1.0,
+    "avg_execution_time": 135.563
+  }
+}
