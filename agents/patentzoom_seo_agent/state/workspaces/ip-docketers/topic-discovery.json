@@ -1,0 +1,687 @@
+{
+  "generatedAt": "2026-06-04T06:25:21.198Z",
+  "mode": "mixed_signal_dynamic",
+  "selectedTopic": {
+    "topicId": "ip-docketing-patent-docketing-software",
+    "pillar": "IP Docketing Services",
+    "cluster": "ip docketing",
+    "angle": "search demand",
+    "theme": "IP Docketing Services",
+    "primaryKeyword": "Patent docketing software",
+    "secondaryKeywords": [],
+    "serpQuestions": [],
+    "relatedSearches": [
+      "Patent docketing software"
+    ],
+    "score": 13.799999999999999,
+    "fingerprint": "ip-docketing-services::search-demand::patent docket software",
+    "intentCluster": "ip docketing",
+    "sourceTypes": [
+      "serp_related_search"
+    ],
+    "sourceEvidence": [
+      "Related Google search for \"ip docketing systems\""
+    ],
+    "demandScore": 18,
+    "freshnessScore": 7,
+    "commercialRelevanceScore": 8,
+    "brandFitScore": 13,
+    "competitorGapScore": 6,
+    "runDate": "2026-06-04"
+  },
+  "shortlist": [
+    {
+      "topicId": "ip-docketing-patent-docketing-software",
+      "pillar": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "angle": "search demand",
+      "theme": "IP Docketing Services",
+      "primaryKeyword": "Patent docketing software",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Patent docketing software"
+      ],
+      "score": 13.799999999999999,
+      "fingerprint": "ip-docketing-services::search-demand::patent docket software",
+      "intentCluster": "ip docketing",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"ip docketing systems\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 13,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "ip-prosecution-support-patent-prosecution-process",
+      "pillar": "IP Prosecution Support",
+      "cluster": "ip prosecution support",
+      "angle": "competitor gap",
+      "theme": "IP Prosecution Support",
+      "primaryKeyword": "Patent Prosecution Process",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 13.450000000000001,
+      "fingerprint": "ip-prosecution-support::competitor-gap::patent prosecution proces",
+      "intentCluster": "ip prosecution support",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://www.rosalindfranklin.edu/research/research-support-offices/office-of-technology-transfer/inventors-resources/patent-prosecution-process/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 16,
+      "brandFitScore": 9,
+      "competitorGapScore": 7
+    },
+    {
+      "topicId": "patent-costs-what-is-the-average-cost-of-a-paralegal",
+      "pillar": "Patent Cost and Filing Budget",
+      "cluster": "patent costs",
+      "angle": "search demand",
+      "theme": "Patent Cost and Filing Budget",
+      "primaryKeyword": "What is the average cost of a paralegal",
+      "secondaryKeywords": [],
+      "serpQuestions": [
+        "What is the average cost of a paralegal?"
+      ],
+      "relatedSearches": [],
+      "score": 13.399999999999999,
+      "fingerprint": "patent-cost-and-filing-budget::search-demand::i average cost paralegal",
+      "intentCluster": "patent costs",
+      "sourceTypes": [
+        "serp_related_question"
+      ],
+      "sourceEvidence": [
+        "People also ask signal for \"ip prosecution paralegal services\""
+      ],
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 16,
+      "brandFitScore": 7,
+      "competitorGapScore": 8
+    },
+    {
+      "topicId": "patent-strategy-docketing-meaning",
+      "pillar": "Patent Strategy",
+      "cluster": "patent strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "primaryKeyword": "Docketing meaning",
+      "secondaryKeywords": [
+        "Docketing meaning"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Docketing meaning"
+      ],
+      "score": 12.6,
+      "fingerprint": "patent-strategy::search-demand::docket mean",
+      "intentCluster": "patent strategy",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"ip docketing services\"",
+        "Related Google search for \"ip docketing systems\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "ip-docketing-which-docketing-systems-are-you-all-using-r-patents",
+      "pillar": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "angle": "competitor gap",
+      "theme": "IP Docketing Services",
+      "primaryKeyword": "Which docketing systems are you all using? : r/Patents",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 12.149999999999999,
+      "fingerprint": "ip-docketing-services::competitor-gap::which docket system are you all us r patent",
+      "intentCluster": "ip docketing",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"ip docketing systems\"",
+        "https://www.reddit.com/r/Patents/comments/15l5xq8/which_docketing_systems_are_you_all_using/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 13
+    },
+    {
+      "topicId": "ip-prosecution-support-what-is-patent-prosecution",
+      "pillar": "IP Prosecution Support",
+      "cluster": "ip prosecution support",
+      "angle": "competitor gap",
+      "theme": "IP Prosecution Support",
+      "primaryKeyword": "What is patent prosecution",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 11.85,
+      "fingerprint": "ip-prosecution-support::competitor-gap::i patent prosecution",
+      "intentCluster": "ip prosecution support",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://wolfgreenfield.com/resources/what-is-patent-prosecution"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 9,
+      "competitorGapScore": 7
+    },
+    {
+      "topicId": "patent-strategy-docketing-patent-services",
+      "pillar": "Patent Strategy",
+      "cluster": "patent strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Strategy",
+      "primaryKeyword": "Docketing - Patent services",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 11.700000000000001,
+      "fingerprint": "patent-strategy::competitor-gap::docket patent servic",
+      "intentCluster": "patent strategy",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"ip docketing services\"",
+        "https://clarivate.com/intellectual-property/patent-services/docketing/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 2,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 10,
+      "competitorGapScore": 7
+    },
+    {
+      "topicId": "patent-strategy-what-is-docketing-in-ip-management",
+      "pillar": "Patent Strategy",
+      "cluster": "patent strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "primaryKeyword": "What is docketing in IP management",
+      "secondaryKeywords": [],
+      "serpQuestions": [
+        "What is docketing in IP management?"
+      ],
+      "relatedSearches": [],
+      "score": 11.499999999999998,
+      "fingerprint": "patent-strategy::search-demand::i docket ip management",
+      "intentCluster": "patent strategy",
+      "sourceTypes": [
+        "serp_related_question"
+      ],
+      "sourceEvidence": [
+        "People also ask signal for \"ip docketing services\""
+      ],
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 8
+    }
+  ],
+  "rejectedTopics": [
+    {
+      "topicId": "ip-prosecution-support-mastering-patent-prosecution-with-ai-office-actions-guide",
+      "primaryKeyword": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "intentCluster": "ip prosecution support",
+      "score": 17,
+      "reason": "Exact topic fingerprint already used",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-what-is-ip-docketing",
+      "primaryKeyword": "What is IP docketing",
+      "intentCluster": "ip docketing",
+      "score": 14,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_question",
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-ip-docketing-a-guide-for-ip-professionals",
+      "primaryKeyword": "IP Docketing: A Guide for IP Professionals",
+      "intentCluster": "ip docketing",
+      "score": 14,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    },
+    {
+      "topicId": "docketing-integrations-anaqua-docketing",
+      "primaryKeyword": "Anaqua docketing",
+      "intentCluster": "docketing integrations",
+      "score": 13,
+      "reason": "Exact topic fingerprint already used",
+      "sourceTypes": [
+        "serp_related_search"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-ip-docketing-software",
+      "primaryKeyword": "IP docketing software",
+      "intentCluster": "ip docketing",
+      "score": 13,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_search"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-best-ip-docketing-software",
+      "primaryKeyword": "Best IP docketing software",
+      "intentCluster": "ip docketing",
+      "score": 13,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_search"
+      ]
+    },
+    {
+      "topicId": "ip-prosecution-support-patent-prosecution",
+      "primaryKeyword": "Patent Prosecution",
+      "intentCluster": "ip prosecution support",
+      "score": 13,
+      "reason": "Recent topic already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-ip-docketing-services-explained",
+      "primaryKeyword": "IP Docketing Services Explained",
+      "intentCluster": "ip docketing",
+      "score": 12,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-how-to-become-an-ip-docketing-specialist",
+      "primaryKeyword": "How to become an IP docketing specialist",
+      "intentCluster": "ip docketing",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_question"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-what-is-the-role-of-an-ip-docketing-specialist",
+      "primaryKeyword": "What is the role of an IP docketing specialist",
+      "intentCluster": "ip docketing",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_question"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-what-is-an-ip-docketing-system",
+      "primaryKeyword": "What is an IP docketing system",
+      "intentCluster": "ip docketing",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_question"
+      ]
+    },
+    {
+      "topicId": "ip-docketing-ip-docketing-specialist",
+      "primaryKeyword": "ip docketing specialist",
+      "intentCluster": "ip docketing",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    }
+  ],
+  "liveSignals": [
+    {
+      "id": "competitor-article-mastering-patent-prosecution-with-ai-office-actions-guide-https-www-deepip-ai-blog-patent-prosecution-ai-guide",
+      "sourceType": "competitor_article",
+      "label": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "query": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "title": "Mastering Patent Prosecution with AI | Office Actions Guide",
+      "url": "https://www.deepip.ai/blog/patent-prosecution-ai-guide",
+      "snippet": "Streamline patent prosecution with AI. This guide helps attorneys master office actions, enhancing efficiency and outcomes with cutting-edge ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 23,
+      "brandFitScore": 12,
+      "competitorGapScore": 20,
+      "freshnessDays": null,
+      "intentCluster": "ip prosecution support",
+      "evidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://www.deepip.ai/blog/patent-prosecution-ai-guide"
+      ]
+    },
+    {
+      "id": "competitor-article-ip-docketing-a-guide-for-ip-professionals-https-www-computerpackages-com-ip-docketing-a-guide-for-ip-professionals",
+      "sourceType": "competitor_article",
+      "label": "IP Docketing: A Guide for IP Professionals",
+      "query": "IP Docketing: A Guide for IP Professionals",
+      "title": "IP Docketing: A Guide for IP Professionals",
+      "url": "https://www.computerpackages.com/ip-docketing-a-guide-for-ip-professionals/",
+      "snippet": "IP docketing refers to the systematic management and processing of intellectual property cases, primarily involving patents and trademarks.",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 16,
+      "brandFitScore": 5,
+      "competitorGapScore": 15,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Competitor article surfaced for \"ip docketing systems\"",
+        "https://www.computerpackages.com/ip-docketing-a-guide-for-ip-professionals/"
+      ]
+    },
+    {
+      "id": "serp-related-search-patent-docketing-software",
+      "sourceType": "serp_related_search",
+      "label": "Patent docketing software",
+      "query": "Patent docketing software",
+      "title": "Patent docketing software",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 13,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Related Google search for \"ip docketing systems\""
+      ]
+    },
+    {
+      "id": "serp-related-question-what-is-the-average-cost-of-a-paralegal",
+      "sourceType": "serp_related_question",
+      "label": "What is the average cost of a paralegal?",
+      "query": "What is the average cost of a paralegal?",
+      "title": "What is the average cost of a paralegal?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 16,
+      "brandFitScore": 7,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent costs",
+      "evidence": [
+        "People also ask signal for \"ip prosecution paralegal services\""
+      ]
+    },
+    {
+      "id": "competitor-article-patent-prosecution-process-https-www-rosalindfranklin-edu-research-research-support-offices-office-of-technology-transfer-inventors-resources-patent-prosecution-process",
+      "sourceType": "competitor_article",
+      "label": "Patent Prosecution Process",
+      "query": "Patent Prosecution Process",
+      "title": "Patent Prosecution Process",
+      "url": "https://www.rosalindfranklin.edu/research/research-support-offices/office-of-technology-transfer/inventors-resources/patent-prosecution-process/",
+      "snippet": "While every case is different, the process has two phases. First, the patent application is submitted on behalf of the inventor and the university by an outside ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 16,
+      "brandFitScore": 9,
+      "competitorGapScore": 7,
+      "freshnessDays": null,
+      "intentCluster": "ip prosecution support",
+      "evidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://www.rosalindfranklin.edu/research/research-support-offices/office-of-technology-transfer/inventors-resources/patent-prosecution-process/"
+      ]
+    },
+    {
+      "id": "serp-related-search-anaqua-docketing",
+      "sourceType": "serp_related_search",
+      "label": "Anaqua docketing",
+      "query": "Anaqua docketing",
+      "title": "Anaqua docketing",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 10,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "docketing integrations",
+      "evidence": [
+        "Related Google search for \"ip docketing systems\""
+      ]
+    },
+    {
+      "id": "competitor-article-patent-prosecution-https-baystatepatent-com-patents-patent-prosecution",
+      "sourceType": "competitor_article",
+      "label": "Patent Prosecution",
+      "query": "Patent Prosecution",
+      "title": "Patent Prosecution",
+      "url": "https://baystatepatent.com/patents/patent-prosecution/",
+      "snippet": "The US patent prosecution process is a thorough and detailed procedure that involves several stages, from initial filing to final approval or rejection.",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 9,
+      "competitorGapScore": 13,
+      "freshnessDays": null,
+      "intentCluster": "ip prosecution support",
+      "evidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://baystatepatent.com/patents/patent-prosecution/"
+      ]
+    },
+    {
+      "id": "serp-related-search-ip-docketing-software",
+      "sourceType": "serp_related_search",
+      "label": "IP docketing software",
+      "query": "IP docketing software",
+      "title": "IP docketing software",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 8,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Related Google search for \"ip docketing services\""
+      ]
+    },
+    {
+      "id": "serp-related-search-best-ip-docketing-software",
+      "sourceType": "serp_related_search",
+      "label": "Best IP docketing software",
+      "query": "Best IP docketing software",
+      "title": "Best IP docketing software",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 8,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Related Google search for \"ip docketing systems\""
+      ]
+    },
+    {
+      "id": "competitor-article-ip-docketing-services-explained-https-www-computerpackages-com-ip-docketing-services-explained",
+      "sourceType": "competitor_article",
+      "label": "IP Docketing Services Explained",
+      "query": "IP Docketing Services Explained",
+      "title": "IP Docketing Services Explained",
+      "url": "https://www.computerpackages.com/ip-docketing-services-explained/",
+      "snippet": "A: IP docketing tracks deadlines, filings, and legal actions for patents and trademarks, helping organizations maintain compliance and protect ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 13,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Competitor article surfaced for \"ip docketing services\"",
+        "https://www.computerpackages.com/ip-docketing-services-explained/"
+      ]
+    },
+    {
+      "id": "competitor-article-which-docketing-systems-are-you-all-using-r-patents-https-www-reddit-com-r-patents-comments-15l5xq8-which-docketing-systems-are-you-all-using",
+      "sourceType": "competitor_article",
+      "label": "Which docketing systems are you all using? : r/Patents",
+      "query": "Which docketing systems are you all using? : r/Patents",
+      "title": "Which docketing systems are you all using? : r/Patents",
+      "url": "https://www.reddit.com/r/Patents/comments/15l5xq8/which_docketing_systems_are_you_all_using/",
+      "snippet": "I ask because our old software has finally given up the ghost after fifteen years of faithful service and, being a legacy system which wasn't pulling ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 13,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "Competitor article surfaced for \"ip docketing systems\"",
+        "https://www.reddit.com/r/Patents/comments/15l5xq8/which_docketing_systems_are_you_all_using/"
+      ]
+    },
+    {
+      "id": "serp-related-search-docketing-meaning",
+      "sourceType": "serp_related_search",
+      "label": "Docketing meaning",
+      "query": "Docketing meaning",
+      "title": "Docketing meaning",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "patent strategy",
+      "evidence": [
+        "Related Google search for \"ip docketing services\""
+      ]
+    },
+    {
+      "id": "serp-related-search-docketing-meaning",
+      "sourceType": "serp_related_search",
+      "label": "Docketing meaning",
+      "query": "Docketing meaning",
+      "title": "Docketing meaning",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "patent strategy",
+      "evidence": [
+        "Related Google search for \"ip docketing systems\""
+      ]
+    },
+    {
+      "id": "competitor-article-what-is-patent-prosecution-https-wolfgreenfield-com-resources-what-is-patent-prosecution",
+      "sourceType": "competitor_article",
+      "label": "What is patent prosecution?",
+      "query": "What is patent prosecution?",
+      "title": "What is patent prosecution?",
+      "url": "https://wolfgreenfield.com/resources/what-is-patent-prosecution",
+      "snippet": "The attorney may conduct a prior art search and then prepares and files the application in the required USPTO format. After a patent application ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 9,
+      "competitorGapScore": 7,
+      "freshnessDays": null,
+      "intentCluster": "ip prosecution support",
+      "evidence": [
+        "Competitor article surfaced for \"patent prosecution workflow\"",
+        "https://wolfgreenfield.com/resources/what-is-patent-prosecution"
+      ]
+    },
+    {
+      "id": "serp-related-question-what-is-docketing-in-ip-management",
+      "sourceType": "serp_related_question",
+      "label": "What is docketing in IP management?",
+      "query": "What is docketing in IP management?",
+      "title": "What is docketing in IP management?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent strategy",
+      "evidence": [
+        "People also ask signal for \"ip docketing services\""
+      ]
+    },
+    {
+      "id": "serp-related-question-what-is-ip-docketing",
+      "sourceType": "serp_related_question",
+      "label": "What is IP docketing?",
+      "query": "What is IP docketing?",
+      "title": "What is IP docketing?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 5,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "ip docketing",
+      "evidence": [
+        "People also ask signal for \"ip docketing services\""
+      ]
+    }
+  ],
+  "sourceHealth": [
+    {
+      "source": "search_console",
+      "ok": false,
+      "detail": "Search Console OAuth is not fully configured."
+    },
+    {
+      "source": "serpapi_keywords",
+      "ok": true,
+      "detail": "Loaded 21 keyword-demand signals from SerpAPI."
+    },
+    {
+      "source": "competitor_search",
+      "ok": true,
+      "detail": "Loaded 12 live competitor article signals."
+    }
+  ],
+  "degradedSources": [
+    "search_console"
+  ]
+}

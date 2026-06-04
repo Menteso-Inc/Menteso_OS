@@ -248,6 +248,188 @@
       "demandScore": 20,
       "freshnessScore": 10,
       "intentCluster": "software and ai patents"
+    },
+    {
+      "date": "2026-05-22",
+      "topicId": "software-and-ai-patents-ai-patent-portfolio-management-software-guide-for-ip",
+      "pillar": "Software and AI Patent Protection",
+      "angle": "competitor gap",
+      "theme": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "primaryKeyword": "AI Patent Portfolio Management Software Guide for IP",
+      "secondaryKeywords": [
+        "AI Patent Portfolio Management Software Guide for IP"
+      ],
+      "slug": "ai-patent-portfolio-management-software-guide",
+      "wpPostId": 8895,
+      "wpUrl": "https://patentzoom.us/ai-patent-portfolio-management-software-guide/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "software-and-ai-patent-protection::competitor-gap::ai patent portfolio management software guide ip",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"ai patent portfolio analysis\"",
+        "https://www.deepip.ai/blog/ai-patent-portfolio-management",
+        "Competitor article surfaced for \"ai patent portfolio management\""
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "software and ai patents"
+    },
+    {
+      "date": "2026-05-25",
+      "topicId": "ip-docketing-ip-docketing-best-practices-a-practical-guide-for-ip-firms",
+      "pillar": "IP Docketing Services",
+      "angle": "competitor gap",
+      "theme": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "primaryKeyword": "IP Docketing Best Practices: A Practical Guide for IP Firms ...",
+      "secondaryKeywords": [],
+      "slug": "ip-docketing-best-practices-ip-firms",
+      "wpPostId": 8900,
+      "wpUrl": "https://patentzoom.us/ip-docketing-best-practices-ip-firms/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "ip-docketing-services::competitor-gap::ip docket best practic practical guide ip firm",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"accurate ip docketing\"",
+        "https://teakipservices.com/ip-docketing-best-practices-practical-guide-ip-firms-attorneys/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "ip docketing"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "ip-docketing-patent-docketing-software",
+      "pillar": "IP Docketing Services",
+      "angle": "search demand",
+      "theme": "IP Docketing Services",
+      "cluster": "ip docketing",
+      "primaryKeyword": "Patent docketing software",
+      "secondaryKeywords": [],
+      "slug": "best-patent-docketing-software-accurate-ip-management-2024",
+      "wpPostId": 8906,
+      "wpUrl": "https://patentzoom.us/best-patent-docketing-software-accurate-ip-management-2024/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "ip-docketing-services::search-demand::patent docket software",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"accurate ip docketing\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "ip docketing"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "manual-how-startups-can-protect-ai-software-with-patents",
+      "pillar": "Software and AI Patent Protection",
+      "angle": "manual override",
+      "theme": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "primaryKeyword": "how startups can protect ai software with patents",
+      "secondaryKeywords": [],
+      "slug": "how-startups-can-protect-ai-software-with-patents",
+      "wpPostId": 8910,
+      "wpUrl": "https://patentzoom.us/how-startups-can-protect-ai-software-with-patents/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "software-and-ai-patent-protection::manual-override::startup can protect ai software patent",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "intentCluster": "software and ai patents"
+    },
+    {
+      "date": "2026-05-27",
+      "topicId": "patent-strategy-intellectual-property-docketing-a-complete-guide",
+      "pillar": "Patent Strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "Intellectual Property Docketing: A Complete Guide",
+      "secondaryKeywords": [],
+      "slug": "intellectual-property-docketing-complete-guide",
+      "wpPostId": 8916,
+      "wpUrl": "https://patentzoom.us/intellectual-property-docketing-complete-guide/",
+      "status": "publish",
+      "source": "manual_catchup",
+      "fingerprint": "patent-strategy::competitor-gap::intellectual property docket complete guide",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"accurate ip docketing\"",
+        "https://teakipservices.com/intellectual-property-docketing-guide/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-06-04",
+      "topicId": "provisional-patents-provisional-patent-filing-fees",
+      "pillar": "Provisional Patent Strategy",
+      "angle": "search demand",
+      "theme": "Provisional Patent Strategy",
+      "cluster": "provisional patents",
+      "primaryKeyword": "provisional patent filing fees",
+      "secondaryKeywords": [],
+      "slug": "provisional-patent-filing-fees-guide",
+      "wpPostId": 8926,
+      "wpUrl": "https://patentzoom.us/?p=8926",
+      "status": "draft",
+      "source": "dashboard",
+      "fingerprint": "provisional-patent-strategy::search-demand::provisional patent fil fe",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Autocomplete suggestion for \"provisional patent filing\""
+      ],
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "intentCluster": "provisional patents"
+    },
+    {
+      "date": "2026-06-04",
+      "topicId": "patent-filing-strategy-why-your-startup-needs-a-patent-strategy",
+      "pillar": "Patent Filing Strategy",
+      "angle": "competitor gap",
+      "theme": "Patent Filing Strategy",
+      "cluster": "patent filing strategy",
+      "primaryKeyword": "Why your startup needs a patent strategy",
+      "secondaryKeywords": [],
+      "slug": "why-your-startup-needs-a-patent-strategy",
+      "wpPostId": 8929,
+      "wpUrl": "https://patentzoom.us/why-your-startup-needs-a-patent-strategy/",
+      "status": "publish",
+      "source": "manual_catchup",
+      "fingerprint": "patent-filing-strategy::competitor-gap::why your startup need patent strategy",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent filing strategy startups\"",
+        "https://www.balderton.com/resources/why-your-startup-needs-a-patent-strategy/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "intentCluster": "patent filing strategy"
     }
   ]
 }

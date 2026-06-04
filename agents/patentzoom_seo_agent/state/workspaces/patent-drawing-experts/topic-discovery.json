@@ -1,0 +1,688 @@
+{
+  "generatedAt": "2026-06-04T06:22:22.662Z",
+  "mode": "mixed_signal_dynamic",
+  "selectedTopic": {
+    "topicId": "design-patent-drawings-design-patent-drawing-examples",
+    "pillar": "Design Patent Drawings",
+    "cluster": "design patent drawings",
+    "angle": "search demand",
+    "theme": "Design Patent Drawings",
+    "primaryKeyword": "Design patent drawing examples",
+    "secondaryKeywords": [
+      "design patent drawing examples"
+    ],
+    "serpQuestions": [],
+    "relatedSearches": [
+      "Design patent drawing examples"
+    ],
+    "score": 14.2,
+    "fingerprint": "design-patent-drawings::search-demand::design patent draw exampl",
+    "intentCluster": "design patent drawings",
+    "sourceTypes": [
+      "serp_related_search",
+      "serp_autocomplete"
+    ],
+    "sourceEvidence": [
+      "Related Google search for \"design patent drawings\"",
+      "Autocomplete suggestion for \"design patent drawings\""
+    ],
+    "demandScore": 18,
+    "freshnessScore": 7,
+    "commercialRelevanceScore": 0,
+    "brandFitScore": 13,
+    "competitorGapScore": 6,
+    "runDate": "2026-06-04"
+  },
+  "shortlist": [
+    {
+      "topicId": "design-patent-drawings-design-patent-drawing-examples",
+      "pillar": "Design Patent Drawings",
+      "cluster": "design patent drawings",
+      "angle": "search demand",
+      "theme": "Design Patent Drawings",
+      "primaryKeyword": "Design patent drawing examples",
+      "secondaryKeywords": [
+        "design patent drawing examples"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Design patent drawing examples"
+      ],
+      "score": 14.2,
+      "fingerprint": "design-patent-drawings::search-demand::design patent draw exampl",
+      "intentCluster": "design patent drawings",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"design patent drawings\"",
+        "Autocomplete suggestion for \"design patent drawings\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 13,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "pct-filing-pct-drawings-requirements",
+      "pillar": "PCT and International Filing",
+      "cluster": "pct filing",
+      "angle": "search demand",
+      "theme": "PCT and International Filing",
+      "primaryKeyword": "PCT drawings requirements",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "PCT drawings requirements"
+      ],
+      "score": 12.85,
+      "fingerprint": "pct-and-international-filing::search-demand::pct drawing requirement",
+      "intentCluster": "pct filing",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"USPTO drawing requirements\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 8,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "patent-drawing-rules-uspto-patent-drawing-requirements-complete-guide-2025",
+      "pillar": "Patent Drawing Rules",
+      "cluster": "patent drawing rules",
+      "angle": "competitor gap",
+      "theme": "Patent Drawing Rules",
+      "primaryKeyword": "USPTO Patent Drawing Requirements: Complete Guide (2025)",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 12.599999999999998,
+      "fingerprint": "patent-drawing-rules::competitor-gap::uspto patent draw requirement complete guide 2025",
+      "intentCluster": "patent drawing rules",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"USPTO drawing requirements\"",
+        "http://pinchpatentdrawings.com/uspto-patent-drawing-requirements/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 13,
+      "competitorGapScore": 8
+    },
+    {
+      "topicId": "patent-drawing-costs-how-much-does-a-patent-drawing-cost",
+      "pillar": "Patent Drawings Cost",
+      "cluster": "patent drawing costs",
+      "angle": "search demand",
+      "theme": "Patent Drawings Cost",
+      "primaryKeyword": "How much does a patent drawing cost",
+      "secondaryKeywords": [
+        "How much does a patent drawing cost?"
+      ],
+      "serpQuestions": [
+        "How much does a patent drawing cost?"
+      ],
+      "relatedSearches": [],
+      "score": 12.549999999999997,
+      "fingerprint": "patent-drawings-cost::search-demand::much do patent draw cost",
+      "intentCluster": "patent drawing costs",
+      "sourceTypes": [
+        "serp_related_question"
+      ],
+      "sourceEvidence": [
+        "People also ask signal for \"design patent drawings\"",
+        "People also ask signal for \"patent illustration services\""
+      ],
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 12,
+      "competitorGapScore": 8
+    },
+    {
+      "topicId": "software-and-ai-patents-top-4-uspto-patent-drawing-services-plus-a-software",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "competitor gap",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "Top 4 USPTO Patent Drawing Services, Plus a Software ...",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [],
+      "score": 12.2,
+      "fingerprint": "software-and-ai-patent-protection::competitor-gap::top 4 uspto patent draw servic plu software",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "competitor_article"
+      ],
+      "sourceEvidence": [
+        "Competitor article surfaced for \"patent illustration services\"",
+        "https://pinchpatentdrawings.com/top-patent-drawing-services-providers/"
+      ],
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 16,
+      "competitorGapScore": 13
+    },
+    {
+      "topicId": "patent-strategy-patent-drawing-illustrator",
+      "pillar": "Patent Strategy",
+      "cluster": "patent strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "primaryKeyword": "Patent drawing illustrator",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Patent drawing illustrator"
+      ],
+      "score": 12.2,
+      "fingerprint": "patent-strategy::search-demand::patent draw illustrator",
+      "intentCluster": "patent strategy",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"patent illustration services\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 13,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "software-and-ai-patents-patent-drawing-software",
+      "pillar": "Software and AI Patent Protection",
+      "cluster": "software and ai patents",
+      "angle": "search demand",
+      "theme": "Software and AI Patent Protection",
+      "primaryKeyword": "Patent drawing software",
+      "secondaryKeywords": [
+        "Patent drawing software"
+      ],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "Patent drawing software"
+      ],
+      "score": 12.049999999999999,
+      "fingerprint": "software-and-ai-patent-protection::search-demand::patent draw software",
+      "intentCluster": "software and ai patents",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"utility patent drawings\"",
+        "Related Google search for \"patent illustration services\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 12,
+      "competitorGapScore": 6
+    },
+    {
+      "topicId": "uspto-process-uspto-drawing-margins",
+      "pillar": "USPTO Filing Process",
+      "cluster": "uspto process",
+      "angle": "search demand",
+      "theme": "USPTO Filing Process",
+      "primaryKeyword": "USPTO drawing margins",
+      "secondaryKeywords": [],
+      "serpQuestions": [],
+      "relatedSearches": [
+        "USPTO drawing margins"
+      ],
+      "score": 12.049999999999999,
+      "fingerprint": "uspto-filing-process::search-demand::uspto draw margin",
+      "intentCluster": "uspto process",
+      "sourceTypes": [
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"USPTO drawing requirements\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 12,
+      "competitorGapScore": 6
+    }
+  ],
+  "rejectedTopics": [
+    {
+      "topicId": "patent-strategy-patent-drawing-services-near-me",
+      "primaryKeyword": "Patent drawing Services near me",
+      "intentCluster": "patent strategy",
+      "score": 14,
+      "reason": "Exact topic fingerprint already used",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-uspto-design-patent-drawings",
+      "primaryKeyword": "uspto design patent drawings",
+      "intentCluster": "design patent drawings",
+      "score": 12,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "patent-strategy-patent-drawing-examples",
+      "primaryKeyword": "Patent drawing examples",
+      "intentCluster": "patent strategy",
+      "score": 12,
+      "reason": "Exact topic fingerprint already used",
+      "sourceTypes": [
+        "serp_related_search"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-how-to-make-design-patent-drawings",
+      "primaryKeyword": "How to make design patent drawings",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_related_question"
+      ]
+    },
+    {
+      "topicId": "utility-patent-drawings-utility-patent-drawings-services",
+      "primaryKeyword": "utility patent drawings services",
+      "intentCluster": "utility patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-design-patent-drawings-services-in-usa",
+      "primaryKeyword": "design patent drawings services in usa",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-design-patent-drawings-services",
+      "primaryKeyword": "design patent drawings services",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-design-patent-drawings-rules",
+      "primaryKeyword": "design patent drawings rules",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-mpep-design-patent-drawings",
+      "primaryKeyword": "mpep design patent drawings",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-us-design-patent-drawings",
+      "primaryKeyword": "us design patent drawings",
+      "intentCluster": "design patent drawings",
+      "score": 11,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "patent-strategy-patent-drawing-services",
+      "primaryKeyword": "patent drawing services",
+      "intentCluster": "patent strategy",
+      "score": 10,
+      "reason": "Recent topic already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "serp_autocomplete"
+      ]
+    },
+    {
+      "topicId": "design-patent-drawings-what-are-uspto-requirements-for-design-patent-drawings",
+      "primaryKeyword": "What are USPTO requirements for design patent drawings",
+      "intentCluster": "design patent drawings",
+      "score": 10,
+      "reason": "Recent WordPress post already covers this same-intent keyword variation",
+      "sourceTypes": [
+        "competitor_article"
+      ]
+    }
+  ],
+  "liveSignals": [
+    {
+      "id": "serp-related-question-how-much-does-a-patent-drawing-cost",
+      "sourceType": "serp_related_question",
+      "label": "How much does a patent drawing cost?",
+      "query": "How much does a patent drawing cost?",
+      "title": "How much does a patent drawing cost?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 12,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent drawing costs",
+      "evidence": [
+        "People also ask signal for \"design patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-related-question-how-much-does-a-patent-drawing-cost",
+      "sourceType": "serp_related_question",
+      "label": "How much does a patent drawing cost?",
+      "query": "How much does a patent drawing cost?",
+      "title": "How much does a patent drawing cost?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 12,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent drawing costs",
+      "evidence": [
+        "People also ask signal for \"patent illustration services\""
+      ]
+    },
+    {
+      "id": "competitor-article-uspto-patent-drawing-requirements-complete-guide-2025-http-pinchpatentdrawings-com-uspto-patent-drawing-requirements",
+      "sourceType": "competitor_article",
+      "label": "USPTO Patent Drawing Requirements: Complete Guide (2025)",
+      "query": "USPTO Patent Drawing Requirements: Complete Guide (2025)",
+      "title": "USPTO Patent Drawing Requirements: Complete Guide (2025)",
+      "url": "http://pinchpatentdrawings.com/uspto-patent-drawing-requirements/",
+      "snippet": "The USPTO accepts drawing sheets in two standard sizes: A4 (21.0 cm × 29.7 cm) or 8.5 x 11 inches (21.6 cm × 27.9 cm). However, all sheets must ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 13,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent drawing rules",
+      "evidence": [
+        "Competitor article surfaced for \"USPTO drawing requirements\"",
+        "http://pinchpatentdrawings.com/uspto-patent-drawing-requirements/"
+      ]
+    },
+    {
+      "id": "competitor-article-top-4-uspto-patent-drawing-services-plus-a-software-https-pinchpatentdrawings-com-top-patent-drawing-services-providers",
+      "sourceType": "competitor_article",
+      "label": "Top 4 USPTO Patent Drawing Services, Plus a Software ...",
+      "query": "Top 4 USPTO Patent Drawing Services, Plus a Software ...",
+      "title": "Top 4 USPTO Patent Drawing Services, Plus a Software ...",
+      "url": "https://pinchpatentdrawings.com/top-patent-drawing-services-providers/",
+      "snippet": "A reliable patent drawing service that delivers USPTO-compliant drawings, handles your inputs efficiently, and meets tight filing deadlines ...",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 16,
+      "competitorGapScore": 13,
+      "freshnessDays": null,
+      "intentCluster": "software and ai patents",
+      "evidence": [
+        "Competitor article surfaced for \"patent illustration services\"",
+        "https://pinchpatentdrawings.com/top-patent-drawing-services-providers/"
+      ]
+    },
+    {
+      "id": "serp-related-search-pct-drawings-requirements",
+      "sourceType": "serp_related_search",
+      "label": "PCT drawings requirements",
+      "query": "PCT drawings requirements",
+      "title": "PCT drawings requirements",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 7,
+      "brandFitScore": 8,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "pct filing",
+      "evidence": [
+        "Related Google search for \"USPTO drawing requirements\""
+      ]
+    },
+    {
+      "id": "serp-related-question-what-are-the-requirements-for-drawing-for-design-patent-application",
+      "sourceType": "serp_related_question",
+      "label": "What are the requirements for drawing for design patent application?",
+      "query": "What are the requirements for drawing for design patent application?",
+      "title": "What are the requirements for drawing for design patent application?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 16,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent comparisons",
+      "evidence": [
+        "People also ask signal for \"design patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-related-search-design-patent-drawing-examples",
+      "sourceType": "serp_related_search",
+      "label": "Design patent drawing examples",
+      "query": "Design patent drawing examples",
+      "title": "Design patent drawing examples",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 13,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "design patent drawings",
+      "evidence": [
+        "Related Google search for \"design patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-related-search-patent-drawing-illustrator",
+      "sourceType": "serp_related_search",
+      "label": "Patent drawing illustrator",
+      "query": "Patent drawing illustrator",
+      "title": "Patent drawing illustrator",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 13,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "patent strategy",
+      "evidence": [
+        "Related Google search for \"patent illustration services\""
+      ]
+    },
+    {
+      "id": "competitor-article-the-complete-guide-to-patent-drawings-https-boldip-com-blog-patent-drawings",
+      "sourceType": "competitor_article",
+      "label": "The Complete Guide to Patent Drawings",
+      "query": "The Complete Guide to Patent Drawings",
+      "title": "The Complete Guide to Patent Drawings",
+      "url": "https://boldip.com/blog/patent-drawings/",
+      "snippet": "Patent drawings are graphic representations or diagrams that accompany a patent application to visually demonstrate the invention in question.",
+      "demandScore": 15,
+      "freshnessScore": 4,
+      "commercialRelevanceScore": 8,
+      "brandFitScore": 9,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "patent strategy",
+      "evidence": [
+        "Competitor article surfaced for \"utility patent drawings\"",
+        "https://boldip.com/blog/patent-drawings/"
+      ]
+    },
+    {
+      "id": "serp-related-search-patent-drawing-software",
+      "sourceType": "serp_related_search",
+      "label": "Patent drawing software",
+      "query": "Patent drawing software",
+      "title": "Patent drawing software",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 12,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "software and ai patents",
+      "evidence": [
+        "Related Google search for \"utility patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-uspto-design-patent-drawings",
+      "sourceType": "serp_autocomplete",
+      "label": "uspto design patent drawings",
+      "query": "uspto design patent drawings",
+      "title": "uspto design patent drawings",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 17,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "design patent drawings",
+      "evidence": [
+        "Autocomplete suggestion for \"design patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-uspto-utility-patent-drawing-requirements",
+      "sourceType": "serp_autocomplete",
+      "label": "uspto utility patent drawing requirements",
+      "query": "uspto utility patent drawing requirements",
+      "title": "uspto utility patent drawing requirements",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 17,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "utility patent drawings",
+      "evidence": [
+        "Autocomplete suggestion for \"USPTO drawing requirements\""
+      ]
+    },
+    {
+      "id": "serp-related-search-uspto-drawing-margins",
+      "sourceType": "serp_related_search",
+      "label": "USPTO drawing margins",
+      "query": "USPTO drawing margins",
+      "title": "USPTO drawing margins",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 12,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "uspto process",
+      "evidence": [
+        "Related Google search for \"USPTO drawing requirements\""
+      ]
+    },
+    {
+      "id": "serp-related-search-patent-drawing-software",
+      "sourceType": "serp_related_search",
+      "label": "Patent drawing software",
+      "query": "Patent drawing software",
+      "title": "Patent drawing software",
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 12,
+      "competitorGapScore": 6,
+      "freshnessDays": null,
+      "intentCluster": "software and ai patents",
+      "evidence": [
+        "Related Google search for \"patent illustration services\""
+      ]
+    },
+    {
+      "id": "serp-autocomplete-design-patent-drawing-software",
+      "sourceType": "serp_autocomplete",
+      "label": "design patent drawing software",
+      "query": "design patent drawing software",
+      "title": "design patent drawing software",
+      "demandScore": 16,
+      "freshnessScore": 6,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 16,
+      "competitorGapScore": 4,
+      "freshnessDays": null,
+      "intentCluster": "design patent drawings",
+      "evidence": [
+        "Autocomplete suggestion for \"design patent drawings\""
+      ]
+    },
+    {
+      "id": "serp-related-question-how-to-make-design-patent-drawings",
+      "sourceType": "serp_related_question",
+      "label": "How to make design patent drawings?",
+      "query": "How to make design patent drawings?",
+      "title": "How to make design patent drawings?",
+      "demandScore": 14,
+      "freshnessScore": 7,
+      "commercialRelevanceScore": 0,
+      "brandFitScore": 13,
+      "competitorGapScore": 8,
+      "freshnessDays": null,
+      "intentCluster": "design patent drawings",
+      "evidence": [
+        "People also ask signal for \"design patent drawings\""
+      ]
+    }
+  ],
+  "sourceHealth": [
+    {
+      "source": "search_console",
+      "ok": false,
+      "detail": "Search Console OAuth is not fully configured."
+    },
+    {
+      "source": "serpapi_keywords",
+      "ok": true,
+      "detail": "Loaded 48 keyword-demand signals from SerpAPI."
+    },
+    {
+      "source": "competitor_search",
+      "ok": true,
+      "detail": "Loaded 13 live competitor article signals."
+    }
+  ],
+  "degradedSources": [
+    "search_console"
+  ]
+}

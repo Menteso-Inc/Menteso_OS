@@ -1,0 +1,81 @@
+{
+  "agent": "patentzoom_seo_agent/workspaces/ip-docketers",
+  "learnings": [
+    {
+      "timestamp": "2026-05-25T06:32:30.897568+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent paralegal certificate cost post_status=dry-run",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-25T06:37:51.521896+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Trademark docketing software post_status=dry-run",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-25T06:40:41.632012+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Trademark docketing software post_status=dry-run",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-25T07:38:18.009134+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Anaqua docketing post_status=draft",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-26T14:22:57.706513+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Trademark docketing software post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-26T14:50:23.587576+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=how trademark docketing software reduces missed deadlines post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-27T05:45:27.535465+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Intellectual Property Docketing: A Complete Guide post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-05-27T05:45:32.305552+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "failure",
+      "insight": "status=failure keyword=- post_status=failed",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-06-04T06:21:54.103714+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Mastering Patent Prosecution with AI | Office Actions Guide post_status=publish",
+      "strategy": "mixed_signal_dynamic"
+    },
+    {
+      "timestamp": "2026-06-04T06:25:57.835378+00:00",
+      "task": "daily_seo_blog",
+      "outcome": "success",
+      "insight": "status=success keyword=Patent docketing software post_status=already-published-today",
+      "strategy": "mixed_signal_dynamic"
+    }
+  ],
+  "refined_prompts": {},
+  "stats": {
+    "total_runs": 10,
+    "success_rate": 0.9,
+    "avg_execution_time": 123.171
+  }
+}

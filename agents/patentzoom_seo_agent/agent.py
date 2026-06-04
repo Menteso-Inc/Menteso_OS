@@ -931,6 +931,9 @@ def _build_social_status(workspace, env, file_path):
     recent_history = list(snapshot.get("recentHistory") or [])
     latest = recent_history[0] if recent_history else {}
     configured = snapshot.get("configured") or {}
+    token_health = snapshot.get("tokenHealth") or {}
+    meta_health = token_health.get("meta") or {}
+    linkedin_health = token_health.get("linkedin") or {}
     platforms = list(snapshot.get("platforms") or [])
     expected_platforms = {
         "patentzoom": ["facebook", "instagram", "linkedin"],
@@ -943,14 +946,21 @@ def _build_social_status(workspace, env, file_path):
     for platform in platforms:
         key = str(platform or "").strip().lower()
         is_configured = bool(configured.get(key))
+        health = meta_health if key in {"facebook", "instagram"} else linkedin_health if key == "linkedin" else {}
+        token_valid = bool(health.get("valid")) if health else None
+        token_status = str(health.get("status") or "").strip()
+        token_detail = str(health.get("detail") or "").strip()
         result = ((latest.get("results") or {}).get(key) or {}) if isinstance(latest, dict) else {}
         last_ok = bool(result.get("ok"))
-        if not latest:
-            status = "Pending"
-            detail = "No social post recorded yet for this platform."
-        elif not is_configured:
+        if not is_configured:
             status = "Not Configured"
             detail = f"{platform.title()} is not connected for this workspace yet."
+        elif token_valid is False:
+            status = "Reconnect"
+            detail = token_detail or f"{platform.title()} token is not valid."
+        elif not latest:
+            status = "Pending"
+            detail = "No social post recorded yet for this platform."
         elif last_ok:
             status = "Posted"
             detail = f"Last post succeeded for {platform.title()}."
@@ -965,15 +975,21 @@ def _build_social_status(workspace, env, file_path):
                 "configured": is_configured,
                 "status": status,
                 "detail": detail,
+                "tokenStatus": token_status,
+                "tokenValid": token_valid,
                 "postId": str(result.get("postId") or ""),
             }
         )
 
+    reconnect_required = bool(meta_health and meta_health.get("valid") is False and any(platform in platforms for platform in ["facebook", "instagram"]))
     return {
         "autoPostEnabled": bool(snapshot.get("autoPostEnabled")),
         "useFeaturedImage": bool(snapshot.get("useFeaturedImage")),
         "useHashtags": bool(snapshot.get("useHashtags")),
         "configuredPlatformCount": int(snapshot.get("configuredPlatformCount") or 0),
+        "tokenHealth": token_health,
+        "reconnectRequired": reconnect_required,
+        "healthStatus": "Needs reconnect" if reconnect_required else "Healthy",
         "platforms": platforms,
         "pendingPlatforms": [item for item in expected_platforms if item not in platforms],
         "platformRows": platform_rows,

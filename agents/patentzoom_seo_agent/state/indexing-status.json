@@ -231,6 +231,316 @@
       "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=D_VknzG3zGaivYVNXliFyw",
       "requestCompletedAt": "2026-05-21T08:51:16.042189Z",
       "error": ""
+    },
+    "https://patentzoom.us/ai-patent-portfolio-management-software-guide/": {
+      "postUrl": "https://patentzoom.us/ai-patent-portfolio-management-software-guide/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=dTyIu5-cEalUK9rKqG1aEw",
+      "requestCompletedAt": "2026-05-22T07:32:52.706861Z",
+      "error": ""
+    },
+    "https://patentzoom.us/ip-docketing-best-practices-ip-firms/": {
+      "postUrl": "https://patentzoom.us/ip-docketing-best-practices-ip-firms/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=Ic2gg4RKDwCs-vc6usa7jw",
+      "requestCompletedAt": "2026-05-25T06:14:09.747810Z",
+      "error": ""
+    },
+    "https://patentzoom.us/choosing-best-patent-docketing-software-accurate-ip-management/": {
+      "postUrl": "https://patentzoom.us/choosing-best-patent-docketing-software-accurate-ip-management/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=422lugaLzBeCKyL_JwVe4Q",
+      "requestCompletedAt": "2026-05-26T05:01:53.571309Z",
+      "error": ""
+    },
+    "https://patentzoom.us/best-patent-docketing-software-accurate-ip-management-2024/": {
+      "postUrl": "https://patentzoom.us/best-patent-docketing-software-accurate-ip-management-2024/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=veHQ1DqVHybpBrvUCyjbxg",
+      "requestCompletedAt": "2026-05-26T05:05:12.033295Z",
+      "error": ""
+    },
+    "https://patentzoom.us/how-startups-can-protect-ai-software-with-patents/": {
+      "postUrl": "https://patentzoom.us/how-startups-can-protect-ai-software-with-patents/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=UlH7Br6m6cT2mqUW_MzqgA",
+      "requestCompletedAt": "2026-05-26T14:42:11.104253Z",
+      "error": ""
+    },
+    "https://patentzoom.us/intellectual-property-docketing-complete-guide-patent-strategy/": {
+      "postUrl": "https://patentzoom.us/intellectual-property-docketing-complete-guide-patent-strategy/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [
+          "https://patentzoom.us/post-sitemap.xml"
+        ],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=kRVB380LHHwQtPde9yFQlQ",
+      "requestCompletedAt": "2026-05-27T05:41:26.587688Z",
+      "error": ""
+    },
+    "https://patentzoom.us/intellectual-property-docketing-complete-guide/": {
+      "postUrl": "https://patentzoom.us/intellectual-property-docketing-complete-guide/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": true,
+      "inspected": true,
+      "inspection": {
+        "verdict": "NEUTRAL",
+        "coverageState": "Discovered - currently not indexed",
+        "indexingState": "INDEXING_STATE_UNSPECIFIED",
+        "lastCrawlTime": "",
+        "referringUrls": [],
+        "sitemaps": []
+      },
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": false,
+      "browserFallbackStatus": "button_not_found",
+      "browserFallbackMessage": "The Request Indexing action was not available on the Search Console inspection page.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=kRVB380LHHwQtPde9yFQlQ",
+      "requestCompletedAt": "2026-05-27T05:40:43.647620Z",
+      "error": ""
+    },
+    "https://patentzoom.us/why-your-startup-needs-a-patent-strategy/": {
+      "postUrl": "https://patentzoom.us/why-your-startup-needs-a-patent-strategy/",
+      "source": "manual",
+      "indexable": true,
+      "indexabilityIssues": [],
+      "sitemapCandidates": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml",
+        "https://patentzoom.us/news-sitemap.xml",
+        "https://patentzoom.us/sitemap.xml"
+      ],
+      "sitemapPinged": [
+        "https://patentzoom.us/sitemap_index.xml",
+        "https://patentzoom.us/post-sitemap.xml"
+      ],
+      "searchConsoleSitemapsSubmitted": [],
+      "indexingApiAttempted": false,
+      "indexingApiSubmitted": false,
+      "autoSubmitSucceeded": false,
+      "inspected": false,
+      "inspection": null,
+      "browserFallbackAttempted": true,
+      "browserFallbackSubmitted": true,
+      "browserFallbackStatus": "requested",
+      "browserFallbackMessage": "Request Indexing was clicked in Google Search Console.",
+      "browserFallbackInspectUrl": "https://search.google.com/search-console/inspect?resource_id=sc-domain%3Apatentzoom.us&id=L_uuoXv7TtdulBi1RGc9hA",
+      "requestCompletedAt": "2026-06-04T06:23:24.729693Z",
+      "error": "400 Client Error: Bad Request for url: https://oauth2.googleapis.com/token"
     }
   }
 }

@@ -1,0 +1,177 @@
+{
+  "generatedPosts": [
+    {
+      "date": "2026-05-22",
+      "topicId": "patent-strategy-patent-drawings-services",
+      "pillar": "Patent Strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "patent drawings services",
+      "secondaryKeywords": [],
+      "slug": "maximizing-patent-success-with-professional-patent-drawing-services",
+      "wpPostId": 32797,
+      "wpUrl": "https://patentdrawingexperts.com/?p=32797",
+      "status": "draft",
+      "source": "dashboard",
+      "fingerprint": "patent-strategy::search-demand::patent drawing servic",
+      "sourceTypes": [
+        "search_console_query"
+      ],
+      "sourceEvidence": [
+        "Search Console query with 182 impressions",
+        "Current traction on https://patentdrawingexperts.com/"
+      ],
+      "demandScore": 32,
+      "freshnessScore": 6,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-05-25",
+      "topicId": "patent-strategy-patent-drawing-experts",
+      "pillar": "Patent Strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "patent drawing experts",
+      "secondaryKeywords": [
+        "Patent drawing experts"
+      ],
+      "slug": "why-hiring-patent-drawing-experts-is-essential-for-a-strong-patent-strategy",
+      "wpPostId": 32801,
+      "wpUrl": "https://patentdrawingexperts.com/article/why-hiring-patent-drawing-experts-is-essential-for-a-strong-patent-strategy/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "patent-strategy::search-demand::patent draw expert",
+      "sourceTypes": [
+        "search_console_query",
+        "serp_related_search"
+      ],
+      "sourceEvidence": [
+        "Search Console query with 60 impressions",
+        "Current traction on https://patentdrawingexperts.com/",
+        "Related Google search for \"patent drawings services\""
+      ],
+      "demandScore": 23.233333333333334,
+      "freshnessScore": 7,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "patent-strategy-patent-drawing-services-near-me",
+      "pillar": "Patent Strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "Patent drawing Services near me",
+      "secondaryKeywords": [
+        "Patent drawing Services near me"
+      ],
+      "slug": "finding-reliable-patent-drawing-services-near-me",
+      "wpPostId": 32807,
+      "wpUrl": "https://patentdrawingexperts.com/article/finding-reliable-patent-drawing-services-near-me/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "patent-strategy::search-demand::patent draw servic near me",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"patent drawing experts\"",
+        "Related Google search for \"patent drawings services\"",
+        "Autocomplete suggestion for \"patent drawing experts\"",
+        "Autocomplete suggestion for \"patent drawings services\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-05-26",
+      "topicId": "manual-common-uspto-patent-drawing-objections-and-how-to-avoid-them",
+      "pillar": "USPTO Filing Process",
+      "angle": "manual override",
+      "theme": "USPTO Filing Process",
+      "cluster": "uspto process",
+      "primaryKeyword": "common USPTO patent drawing objections and how to avoid them",
+      "secondaryKeywords": [],
+      "slug": "common-uspto-patent-drawing-objections-and-how-to-avoid-them",
+      "wpPostId": 32810,
+      "wpUrl": "https://patentdrawingexperts.com/article/common-uspto-patent-drawing-objections-and-how-to-avoid-them/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "uspto-filing-process::manual-override::common uspto patent draw objection avoid them",
+      "sourceTypes": [
+        "manual_override"
+      ],
+      "sourceEvidence": [
+        "Operator supplied a manual topic override."
+      ],
+      "demandScore": 20,
+      "freshnessScore": 10,
+      "intentCluster": "uspto process"
+    },
+    {
+      "date": "2026-05-27",
+      "topicId": "patent-strategy-patent-drawing-examples",
+      "pillar": "Patent Strategy",
+      "angle": "search demand",
+      "theme": "Patent Strategy",
+      "cluster": "patent strategy",
+      "primaryKeyword": "Patent drawing examples",
+      "secondaryKeywords": [
+        "Patent drawing examples"
+      ],
+      "slug": "patent-drawing-examples-strategic-guide-uspto-compliant-illustrations",
+      "wpPostId": 32815,
+      "wpUrl": "https://patentdrawingexperts.com/article/patent-drawing-examples-strategic-guide-uspto-compliant-illustrations/",
+      "status": "publish",
+      "source": "dashboard",
+      "fingerprint": "patent-strategy::search-demand::patent draw exampl",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"patent drawing experts\"",
+        "Related Google search for \"patent drawings services\"",
+        "Autocomplete suggestion for \"patent drawing experts\"",
+        "Autocomplete suggestion for \"patent drawings services\"",
+        "Autocomplete suggestion for \"beautiful patent drawings\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "patent strategy"
+    },
+    {
+      "date": "2026-06-04",
+      "topicId": "design-patent-drawings-design-patent-drawing-examples",
+      "pillar": "Design Patent Drawings",
+      "angle": "search demand",
+      "theme": "Design Patent Drawings",
+      "cluster": "design patent drawings",
+      "primaryKeyword": "Design patent drawing examples",
+      "secondaryKeywords": [
+        "design patent drawing examples"
+      ],
+      "slug": "design-patent-drawing-examples-usppto-compliance",
+      "wpPostId": 32820,
+      "wpUrl": "https://patentdrawingexperts.com/article/design-patent-drawing-examples-usppto-compliance/",
+      "status": "publish",
+      "source": "manual_catchup",
+      "fingerprint": "design-patent-drawings::search-demand::design patent draw exampl",
+      "sourceTypes": [
+        "serp_related_search",
+        "serp_autocomplete"
+      ],
+      "sourceEvidence": [
+        "Related Google search for \"design patent drawings\"",
+        "Autocomplete suggestion for \"design patent drawings\""
+      ],
+      "demandScore": 18,
+      "freshnessScore": 7,
+      "intentCluster": "design patent drawings"
+    }
+  ]
+}
