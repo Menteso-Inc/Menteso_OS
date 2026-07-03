@@ -22,7 +22,7 @@ from .pdf_extractor import extract_contacts_from_pdf
 
 
 PROJECT_DIR = Path(__file__).parent.parent.parent
-OUTPUTS_DIR = PROJECT_DIR / "outputs"
+OUTPUTS_DIR = PROJECT_DIR / "outputs" / "pct-work-sheets"
 RESULT_STATUS_PRIORITY = {
     "found": 3,
     "not_found": 2,
@@ -414,7 +414,11 @@ class PipelinePCT:
 
         # Launch browser pool
         self.step(f"[Pipeline] Launching {self.n_browser} browser tabs...")
-        pw, browser, pages = create_browser_pool(self.n_browser, self.headless)
+        pw, browser, pages, page_proxies = create_browser_pool(self.n_browser, self.headless)
+        self._page_proxies = page_proxies
+        active_proxies = sum(1 for p in page_proxies if p)
+        if active_proxies:
+            self.step(f"[Pipeline] {active_proxies}/{self.n_browser} tabs on rotating proxy IPs")
 
         try:
             threads = []
@@ -622,8 +626,13 @@ class PipelinePCT:
             self.captcha.report_clear()
 
             if pdf_url:
-                # Push to download queue (Stage 2)
-                self.download_queue.put((row_data, url, country, doc_id, pdf_url, cookies))
+                # Push to download queue (Stage 2). Carry this worker's proxy so
+                # the PDF downloads from the SAME exit IP that discovered it.
+                worker_proxy = None
+                page_proxies = getattr(self, "_page_proxies", None)
+                if page_proxies and wid < len(page_proxies):
+                    worker_proxy = page_proxies[wid]
+                self.download_queue.put((row_data, url, country, doc_id, pdf_url, cookies, worker_proxy))
                 consecutive_failures = 0  # success path resets the counter
             elif scrape_error:
                 result = _make_result(row_data, url, country, "error")
@@ -675,13 +684,18 @@ class PipelinePCT:
             if item is None:
                 break
 
-            row_data, url, country, doc_id, pdf_url, cookies = item
+            # Back-compat: older tuples had no proxy element.
+            if len(item) == 7:
+                row_data, url, country, doc_id, pdf_url, cookies, worker_proxy = item
+            else:
+                row_data, url, country, doc_id, pdf_url, cookies = item
+                worker_proxy = None
 
             with self.stats._lock:
                 self.stats.dl_active += 1
 
             try:
-                pdf_path = download_pdf_standalone(pdf_url, cookies, doc_id)
+                pdf_path = download_pdf_standalone(pdf_url, cookies, doc_id, proxy=worker_proxy)
             except Exception:
                 pdf_path = None
 

@@ -33,8 +33,14 @@ Thumbs.db
 *.log
 logs/
 
+# Tor runtime data (config .tor/torrc + run-tor.cmd are tracked; data/logs are not)
+.tor/data/
+.tor/*.log
+
 # Agent runtime memory (auto-generated, per-machine)
 agents/*/memory.json
+.menteso/session.secret
+.menteso/users.json
 
 # Uploads and outputs
 uploads/
@@ -47,3 +53,5 @@ agents/patentzoom_seo_agent/runtime/
 services/seo-worker/runtime/
 services/seo-control-api/*.db
 .tools/
+.runtime-tmp/
+.playwright-browsers/

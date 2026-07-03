@@ -1,0 +1,22 @@
+# Tor config for PCT agent — multiple SOCKS ports = multiple concurrent exit IPs.
+# Each SocksPort has its own SessionGroup so Tor keeps them on independent
+# circuits (independent exit relays / IPs). Generated; safe to edit COUNT below.
+DataDirectory C:\sites\Menteso_OS\.tor\data
+Log notice file C:\sites\Menteso_OS\.tor\tor.log
+# Recycle circuits so exit IPs refresh over time (helps dodge per-IP throttling).
+MaxCircuitDirtiness 90
+NewCircuitPeriod 45
+# Faster startup: don't need guards persistence pinned hard.
+
+SocksPort 127.0.0.1:9050 SessionGroup=1
+SocksPort 127.0.0.1:9051 SessionGroup=2
+SocksPort 127.0.0.1:9052 SessionGroup=3
+SocksPort 127.0.0.1:9053 SessionGroup=4
+SocksPort 127.0.0.1:9054 SessionGroup=5
+SocksPort 127.0.0.1:9055 SessionGroup=6
+SocksPort 127.0.0.1:9056 SessionGroup=7
+SocksPort 127.0.0.1:9057 SessionGroup=8
+SocksPort 127.0.0.1:9058 SessionGroup=9
+SocksPort 127.0.0.1:9059 SessionGroup=10
+SocksPort 127.0.0.1:9060 SessionGroup=11
+SocksPort 127.0.0.1:9061 SessionGroup=12
