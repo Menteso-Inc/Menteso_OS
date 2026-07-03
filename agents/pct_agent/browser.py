@@ -190,15 +190,27 @@ def _route_handler(route):
         route.continue_()
 
 
-def _launch_browser(playwright, headless=True):
+def _launch_browser(playwright, headless=True, per_context=False):
     """
     Launch a browser that WIPO is more likely to accept.
     Headed mode prefers real installed browser channels.
     Honors the shared proxy pool (Tor / user-supplied list) when configured.
+
+    per_context=True: launch with the Chromium "per-context" proxy sentinel so
+    that each browser context can later be given its OWN proxy (its own exit
+    IP). This is what lets the pool spread WIPO load across many IPs. When the
+    proxy pool is not configured we skip this and behave exactly as before.
     """
+    proxy = None
     try:
-        from shared.proxy_pool import get_proxy
-        proxy = get_proxy()
+        from shared import proxy_pool
+        if per_context and proxy_pool.enabled():
+            # Chromium requires a launch-level proxy to allow per-context
+            # overrides; the "per-context" sentinel means "no proxy at launch,
+            # each context supplies its own".
+            proxy = {"server": "per-context"}
+        else:
+            proxy = proxy_pool.get_proxy()
     except Exception:
         proxy = None
 
@@ -237,7 +249,13 @@ def _launch_browser(playwright, headless=True):
 def create_browser_pool(n_pages=20, headless=True):
     """Create a single Playwright browser with N lightweight pages.
     Blocks images/CSS/fonts for maximum speed.
-    Returns (pw, browser, pages_list).
+
+    Returns (pw, browser, pages_list, proxies_list) where proxies_list[i] is
+    the Playwright proxy dict assigned to pages_list[i] (or None). When the
+    proxy pool is configured, EACH page gets its own proxy → its own exit IP,
+    so WIPO's per-IP throttling is spread across the pool instead of hitting
+    one address. When no pool is configured, every entry is None and behavior
+    is identical to before.
     """
     if not HAS_PLAYWRIGHT:
         raise ImportError(
@@ -246,8 +264,15 @@ def create_browser_pool(n_pages=20, headless=True):
         )
     DOWNLOADS_DIR.mkdir(exist_ok=True)
 
+    try:
+        from shared import proxy_pool
+        use_proxy = proxy_pool.enabled()
+    except Exception:
+        proxy_pool = None
+        use_proxy = False
+
     pw = sync_playwright().start()
-    browser = _launch_browser(pw, headless=headless)
+    browser = _launch_browser(pw, headless=headless, per_context=use_proxy)
 
     # Image/CSS/font blocking is OFF by default — empirically it broke the
     # WIPO documents tab in pool mode (every row returned not_found). Opt in
@@ -260,13 +285,18 @@ def create_browser_pool(n_pages=20, headless=True):
     )
 
     pages = []
-    for _ in range(n_pages):
-        ctx = browser.new_context(
+    proxies = []
+    for i in range(n_pages):
+        worker_proxy = proxy_pool.get_proxy_for_worker(i) if use_proxy else None
+        ctx_kwargs = dict(
             accept_downloads=True,
             viewport={"width": 1280, "height": 720},
             user_agent=UA,
             locale="en-US",
         )
+        if worker_proxy:
+            ctx_kwargs["proxy"] = worker_proxy
+        ctx = browser.new_context(**ctx_kwargs)
         page = ctx.new_page()
         page.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
@@ -275,8 +305,57 @@ def create_browser_pool(n_pages=20, headless=True):
             # Aggressive bandwidth saving — but risky against WIPO.
             page.route("**/*", _route_handler)
         pages.append(page)
+        proxies.append(worker_proxy)
 
-    return pw, browser, pages
+    return pw, browser, pages, proxies
+
+
+def create_worker_browser(headless=True, proxy=None):
+    """Create a self-contained Playwright browser + page for ONE worker thread.
+
+    The sync Playwright API binds every object to the thread that created it,
+    so a page created in one thread CANNOT be driven from another — doing so
+    raises "Cannot switch to a different thread" and makes every navigation
+    fail (which is why the pooled/threaded pipeline used to return not_found
+    for every row). Each browser worker thread must therefore call this from
+    inside its own thread and own the browser for its whole life.
+
+    When `proxy` is given, the context carries its own exit IP. Returns
+    (pw, browser, page).
+    """
+    if not HAS_PLAYWRIGHT:
+        raise ImportError(
+            "Playwright is required. "
+            "Install with: pip install playwright && python -m playwright install chromium"
+        )
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+    pw = sync_playwright().start()
+    browser = _launch_browser(pw, headless=headless, per_context=bool(proxy))
+
+    import os as _os
+    block_resources = (
+        (_os.getenv("PCT_POOL_BLOCK_RESOURCES") or "false").lower()
+        in ("1", "true", "yes")
+    )
+
+    ctx_kwargs = dict(
+        accept_downloads=True,
+        viewport={"width": 1280, "height": 720},
+        user_agent=UA,
+        locale="en-US",
+    )
+    if proxy:
+        ctx_kwargs["proxy"] = proxy
+    ctx = browser.new_context(**ctx_kwargs)
+    page = ctx.new_page()
+    page.add_init_script(
+        "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+    )
+    if block_resources:
+        page.route("**/*", _route_handler)
+
+    return pw, browser, page
 
 
 def close_browser_pool(pw, browser):
@@ -559,28 +638,63 @@ def find_pdf_url(page):
     return None
 
 
-def download_pdf_standalone(pdf_url, cookies, doc_id):
+def _requests_proxies(proxy):
+    """Convert a Playwright proxy dict to a requests `proxies=` mapping.
+    Returns None when no proxy (direct connection). SOCKS URLs require the
+    optional PySocks dependency (requests[socks]).
+    """
+    if not proxy or not proxy.get("server"):
+        return None
+    server = proxy["server"]
+    if server == "per-context":
+        return None
+    # For SOCKS (Tor), use socks5h so DNS resolves at the exit node (remote
+    # DNS) — the standard, leak-free way to proxy requests through Tor.
+    if server.startswith("socks5://"):
+        server = "socks5h://" + server[len("socks5://"):]
+    user = proxy.get("username")
+    pw = proxy.get("password")
+    if user and "://" in server:
+        scheme, rest = server.split("://", 1)
+        server = f"{scheme}://{user}:{pw}@{rest}"
+    return {"http": server, "https": server}
+
+
+def download_pdf_standalone(pdf_url, cookies, doc_id, proxy=None):
     """Download a PDF using plain HTTP (no browser needed).
     Called from download worker threads.  Returns file path or None.
+
+    When `proxy` is supplied we route the download through the SAME exit IP as
+    the browser context that discovered the URL — WIPO may tie the download to
+    the session's IP. If the proxied attempt fails we fall back to a direct
+    download so proxy hiccups never regress the pre-proxy behavior.
     """
     import requests as req
 
     safe_name = re.sub(r"[^\w\-]", "_", doc_id)
     save_path = DOWNLOADS_DIR / f"{safe_name}.pdf"
 
-    try:
-        session = req.Session()
-        for name, value in cookies.items():
-            session.cookies.set(name, value)
-        session.headers.update({"User-Agent": UA})
+    proxies = _requests_proxies(proxy)
+    attempts = [proxies] if proxies else [None]
+    if proxies:
+        attempts.append(None)  # fall back to direct if the proxy download fails
 
-        resp = session.get(pdf_url, timeout=15)
-        if resp.status_code == 200 and len(resp.content) > 500:
-            with open(save_path, "wb") as f:
-                f.write(resp.content)
-            return str(save_path)
-    except Exception:
-        pass
+    for proxy_map in attempts:
+        try:
+            session = req.Session()
+            for name, value in cookies.items():
+                session.cookies.set(name, value)
+            session.headers.update({"User-Agent": UA})
+            if proxy_map:
+                session.proxies.update(proxy_map)
+
+            resp = session.get(pdf_url, timeout=20)
+            if resp.status_code == 200 and len(resp.content) > 500:
+                with open(save_path, "wb") as f:
+                    f.write(resp.content)
+                return str(save_path)
+        except Exception:
+            continue
     return None
 
 

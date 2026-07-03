@@ -15,14 +15,14 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from .browser import (
-    create_browser_pool, close_browser_pool,
+    create_browser_pool, create_worker_browser, close_browser_pool,
     scrape_pdf_url_only, download_pdf_standalone, DOWNLOADS_DIR,
 )
 from .pdf_extractor import extract_contacts_from_pdf
 
 
 PROJECT_DIR = Path(__file__).parent.parent.parent
-OUTPUTS_DIR = PROJECT_DIR / "outputs"
+OUTPUTS_DIR = PROJECT_DIR / "outputs" / "pct-work-sheets"
 RESULT_STATUS_PRIORITY = {
     "found": 3,
     "not_found": 2,
@@ -412,9 +412,12 @@ class PipelinePCT:
         for _ in range(self.n_browser):
             self.browse_queue.put(None)
 
-        # Launch browser pool
-        self.step(f"[Pipeline] Launching {self.n_browser} browser tabs...")
-        pw, browser, pages = create_browser_pool(self.n_browser, self.headless)
+        # Each browser worker owns its OWN browser, created inside its own
+        # thread (sync Playwright objects cannot cross threads — a shared pool
+        # makes every navigation fail with "Cannot switch to a different
+        # thread", which is why threaded runs used to return not_found for
+        # every row). Each worker also gets its own proxy/exit IP this way.
+        self.step(f"[Pipeline] Starting {self.n_browser} browser workers (own browser each)...")
 
         try:
             threads = []
@@ -422,7 +425,7 @@ class PipelinePCT:
             # Stage 1: Browser workers
             for i in range(self.n_browser):
                 t = threading.Thread(
-                    target=self._browser_worker, args=(i, pages[i]),
+                    target=self._browser_worker_thread, args=(i,),
                     daemon=True,
                 )
                 threads.append(t)
@@ -473,7 +476,9 @@ class PipelinePCT:
             stats_t.join(timeout=3)
 
         finally:
-            close_browser_pool(pw, browser)
+            # Each browser worker closes its own browser in its thread; nothing
+            # shared to tear down here.
+            pass
 
         # Merge with resume results
         if self._completed_ids:
@@ -520,7 +525,33 @@ class PipelinePCT:
         "docs_tab",
     )
 
-    def _browser_worker(self, wid, page):
+    def _browser_worker_thread(self, wid):
+        """Thread entry point: own a browser for this worker (created in-thread,
+        as sync Playwright requires) with its own proxy/IP, then process rows."""
+        worker_proxy = None
+        try:
+            from shared import proxy_pool
+            if proxy_pool.enabled():
+                worker_proxy = proxy_pool.get_proxy_for_worker(wid)
+        except Exception:
+            worker_proxy = None
+
+        try:
+            pw, browser, page = create_worker_browser(headless=self.headless, proxy=worker_proxy)
+        except Exception as exc:
+            self.step(f"[Worker {wid}] Could not start its browser: {exc}")
+            # Drain sentinel-free: put nothing back; other workers cover the queue.
+            return
+
+        if worker_proxy:
+            self.step(f"[Worker {wid}] browser ready on {worker_proxy.get('server')}")
+
+        try:
+            self._browser_worker(wid, page, worker_proxy)
+        finally:
+            close_browser_pool(pw, browser)
+
+    def _browser_worker(self, wid, page, worker_proxy=None):
         consecutive_failures = 0
         while True:
             row_data = self.browse_queue.get()
@@ -622,8 +653,9 @@ class PipelinePCT:
             self.captcha.report_clear()
 
             if pdf_url:
-                # Push to download queue (Stage 2)
-                self.download_queue.put((row_data, url, country, doc_id, pdf_url, cookies))
+                # Push to download queue (Stage 2). Carry this worker's proxy so
+                # the PDF downloads from the SAME exit IP that discovered it.
+                self.download_queue.put((row_data, url, country, doc_id, pdf_url, cookies, worker_proxy))
                 consecutive_failures = 0  # success path resets the counter
             elif scrape_error:
                 result = _make_result(row_data, url, country, "error")
@@ -675,13 +707,18 @@ class PipelinePCT:
             if item is None:
                 break
 
-            row_data, url, country, doc_id, pdf_url, cookies = item
+            # Back-compat: older tuples had no proxy element.
+            if len(item) == 7:
+                row_data, url, country, doc_id, pdf_url, cookies, worker_proxy = item
+            else:
+                row_data, url, country, doc_id, pdf_url, cookies = item
+                worker_proxy = None
 
             with self.stats._lock:
                 self.stats.dl_active += 1
 
             try:
-                pdf_path = download_pdf_standalone(pdf_url, cookies, doc_id)
+                pdf_path = download_pdf_standalone(pdf_url, cookies, doc_id, proxy=worker_proxy)
             except Exception:
                 pdf_path = None
 
