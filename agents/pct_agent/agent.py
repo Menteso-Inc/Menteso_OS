@@ -7,6 +7,7 @@ Output: Work Report DD-Month-YYYY.xlsx matching the standard work report format
 """
 import os
 import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,9 +47,12 @@ CHUNK_COOLDOWN_SECONDS = 0.3
 DEFAULT_BROWSER_WORKERS = 4
 DEFAULT_DOWNLOAD_WORKERS = 6
 DEFAULT_OCR_WORKERS = 3
+PCT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "outputs" / "pct-work-sheets"
+PCT_INPUT_ARCHIVE_DIR = PCT_OUTPUT_DIR / "input-sheets"
+PCT_REPORT_EXTENSIONS = {".xlsx", ".csv", ".jsonl"}
 
 # Fast-mode level table. Each level maps to a runtime profile.
-# Level 1 (😇) is the safe sequential baseline; level 5 (😈) maxes out
+# Level 1 is the safe sequential baseline; level 5 maxes out
 # parallelism. Worker counts in the fast-mode levels are TOTAL across
 # all parallel pipelines — ChunkedPipelineManager divides them down per
 # chunk pipeline at construction time.
@@ -58,11 +62,11 @@ DEFAULT_OCR_WORKERS = 3
 # visible popup Chromium for the human to solve, which closes itself
 # the moment the captcha clears.
 FAST_MODE_LEVELS = {
-    1: {"emoji": "😇", "label": "Safe",       "fast": False, "pipelines": 1, "browsers": 1, "downloads": 1,  "ocr": 1, "headless": True},
-    2: {"emoji": "🙂", "label": "Mild",       "fast": True,  "pipelines": 1, "browsers": 2, "downloads": 3,  "ocr": 2, "headless": True},
-    3: {"emoji": "😏", "label": "Balanced",   "fast": True,  "pipelines": 2, "browsers": 4, "downloads": 6,  "ocr": 3, "headless": True},
-    4: {"emoji": "😎", "label": "Aggressive", "fast": True,  "pipelines": 3, "browsers": 6, "downloads": 9,  "ocr": 4, "headless": True},
-    5: {"emoji": "😈", "label": "Max",        "fast": True,  "pipelines": 4, "browsers": 8, "downloads": 12, "ocr": 6, "headless": True},
+    1: {"marker": "L1", "label": "Safe",       "fast": False, "pipelines": 1, "browsers": 1, "downloads": 1,  "ocr": 1, "headless": True},
+    2: {"marker": "L2", "label": "Mild",       "fast": True,  "pipelines": 1, "browsers": 2, "downloads": 3,  "ocr": 2, "headless": True},
+    3: {"marker": "L3", "label": "Balanced",   "fast": True,  "pipelines": 2, "browsers": 4, "downloads": 6,  "ocr": 3, "headless": True},
+    4: {"marker": "L4", "label": "Aggressive", "fast": True,  "pipelines": 3, "browsers": 6, "downloads": 9,  "ocr": 4, "headless": True},
+    5: {"marker": "L5", "label": "Max",        "fast": True,  "pipelines": 4, "browsers": 8, "downloads": 12, "ocr": 6, "headless": True},
 }
 # Locked to L1 Safe — single-browser sequential mode. L2+ runs multiple
 # Playwright tabs in parallel which WIPO firewalls at the TCP level (every
@@ -307,7 +311,8 @@ def _register_stop_handler(input_data, handler):
 
 
 def _build_partial_result(status, results, total, found_count, not_found_count,
-                          error_count, output_path="", execution_time=0, tests_result=None):
+                          error_count, output_path="", execution_time=0, tests_result=None,
+                          not_found_path=""):
     return {
         "status": status,
         "results": results,
@@ -319,11 +324,28 @@ def _build_partial_result(status, results, total, found_count, not_found_count,
             "errors": error_count,
         },
         "output_file": output_path,
+        "not_found_file": not_found_path,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "execution_time": round(execution_time, 2),
         "attempts": 1,
         "tests": tests_result or {},
     }
+
+
+def _archive_pct_input_sheet(file_path, on_step=None):
+    source = Path(str(file_path or "")).resolve()
+    if not source.exists():
+        return ""
+    PCT_INPUT_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", source.stem).strip("._") or "pct_input"
+    target = (PCT_INPUT_ARCHIVE_DIR / f"{stamp}_{safe_stem}{source.suffix.lower()}").resolve()
+    if PCT_INPUT_ARCHIVE_DIR.resolve() in source.parents:
+        return str(source)
+    shutil.copy2(str(source), str(target))
+    if on_step:
+        on_step(f"[Input] Archived source sheet locally: {target.name}")
+    return str(target)
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +415,8 @@ def run_agent(input_data=None, on_step=None):
         step(f"ERROR: Excel file not found: {file_path}")
         return _failure(f"Excel file not found: {file_path}")
 
+    archived_input_path = _archive_pct_input_sheet(file_path, on_step=step)
+
     # --- Step 4: Read input Excel ---
     step(f"[Excel Reader] Opening: {Path(file_path).name}")
     time.sleep(STEP_DELAY)
@@ -420,7 +444,7 @@ def run_agent(input_data=None, on_step=None):
     # parallel ChunkedPipelineManager with progressively more workers.
     fast_level, fast_profile = resolve_fast_level(input_data)
     step(
-        f"[Mode] fast_level={fast_level} {fast_profile['emoji']} {fast_profile['label']} "
+        f"[Mode] fast_level={fast_level} {fast_profile['marker']} {fast_profile['label']} "
         f"→ pipelines={fast_profile['pipelines']}, browsers={fast_profile['browsers']}, "
         f"downloads={fast_profile['downloads']}, ocr={fast_profile['ocr']}"
     )
@@ -435,6 +459,9 @@ def run_agent(input_data=None, on_step=None):
                 (input_data or {}).get("register_stop_handler"),
                 fast_profile=fast_profile,
                 live_level_getter=live_level_getter,
+                archived_input_path=archived_input_path,
+                mode=mode,
+                gazette=gazette,
             )
         return _run_chunked_sequential_mode(
             patent_rows, file_path, agent_name, strategy,
@@ -442,6 +469,9 @@ def run_agent(input_data=None, on_step=None):
             (input_data or {}).get("register_stop_handler"),
             fast_profile=fast_profile,
             live_level_getter=live_level_getter,
+            archived_input_path=archived_input_path,
+            mode=mode,
+            gazette=gazette,
         )
 
     # --- Sequential mode (< PIPELINE_THRESHOLD rows) ---
@@ -600,12 +630,13 @@ def run_agent(input_data=None, on_step=None):
 
     run_status = "stopped" if (stop_requested() or aborted_early) else "success"
     output_path = ""
+    not_found_path = ""
     if results:
         try:
-            output_path = generate_work_report(results, on_step=step)
-            step(f"Output saved: {Path(output_path).name}")
+            output_path, not_found_path = write_pct_reports(results, on_step=step, gazette=gazette)
+            step(f"Output saved: {Path(output_path).name} + {Path(not_found_path).name}")
         except Exception as e:
-            step(f"[Output] FAILED to write Work Report: {e} — "
+            step(f"[Output] FAILED to write reports: {e} — "
                  f"{len(results)} rows are still in memory but the .xlsx was not produced")
     else:
         step("No processed rows available to write into Work Report")
@@ -617,7 +648,7 @@ def run_agent(input_data=None, on_step=None):
 
     agent_result = _build_partial_result(
         run_status, results, total, found_count, not_found_count,
-        error_count, output_path=output_path,
+        error_count, output_path=output_path, not_found_path=not_found_path,
     )
     agent_result["summary"]["skipped"] = len([r for r in results if r["status"] == "skipped"])
 
@@ -657,6 +688,10 @@ def run_agent(input_data=None, on_step=None):
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
+    agent_result["input_file"] = archived_input_path or str(file_path)
+    agent_result["input_file_name"] = Path(archived_input_path or file_path).name
+    agent_result["mode"] = mode
+    agent_result["gazette"] = gazette or ""
     return agent_result
 
     step(
@@ -666,6 +701,8 @@ def run_agent(input_data=None, on_step=None):
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
+    agent_result["input_file"] = str(file_path)
+    agent_result["input_file_name"] = Path(file_path).name
     return agent_result
 
 
@@ -675,7 +712,7 @@ def run_agent(input_data=None, on_step=None):
 def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                        start_time, step, browser_event, stop_requested=lambda: False,
                        register_stop_handler=None, fast_profile=None,
-                       live_level_getter=None):
+                       live_level_getter=None, archived_input_path="", mode="", gazette=""):
     """Run the parallel pipeline for 50+ rows.  No artificial delays."""
     profile = fast_profile or FAST_MODE_LEVELS[3]
     browser_workers = profile["browsers"]
@@ -755,18 +792,19 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
             max_iterations=int(os.getenv("PCT_RETRY_MAX_ITERATIONS", "2")),
         )
 
-    # Generate Work Report from whatever rows survived.
+    # Generate the two deliverables from whatever rows survived.
     output_path = ""
+    not_found_path = ""
     if results:
-        step("Generating Work Report Excel...")
+        step("Generating worked + not-found Excel reports...")
         try:
-            output_path = generate_work_report(results, on_step=step)
-            step(f"Output saved: {Path(output_path).name}")
+            output_path, not_found_path = write_pct_reports(results, on_step=step, gazette=gazette)
+            step(f"Output saved: {Path(output_path).name} + {Path(not_found_path).name}")
         except Exception as e:
-            step(f"[Output] Could not write Work Report: {e} — "
+            step(f"[Output] Could not write reports: {e} — "
                  f"{len(results)} rows are in the JSONL log")
     else:
-        step("No rows processed — Work Report not generated")
+        step("No rows processed — reports not generated")
 
     # Self-tests
     step("Running self-tests...")
@@ -786,6 +824,7 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
             "errors": error_count,
         },
         "output_file": output_path,
+        "not_found_file": not_found_path,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -812,6 +851,10 @@ def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
+    agent_result["input_file"] = archived_input_path or str(file_path)
+    agent_result["input_file_name"] = Path(archived_input_path or file_path).name
+    agent_result["mode"] = mode
+    agent_result["gazette"] = gazette or ""
     return agent_result
 
 
@@ -961,9 +1004,9 @@ def _retry_system_failures(results, patent_rows, file_path, on_step,
 # Output generator — Work Report format
 # ---------------------------------------------------------------------------
 def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
-                       start_time, step, browser_event, stop_requested=lambda: False,
-                       register_stop_handler=None, fast_profile=None,
-                       live_level_getter=None):
+                                 start_time, step, browser_event, stop_requested=lambda: False,
+                                 register_stop_handler=None, fast_profile=None,
+                                 live_level_getter=None, archived_input_path="", mode="", gazette=""):
     """Run large datasets in stable sequential chunks.
 
     Single browser, one row at a time, but split into chunks for stability.
@@ -997,11 +1040,11 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
     headless_mode = _resolve_headless(profile)
     if headless_mode:
         step(
-            f"[Mode {profile['emoji']} {profile['label']}] Running headless — "
+            f"[Mode {profile['marker']} {profile['label']}] Running headless - "
             f"only opens a Chromium popup if DIY OCR + GPT-4o Vision both fail."
         )
     else:
-        step(f"[Mode {profile['emoji']} {profile['label']}] Headed mode (PCT_HEADLESS_MODE=false) — visible Chromium window will open.")
+        step(f"[Mode {profile['marker']} {profile['label']}] Headed mode (PCT_HEADLESS_MODE=false) - visible Chromium window will open.")
 
     patent_browser = PatentBrowser(
         headless=headless_mode,
@@ -1037,8 +1080,8 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
         remaining = patent_rows[current_row_index:]
         new_profile = FAST_MODE_LEVELS[live]
         step(
-            f"[Mode] Live upgrade to L{live} {new_profile['emoji']} {new_profile['label']} "
-            f"— handing off {len(remaining)} remaining row(s) to the parallel pipeline"
+            f"[Mode] Live upgrade to L{live} {new_profile['marker']} {new_profile['label']} "
+            f"- handing off {len(remaining)} remaining row(s) to the parallel pipeline"
         )
         return remaining
 
@@ -1265,15 +1308,16 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
             f"input rows {total}"
         )
 
-    step("Generating Work Report Excel...")
+    step("Generating worked + not-found Excel reports...")
     run_status = "stopped" if stop_requested() else "success"
     output_path = ""
+    not_found_path = ""
     if results:
         try:
-            output_path = generate_work_report(results, on_step=step)
-            step(f"Output saved: {Path(output_path).name}")
+            output_path, not_found_path = write_pct_reports(results, on_step=step, gazette=gazette)
+            step(f"Output saved: {Path(output_path).name} + {Path(not_found_path).name}")
         except Exception as e:
-            step(f"[Output] FAILED to write Work Report: {e} — "
+            step(f"[Output] FAILED to write reports: {e} — "
                  f"results were already streamed to the resumable JSONL log")
     else:
         step("No processed rows available to write into Work Report")
@@ -1281,7 +1325,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
     step("Running self-tests...")
     agent_result = _build_partial_result(
         run_status, results, total, found_count, not_found_count,
-        error_count, output_path=output_path,
+        error_count, output_path=output_path, not_found_path=not_found_path,
     )
 
     test_result = tests.run(agent_result)
@@ -1317,6 +1361,10 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
 
     agent_result["execution_time"] = round(execution_time, 2)
     agent_result["attempts"] = 1
+    agent_result["input_file"] = archived_input_path or str(file_path)
+    agent_result["input_file_name"] = Path(archived_input_path or file_path).name
+    agent_result["mode"] = mode
+    agent_result["gazette"] = gazette or ""
     return agent_result
 
 
@@ -1327,15 +1375,39 @@ WORK_REPORT_HEADERS = [
 ]
 
 
-def generate_work_report(results, on_step=None):
-    """Generate a Work Report Excel matching the standard output format."""
+def write_pct_reports(results, on_step=None, gazette=None):
+    """Write the two PCT deliverables and return (worked_path, not_found_path).
+
+    - worked_<gazette>.xlsx    : rows where contacts were extracted (status found)
+    - not_found_<gazette>.xlsx : the remaining rows (no contacts / errors)
+
+    Both files are always produced (headers only when a bucket is empty) so the
+    completion email can reliably attach both.
+    """
+    found_rows = [r for r in results if r.get("status") == "found"]
+    miss_rows = [r for r in results if r.get("status") != "found"]
+    worked_path = generate_work_report(found_rows, on_step=on_step, gazette=gazette, kind="worked")
+    not_found_path = generate_work_report(miss_rows, on_step=on_step, gazette=gazette, kind="not_found")
+    return worked_path, not_found_path
+
+
+def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
+    """Generate a PCT report Excel matching the standard output format.
+
+    ``kind`` selects which deliverable this is:
+      - "worked"    -> worked_<gazette>.xlsx   (found rows)
+      - "not_found" -> not_found_<gazette>.xlsx (misses)
+    Named after the gazette when available; uploaded sheets with no gazette
+    fall back to a dated name.
+    """
     results = sorted(results, key=lambda item: item.get("row", 0))
     wb = openpyxl.Workbook()
     ws = wb.active
 
-    # Sheet name: "Work Report DD-Month-YYYY"
+    # Sheet name reflects the deliverable, e.g. "Work Report DD-Month-YYYY".
     date_str = datetime.now().strftime("%d-%B-%Y")
-    sheet_name = f"Work Report {date_str}"
+    title_prefix = "Not Found" if kind == "not_found" else "Work Report"
+    sheet_name = f"{title_prefix} {date_str}"
     ws.title = sheet_name[:31]
 
     # Write headers with bold font
@@ -1360,22 +1432,38 @@ def generate_work_report(results, on_step=None):
         ws.cell(row=i, column=12, value="")            # Researcher — filled manually
         ws.cell(row=i, column=13, value="")            # Deadline — filled manually
 
-    # Save to outputs/
-    output_dir = Path(__file__).parent.parent.parent / "outputs"
+    # PCT output files are local-only. The database may store metadata and
+    # a local path, but the report sheet itself stays in this folder.
+    output_dir = PCT_OUTPUT_DIR.resolve()
     output_dir.mkdir(exist_ok=True)
 
-    output_name = f"Work Report {date_str}.xlsx"
+    # Filename: prefer the gazette (e.g. "worked_28-2025.xlsx" /
+    # "not_found_28-2025.xlsx"); fall back to a dated name for uploaded sheets.
+    gazette_slug = str(gazette or "").strip().replace("/", "-").replace("\\", "-").replace(" ", "")
+    if kind == "not_found":
+        base_name = f"not_found_{gazette_slug}" if gazette_slug else f"Not Found Report {date_str}"
+    else:
+        base_name = f"worked_{gazette_slug}" if gazette_slug else f"Work Report {date_str}"
+
+    output_name = f"{base_name}.xlsx"
     output_path = output_dir / output_name
     counter = 2
     while output_path.exists():
-        output_name = f"Work Report {date_str} book{counter}.xlsx"
+        output_name = f"{base_name} book{counter}.xlsx"
         output_path = output_dir / output_name
         counter += 1
+
+    output_path = output_path.resolve()
+    if output_path.suffix.lower() not in PCT_REPORT_EXTENSIONS:
+        raise ValueError(f"Unsupported PCT output extension: {output_path.suffix}")
+    if output_dir not in output_path.parents:
+        raise ValueError("PCT output must be saved inside the local outputs folder")
 
     wb.save(str(output_path))
 
     if on_step:
-        on_step(f"[Output] Work Report saved: {output_name} ({len(results)} rows)")
+        label = "Not-found list" if kind == "not_found" else "Work Report"
+        on_step(f"[Output] {label} saved: {output_name} ({len(results)} rows)")
 
     return str(output_path)
 

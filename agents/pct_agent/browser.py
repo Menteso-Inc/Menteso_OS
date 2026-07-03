@@ -310,6 +310,54 @@ def create_browser_pool(n_pages=20, headless=True):
     return pw, browser, pages, proxies
 
 
+def create_worker_browser(headless=True, proxy=None):
+    """Create a self-contained Playwright browser + page for ONE worker thread.
+
+    The sync Playwright API binds every object to the thread that created it,
+    so a page created in one thread CANNOT be driven from another — doing so
+    raises "Cannot switch to a different thread" and makes every navigation
+    fail (which is why the pooled/threaded pipeline used to return not_found
+    for every row). Each browser worker thread must therefore call this from
+    inside its own thread and own the browser for its whole life.
+
+    When `proxy` is given, the context carries its own exit IP. Returns
+    (pw, browser, page).
+    """
+    if not HAS_PLAYWRIGHT:
+        raise ImportError(
+            "Playwright is required. "
+            "Install with: pip install playwright && python -m playwright install chromium"
+        )
+    DOWNLOADS_DIR.mkdir(exist_ok=True)
+
+    pw = sync_playwright().start()
+    browser = _launch_browser(pw, headless=headless, per_context=bool(proxy))
+
+    import os as _os
+    block_resources = (
+        (_os.getenv("PCT_POOL_BLOCK_RESOURCES") or "false").lower()
+        in ("1", "true", "yes")
+    )
+
+    ctx_kwargs = dict(
+        accept_downloads=True,
+        viewport={"width": 1280, "height": 720},
+        user_agent=UA,
+        locale="en-US",
+    )
+    if proxy:
+        ctx_kwargs["proxy"] = proxy
+    ctx = browser.new_context(**ctx_kwargs)
+    page = ctx.new_page()
+    page.add_init_script(
+        "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
+    )
+    if block_resources:
+        page.route("**/*", _route_handler)
+
+    return pw, browser, page
+
+
 def close_browser_pool(pw, browser):
     """Safely close browser pool."""
     try:

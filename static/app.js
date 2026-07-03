@@ -256,11 +256,72 @@ async function loadAgentRunStatus(name) {
         const res = await fetch(`/api/agents/${name}/run-status`);
         const data = await res.json();
         state.agentRunStatus = data.status || "idle";
+        applyRunStatusSnapshot(data);
+        if (name === "pct_agent" && data.status === "running") {
+            startRunStatusPoller();
+        }
         return state.agentRunStatus;
     } catch (e) {
         console.error("Failed to load agent run status:", e);
         state.agentRunStatus = "idle";
         return "idle";
+    }
+}
+
+function applyRunStatusSnapshot(data) {
+    if (!data || typeof data !== "object") return;
+    if (data.lastEvent?.type === "complete" && state.isRunning) {
+        state.lastResult = data.lastEvent.result || null;
+        state.isRunning = false;
+        state.stopRequested = false;
+        state.agentRunStatus = "idle";
+        state.browser.event = "done";
+        if (state.runMetrics) state.runMetrics.finishedAt = Date.now();
+        stopRunMetricsTicker();
+    }
+    const metrics = data.metrics || {};
+    if (state.runMetrics && metrics) {
+        const previousProcessed = state.runMetrics.processedRows || 0;
+        if (Number(metrics.totalRows) > 0) state.runMetrics.totalRows = Number(metrics.totalRows);
+        if (Number(metrics.processedRows) >= 0) state.runMetrics.processedRows = Number(metrics.processedRows);
+        if (Number(metrics.foundRows) >= 0) state.runMetrics.foundRows = Number(metrics.foundRows);
+        if (Number(metrics.notFoundRows) >= 0) state.runMetrics.notFoundRows = Number(metrics.notFoundRows);
+        if (Number(metrics.errorRows) >= 0) state.runMetrics.errorRows = Number(metrics.errorRows);
+        if (Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
+        const newProcessed = state.runMetrics.processedRows || 0;
+        const delta = Math.max(0, newProcessed - previousProcessed);
+        const now = Date.now();
+        for (let i = 0; i < delta; i++) {
+            pushRowCompletionTimestamp(now);
+        }
+        updateRunMetricsPanel();
+    }
+    if (data.browser && typeof data.browser === "object") {
+        Object.assign(state.browser, data.browser);
+        updateBrowserPreview();
+    }
+    if (Array.isArray(data.logs) && data.logs.length) {
+        const existing = new Set(state.executionLog.map((line) => `${line.time}|${line.message}`));
+        data.logs.forEach((line) => {
+            const entry = {
+                time: line.time || "",
+                message: String(line.message || ""),
+                type: line.type || classifyMessage(String(line.message || "")),
+            };
+            const key = `${entry.time}|${entry.message}`;
+            if (entry.message && !existing.has(key)) {
+                existing.add(key);
+                state.executionLog.push(entry);
+            }
+        });
+        if (state.executionLog.length > 220) {
+            state.executionLog.splice(0, state.executionLog.length - 220);
+        }
+        const terminal = document.getElementById("terminal");
+        if (terminal) {
+            terminal.innerHTML = state.executionLog.map((l) => createTerminalLineHTML(l)).join("") + '<div class="terminal-cursor"></div>';
+            terminal.scrollTop = terminal.scrollHeight;
+        }
     }
 }
 
@@ -312,6 +373,7 @@ async function playCaptchaAlertSound() {
 // Run Metrics — stopwatch + ETA + captcha tier breakdown
 // ---------------------------------------------------------------------------
 let runMetricsTickerId = null;
+let runStatusPollerId = null;
 
 function startRunMetricsTicker() {
     stopRunMetricsTicker();
@@ -319,12 +381,32 @@ function startRunMetricsTicker() {
         if (state.runMetrics) state.runMetrics.lastTickAt = Date.now();
         updateRunMetricsPanel();
     }, 1000);
+    startRunStatusPoller();
 }
 
 function stopRunMetricsTicker() {
     if (runMetricsTickerId !== null) {
         clearInterval(runMetricsTickerId);
         runMetricsTickerId = null;
+    }
+    stopRunStatusPoller();
+}
+
+function startRunStatusPoller() {
+    stopRunStatusPoller();
+    runStatusPollerId = setInterval(async () => {
+        if (!state.selectedAgent || (!state.isRunning && state.agentRunStatus !== "running" && state.agentRunStatus !== "stopping")) {
+            return;
+        }
+        await loadAgentRunStatus(state.selectedAgent.module_name);
+        renderMain();
+    }, 2000);
+}
+
+function stopRunStatusPoller() {
+    if (runStatusPollerId !== null) {
+        clearInterval(runStatusPollerId);
+        runStatusPollerId = null;
     }
 }
 
@@ -392,6 +474,9 @@ function computeRunMetricsView(rm) {
         ratePerMin = (processed / elapsedSec) * 60;
         etaText = remaining > 0 ? "calculating…" : "0";
     }
+
+    if (String(etaText).toLowerCase().includes("calculating")) etaText = "Calc";
+    if (String(etaText).toLowerCase().includes("recalibrating")) etaText = "Recal";
 
     // Auto-solved vs manual breakdown
     const totals = rm.captchaTotals || {};
@@ -647,6 +732,9 @@ function updateRunMetricsPanel() {
 
     const label = panel.querySelector(".run-metrics-stopwatch .run-metrics-label");
     if (label) label.textContent = v.running ? "ELAPSED" : "FINAL TIME";
+
+    // Keep the Scraping Browser extraction tally in sync on every stats tick.
+    updateExtractSummary();
 }
 
 async function loadWipoGazettes(force = false) {
@@ -1091,6 +1179,36 @@ function addLogLine(message, type = "step") {
 // ---------------------------------------------------------------------------
 // Browser Preview — live DOM updates
 // ---------------------------------------------------------------------------
+// Always-visible extraction tally in the Scraping Browser panel, aggregated
+// across ALL parallel tabs (not just whichever one flashed last). This is the
+// reliable answer to "how many extracted vs not". Driven by runMetrics so it
+// refreshes on every stats tick, independent of per-tab browser events.
+function updateExtractSummary() {
+    const summaryEl = document.getElementById("browser-extract-summary");
+    if (!summaryEl) return;
+    const rm = state.runMetrics || {};
+    const found = rm.foundRows || 0;
+    const notFound = rm.notFoundRows || 0;
+    const errors = rm.errorRows || 0;
+    const processed = rm.processedRows || (found + notFound + errors);
+    const total = rm.totalRows || 0;
+    const rate = processed > 0 ? Math.round((found / processed) * 100) : 0;
+    summaryEl.innerHTML = `
+        <div class="bxs-cell bxs-found" title="Contacts extracted">
+            <span class="bxs-value">${found}</span><span class="bxs-label">Extracted</span>
+        </div>
+        <div class="bxs-cell bxs-not" title="Processed but no contact found">
+            <span class="bxs-value">${notFound}</span><span class="bxs-label">Not extracted</span>
+        </div>
+        <div class="bxs-cell bxs-err" title="Errors / captcha-blocked">
+            <span class="bxs-value">${errors}</span><span class="bxs-label">Errors</span>
+        </div>
+        <div class="bxs-cell bxs-prog" title="Rows processed of total">
+            <span class="bxs-value">${processed}${total ? `/${total}` : ""}</span><span class="bxs-label">Processed${rate ? ` · ${rate}% hit` : ""}</span>
+        </div>
+    `;
+}
+
 function updateBrowserPreview() {
     const urlBar = document.getElementById("browser-url");
     const statusEl = document.getElementById("browser-status");
@@ -1098,6 +1216,8 @@ function updateBrowserPreview() {
     if (!urlBar || !content) return;
 
     const b = state.browser;
+
+    updateExtractSummary();
 
     // Update URL bar
     urlBar.textContent = b.url || "about:blank";
@@ -1780,6 +1900,7 @@ function renderMain() {
                 ${showBrowserPanel ? `
                 <div class="browser-preview-panel">
                     <div class="section-title">Scraping Browser${state.pipelineMode ? ' <span class="browser-pool-hint">(latest of N parallel tabs)</span>' : ""}</div>
+                    <div class="browser-extract-summary" id="browser-extract-summary"></div>
                     <div class="browser-frame">
                         <div class="browser-toolbar">
                             <div class="browser-dots">
