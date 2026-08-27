@@ -6,13 +6,18 @@ import sys
 import os
 import json
 import asyncio
+import ast
 import queue
 import threading
 import shutil
 import secrets
+import hmac
+import hashlib
+import base64
 import time
 import re
 import subprocess
+import traceback
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
@@ -21,33 +26,48 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fastapi import FastAPI, UploadFile, File, Body
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+except Exception:
+    pass
+
+from fastapi import FastAPI, UploadFile, File, Body, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from shared.agent_registry import discover_agents, get_agent_runner
+from shared import db_storage
+from shared.email_notifications import send_pct_completion_email
 from shared.memory import load_memory
 from shared.social_publishing import publish_article_to_social, social_status_snapshot
 from agents.pct_agent.scraper import fetch_wipo_gazettes_async
 from agents.patentzoom_seo_agent import get_dashboard_data as get_seo_dashboard_data
+from agents.accountant_agent import get_dashboard_data as get_accountant_dashboard_data
+
+OVERDUE_REMINDER_STATUS_FILE = Path(os.getenv(
+    "OVERDUE_REMINDER_STATUS_FILE", "/app/accountant-status/overdue-reminder-status.json"
+))
 
 app = FastAPI(title="Menteso Virtual Office")
 RUN_CONTROLS = {}
+RUN_LIVE_STATUS = {}
 GOOGLE_OAUTH_STATES = {}
 SEO_SCHEDULER_THREAD = None
 SEO_SCHEDULER_STOP = threading.Event()
 SEO_BROWSER_LOCK = threading.Lock()
 SEO_BROWSER_SESSION_THREAD = None
 SEO_BROWSER_PROCESS = None
+SEO_DASHBOARD_CACHE = {}
+SEO_DASHBOARD_CACHE_LOCK = threading.Lock()
+SEO_DASHBOARD_CACHE_TTL_SECONDS = 60
 SEO_CHROME_DEBUG_PORT = 9222
 SEO_WORKSPACE_PROPERTY_KEYS = {
-    "patentzoom": "GOOGLE_SEARCH_CONSOLE_PROPERTY",
     "patent-drawing-experts": "PATENT_DRAWING_EXPERTS_GOOGLE_SEARCH_CONSOLE_PROPERTY",
     "ip-docketers": "IP_DOCKETERS_GOOGLE_SEARCH_CONSOLE_PROPERTY",
     "menteso": "MENTESO_GOOGLE_SEARCH_CONSOLE_PROPERTY",
 }
 SEO_WORKSPACE_AUTO_PUBLISH_KEYS = {
-    "patentzoom": "AUTO_PUBLISH",
     "patent-drawing-experts": "PATENT_DRAWING_EXPERTS_AUTO_PUBLISH",
     "ip-docketers": "IP_DOCKETERS_AUTO_PUBLISH",
     "menteso": "MENTESO_AUTO_PUBLISH",
@@ -56,41 +76,365 @@ SEO_WORKSPACE_AUTO_PUBLISH_KEYS = {
 
 def _get_run_status(name: str):
     control = RUN_CONTROLS.get(name)
+    live = RUN_LIVE_STATUS.get(name, {})
     if not control:
-        return {"status": "idle"}
+        return {"status": "idle", **live} if live else {"status": "idle"}
 
     thread = control.get("thread")
     stop_event = control.get("stop_event")
     if thread and thread.is_alive():
         return {
             "status": "stopping" if stop_event and stop_event.is_set() else "running",
+            **live,
         }
 
     # Thread died without the worker's finally block clearing the entry —
     # treat that as a crashed run and self-heal so the UI can move on.
     RUN_CONTROLS.pop(name, None)
-    return {"status": "idle", "recovered": True}
+    return {"status": "idle", "recovered": True, **live}
+
+
+def _append_live_log(snapshot: dict, message: str, event_type: str = "step"):
+    logs = snapshot.setdefault("logs", [])
+    logs.append({
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "message": str(message),
+        "type": event_type,
+    })
+    if len(logs) > 200:
+        del logs[:-200]
+
+
+def _update_live_status(name: str, event):
+    snapshot = RUN_LIVE_STATUS.setdefault(name, {
+        "logs": [],
+        "metrics": {
+            "totalRows": 0,
+            "processedRows": 0,
+            "foundRows": 0,
+            "notFoundRows": 0,
+            "errorRows": 0,
+        },
+        "browser": {},
+        "updatedAt": _now_iso() if "_now_iso" in globals() else datetime.now(timezone.utc).isoformat(),
+    })
+    snapshot["updatedAt"] = _now_iso() if "_now_iso" in globals() else datetime.now(timezone.utc).isoformat()
+
+    if not isinstance(event, dict):
+        message = str(event)
+        _append_live_log(snapshot, message)
+        match = re.search(r"(?:Parsed|Ready to process)\s+(\d+)\s+patent", message, re.I)
+        if match:
+            snapshot["metrics"]["totalRows"] = int(match.group(1))
+        return
+
+    event_type = str(event.get("type") or "step")
+    if event_type == "step":
+        message = str(event.get("message") or "")
+        if message:
+            _append_live_log(snapshot, message)
+            match = re.search(r"(?:Parsed|Ready to process)\s+(\d+)\s+patent", message, re.I)
+            if match:
+                snapshot["metrics"]["totalRows"] = int(match.group(1))
+        return
+
+    if event_type == "browser":
+        browser = {k: v for k, v in event.items() if k != "type"}
+        snapshot["browser"] = {**snapshot.get("browser", {}), **browser}
+        metrics = snapshot.setdefault("metrics", {})
+        total = event.get("total")
+        if isinstance(total, int) and total > 0:
+            metrics["totalRows"] = total
+        if event.get("event") in {"contacts", "no_pdf"}:
+            processed = int(metrics.get("processedRows") or 0) + 1
+            metrics["processedRows"] = processed
+            status = str(event.get("status") or "")
+            if event.get("event") == "no_pdf" or status == "not_found":
+                metrics["notFoundRows"] = int(metrics.get("notFoundRows") or 0) + 1
+            elif status == "found":
+                metrics["foundRows"] = int(metrics.get("foundRows") or 0) + 1
+            else:
+                metrics["errorRows"] = int(metrics.get("errorRows") or 0) + 1
+        return
+
+    if event_type == "pipeline_stats":
+        metrics = snapshot.setdefault("metrics", {})
+        metrics["totalRows"] = int(event.get("total") or metrics.get("totalRows") or 0)
+        metrics["foundRows"] = int(event.get("found") or 0)
+        metrics["notFoundRows"] = int(event.get("not_found") or 0)
+        metrics["errorRows"] = int(event.get("errors") or 0)
+        metrics["processedRows"] = metrics["foundRows"] + metrics["notFoundRows"] + metrics["errorRows"]
+        snapshot["pipeline"] = event
+        return
+
+    if event_type in {"complete", "error"}:
+        snapshot["lastEvent"] = event
+        if event_type == "complete":
+            result = event.get("result") if isinstance(event.get("result"), dict) else {}
+            summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+            metrics = snapshot.setdefault("metrics", {})
+            metrics["totalRows"] = int(summary.get("total") or metrics.get("totalRows") or 0)
+            metrics["processedRows"] = int(summary.get("processed") or metrics.get("processedRows") or 0)
+            metrics["foundRows"] = int(summary.get("found") or metrics.get("foundRows") or 0)
+            metrics["notFoundRows"] = int(summary.get("not_found") or metrics.get("notFoundRows") or 0)
+            metrics["errorRows"] = int(summary.get("errors") or metrics.get("errorRows") or 0)
+        return
 
 # Directories
 PROJECT_DIR = Path(__file__).parent
 STATIC_DIR = PROJECT_DIR / "static"
 UPLOADS_DIR = PROJECT_DIR / "uploads"
 OUTPUTS_DIR = PROJECT_DIR / "outputs"
+PCT_OUTPUTS_DIR = OUTPUTS_DIR / "pct-work-sheets"
+LOGS_DIR = PROJECT_DIR / "logs"
+MENTESO_DIR = PROJECT_DIR / ".menteso"
 WIPO_GAZETTES_CACHE = STATIC_DIR / "wipo_gazettes_cache.json"
+DEPLOYMENT_LOG_FILE = LOGS_DIR / "deployments.jsonl"
 SEO_INDEXING_STATE_FILE = PROJECT_DIR / "agents" / "patentzoom_seo_agent" / "state" / "indexing-status.json"
 SEO_SCHEDULER_STATE_FILE = PROJECT_DIR / "agents" / "patentzoom_seo_agent" / "state" / "scheduler-state.json"
 SEO_BROWSER_PROFILE_DIR = PROJECT_DIR / "agents" / "patentzoom_seo_agent" / "runtime" / "browser" / "google-search-console"
 ENV_FILE = PROJECT_DIR / ".env"
+USERS_FILE = MENTESO_DIR / "users.json"
+SESSION_SECRET_FILE = MENTESO_DIR / "session.secret"
+AUTH_COOKIE_NAME = "menteso_os_session"
+SESSION_TTL_SECONDS = 12 * 60 * 60
+DEFAULT_ADMIN_USERNAME = os.getenv("MENTESO_OS_ADMIN_USER", "admin")
+DEFAULT_ADMIN_PASSWORD = os.getenv("MENTESO_OS_ADMIN_PASSWORD", "U1WZLFVPK23stdThIgu8")
+AUTH_EXEMPT_PATHS = {
+    "/login",
+    "/api/login",
+    "/favicon.ico",
+    "/api/accountant/gmail-push",
+}
+ACCOUNTANT_PUSH_AUDIENCE = os.getenv(
+    "ACCOUNTANT_PUSH_AUDIENCE", "https://os.menteso.com/api/accountant/gmail-push"
+)
+ACCOUNTANT_PUSH_SA_EMAIL = os.getenv(
+    "ACCOUNTANT_PUSH_SA_EMAIL",
+    "invoice-agent-push@invoicereqagent.iam.gserviceaccount.com",
+)
+ACCOUNTANT_TRIGGER_FILE = Path(os.getenv(
+    "ACCOUNTANT_TRIGGER_FILE", "/app/accountant-status/gmail-push.trigger"
+))
 UPLOADS_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
+PCT_OUTPUTS_DIR.mkdir(exist_ok=True)
+LOGS_DIR.mkdir(exist_ok=True)
+MENTESO_DIR.mkdir(exist_ok=True)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+def _json_response(status_code: int, payload: dict):
+    return JSONResponse(payload, status_code=status_code)
+
+
+def _password_hash(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200_000)
+    return f"pbkdf2_sha256$200000${salt}${base64.b64encode(digest).decode('ascii')}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, rounds_text, salt, expected = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), int(rounds_text))
+        actual = base64.b64encode(digest).decode("ascii")
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+
+def _read_json_file(path: Path, fallback):
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return fallback
+    return fallback
+
+
+def _write_json_file(path: Path, payload):
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def _ensure_auth_files():
+    if not SESSION_SECRET_FILE.exists():
+        SESSION_SECRET_FILE.write_text(secrets.token_urlsafe(48), encoding="utf-8")
+    payload = _read_json_file(USERS_FILE, {})
+    users = payload.get("users") if isinstance(payload, dict) else None
+    if not isinstance(users, list) or not users:
+        _write_json_file(USERS_FILE, {
+            "version": 1,
+            "roles": {
+                "admin": ["*"],
+                "operator": ["read", "run_agents"],
+                "viewer": ["read"],
+            },
+            "users": [
+                {
+                    "username": DEFAULT_ADMIN_USERNAME,
+                    "display_name": "Menteso Admin",
+                    "role": "admin",
+                    "active": True,
+                    "password_hash": _password_hash(DEFAULT_ADMIN_PASSWORD),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ],
+        })
+
+
+def _load_users_payload():
+    _ensure_auth_files()
+    payload = _read_json_file(USERS_FILE, {})
+    if not isinstance(payload, dict):
+        return {"users": [], "roles": {}}
+    return payload
+
+
+def _session_secret() -> bytes:
+    _ensure_auth_files()
+    return SESSION_SECRET_FILE.read_text(encoding="utf-8").strip().encode("utf-8")
+
+
+def _sign_session(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    signature = hmac.new(_session_secret(), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _decode_session(cookie_value: str | None):
+    if not cookie_value or "." not in cookie_value:
+        return None
+    encoded, signature = cookie_value.rsplit(".", 1)
+    expected = hmac.new(_session_secret(), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        padded = encoded + ("=" * (-len(encoded) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+    except Exception:
+        return None
+    if int(payload.get("exp") or 0) < int(time.time()):
+        return None
+    return payload
+
+
+def _find_user(username: str):
+    for user in _load_users_payload().get("users", []):
+        if str(user.get("username", "")).lower() == username.lower():
+            return user
+    return None
+
+
+def _public_user(user: dict):
+    return {
+        "username": user.get("username"),
+        "display_name": user.get("display_name") or user.get("username"),
+        "role": user.get("role") or "viewer",
+        "active": bool(user.get("active", True)),
+    }
+
+
+def _request_user(request: Request):
+    session = _decode_session(request.cookies.get(AUTH_COOKIE_NAME))
+    if not session:
+        return None
+    user = _find_user(str(session.get("sub") or ""))
+    if not user or not user.get("active", True):
+        return None
+    return user
+
+
+def _is_auth_exempt(path: str) -> bool:
+    return path in AUTH_EXEMPT_PATHS or path.startswith("/static/")
+
+
+@app.middleware("http")
+async def require_app_login(request: Request, call_next):
+    if _is_auth_exempt(request.url.path):
+        return await call_next(request)
+    user = _request_user(request)
+    if user:
+        request.state.user = user
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return _json_response(401, {"error": "login_required"})
+    return RedirectResponse("/login", status_code=302)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    html_path = STATIC_DIR / "login.html"
+    with open(html_path, encoding="utf-8") as f:
+        return f.read()
+
+
+@app.post("/api/login")
+async def api_login(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        form = await request.form()
+        payload = dict(form)
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "")
+    user = _find_user(username)
+    if not user or not user.get("active", True) or not _verify_password(password, str(user.get("password_hash") or "")):
+        return _json_response(401, {"ok": False, "error": "invalid_credentials"})
+    now = int(time.time())
+    session = _sign_session({
+        "sub": user.get("username"),
+        "role": user.get("role") or "viewer",
+        "iat": now,
+        "exp": now + SESSION_TTL_SECONDS,
+    })
+    response = JSONResponse({"ok": True, "user": _public_user(user)})
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        session,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/logout")
+async def api_logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    return response
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    return {"ok": True, "user": _public_user(request.state.user)}
+
+
 @app.on_event("startup")
 async def startup_event():
-    _ensure_local_seo_scheduler()
+    try:
+        db_storage.ensure_schema()
+    except Exception as exc:
+        print(f"Database schema initialization skipped: {exc}", file=sys.stderr)
+    try:
+        threading.Thread(target=_bootstrap_database_snapshots, daemon=True, name="db-snapshot-bootstrap").start()
+    except Exception as exc:
+        print(f"Database snapshot bootstrap skipped: {exc}", file=sys.stderr)
+    try:
+        if not _is_truthy(os.getenv("MENTESO_DISABLE_EMBEDDED_SEO_SCHEDULER", "false")):
+            _ensure_local_seo_scheduler()
+            print("SEO scheduler started.")
+    except Exception as exc:
+        print(f"SEO scheduler startup skipped: {exc}", file=sys.stderr)
 
 
 @app.on_event("shutdown")
@@ -128,12 +472,16 @@ def _load_env_map():
             if (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
                 value = value[1:-1]
             data[key.strip()] = value
+    # Container deployments provide runtime configuration through process
+    # environment variables rather than an /app/.env file.
+    data.update(os.environ)
     return data
 
 
 def _resolve_seo_workspace_id(workspace_id: str | None):
-    key = str(workspace_id or "patentzoom").strip().lower() or "patentzoom"
-    return key if key in SEO_WORKSPACE_PROPERTY_KEYS else "patentzoom"
+    default_workspace = "patent-drawing-experts"
+    key = str(workspace_id or default_workspace).strip().lower() or default_workspace
+    return key if key in SEO_WORKSPACE_PROPERTY_KEYS else default_workspace
 
 
 def _workspace_property_env_key(workspace_id: str | None):
@@ -197,8 +545,24 @@ def _write_env_updates(updates: dict):
     ENV_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+def _public_base_url():
+    env = _load_env_map()
+    for key in ["PUBLIC_BASE_URL", "APP_BASE_URL", "CLOUDFLARE_TUNNEL_URL", "NEXT_PUBLIC_SEO_API_BASE_URL"]:
+        value = str(env.get(key) or os.getenv(key) or "").strip().rstrip("/")
+        if value.startswith("https://") or value.startswith("http://"):
+            return value
+    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    return f"http://{host}:{os.getenv('DASHBOARD_PORT', '8000')}"
+
+
 def _google_oauth_redirect_uri():
-    return "http://127.0.0.1:8000/api/google/search-console/callback"
+    env = _load_env_map()
+    configured = str(env.get("GOOGLE_OAUTH_REDIRECT_URI") or os.getenv("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+    if configured:
+        return configured
+    return f"{_public_base_url()}/api/google/search-console/callback"
 
 
 def _google_search_console_status(workspace_id: str | None = None):
@@ -727,8 +1091,21 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
     agent = next((a for a in agents if a["module_name"] == name), None)
     if not agent:
         return {"ok": False, "response": JSONResponse({"error": "Agent not found"}, status_code=404)}
+    if (
+        name == "patentzoom_seo_agent"
+        and os.getenv("MENTESO_EXECUTION_TARGET", "local").lower() == "local"
+    ):
+        return {
+            "ok": False,
+            "response": JSONResponse(
+                {"error": "SEO Agent is hosted on AWS and cannot execute on the local server."},
+                status_code=409,
+            ),
+        }
 
     payload = dict(input_data or {})
+    run_id = str(payload.get("run_id") or f"{name}-{int(time.time())}-{secrets.token_hex(4)}")
+    payload["run_id"] = run_id
 
     status = _get_run_status(name)
     if status["status"] != "idle":
@@ -756,6 +1133,20 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
         "fast_level": initial_level,
         "emit": emit,
     }
+    RUN_LIVE_STATUS[name] = {
+        "run_id": run_id,
+        "input": {k: v for k, v in payload.items() if k in {"file_path", "mode", "gazette", "fast_level"}},
+        "logs": [],
+        "metrics": {
+            "totalRows": 0,
+            "processedRows": 0,
+            "foundRows": 0,
+            "notFoundRows": 0,
+            "errorRows": 0,
+        },
+        "browser": {},
+        "updatedAt": _now_iso(),
+    }
     payload["stop_requested"] = stop_event.is_set
     payload["get_live_fast_level"] = (
         lambda: control.get("fast_level") if control.get("fast_level") else None
@@ -773,10 +1164,18 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
             runner = get_agent_runner(name)
             result = runner(input_data=payload or None, on_step=emit)
             completion = {"type": "complete", "result": result}
+            _persist_agent_completion(name, result if isinstance(result, dict) else {}, payload, run_id=run_id)
             if emit:
                 emit(completion)
         except Exception as e:
-            completion = {"type": "error", "message": str(e)}
+            completion = {"type": "error", "message": str(e), "traceback": traceback.format_exc()}
+            _persist_agent_completion(
+                name,
+                {"status": "failure", "error": str(e), "traceback": completion["traceback"]},
+                payload,
+                run_id=run_id,
+            )
+            print(completion["traceback"], file=sys.stderr)
             if emit:
                 emit(completion)
         finally:
@@ -952,7 +1351,8 @@ def _maybe_schedule_daily_seo_run_for_workspace(workspace_id: str | None = None)
         return
 
     state = _load_seo_scheduler_state(workspace_id)
-    if str(state.get("last_auto_attempt_date") or "").strip() == today_iso:
+    previous_status = str(state.get("last_auto_result_status") or "").strip().lower()
+    if str(state.get("last_auto_attempt_date") or "").strip() == today_iso and previous_status in {"running", "success", "failure"}:
         return
 
     launch_result = _launch_agent_run(
@@ -993,6 +1393,16 @@ def _maybe_schedule_daily_seo_run_for_workspace(workspace_id: str | None = None)
 
 
 def _maybe_schedule_daily_seo_run():
+    today_iso = _ist_now().strftime("%Y-%m-%d")
+    for workspace_id in SEO_WORKSPACE_AUTO_PUBLISH_KEYS:
+        state = _load_seo_scheduler_state(workspace_id)
+        if (
+            str(state.get("last_auto_attempt_date") or "").strip() == today_iso
+            and str(state.get("last_auto_result_status") or "").strip().lower() == "failure"
+            and "quota" in str(state.get("last_auto_error") or "").strip().lower()
+        ):
+            return
+
     for workspace_id in SEO_WORKSPACE_AUTO_PUBLISH_KEYS:
         _maybe_schedule_daily_seo_run_for_workspace(workspace_id)
 
@@ -1020,6 +1430,466 @@ def _ensure_local_seo_scheduler():
     SEO_SCHEDULER_THREAD.start()
 
 
+def _run_local_command(args, timeout=15):
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=str(PROJECT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+        )
+        return {
+            "ok": completed.returncode == 0,
+            "code": completed.returncode,
+            "stdout": (completed.stdout or "").strip(),
+            "stderr": (completed.stderr or "").strip(),
+        }
+    except Exception as exc:
+        return {"ok": False, "code": None, "stdout": "", "stderr": str(exc)}
+
+
+def _read_jsonl_tail(path: Path, limit=8):
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return []
+
+    entries = []
+    for line in lines[-max(limit * 3, limit):]:
+        try:
+            item = json.loads(line)
+            if isinstance(item, dict):
+                entries.append(item)
+        except Exception:
+            continue
+    return entries[-limit:]
+
+
+def _pct_progress_candidates():
+    candidates = []
+    for directory in [PCT_OUTPUTS_DIR, OUTPUTS_DIR]:
+        if directory.exists():
+            candidates.extend(directory.glob("pct_progress_*.jsonl"))
+    return sorted(set(candidates), reverse=True)
+
+
+def _resolve_output_download_path(filename: str):
+    safe_name = Path(str(filename or "")).name
+    if not safe_name:
+        return None
+    for directory in [PCT_OUTPUTS_DIR, OUTPUTS_DIR]:
+        candidate = (directory / safe_name).resolve()
+        directory_resolved = directory.resolve()
+        if directory_resolved in candidate.parents and candidate.exists():
+            return candidate
+    return None
+
+
+def _mask_host(host: str):
+    host = str(host or "").strip()
+    if not host:
+        return ""
+    if len(host) <= 4:
+        return host[:1] + "***"
+    return host[:2] + "***" + host[-2:]
+
+
+def _database_admin_status():
+    db_storage.ensure_schema()
+    store_path = getattr(db_storage, "STORE_PATH", PROJECT_DIR / "shared" / "agent_data.json")
+    exists = Path(store_path).exists()
+    size = Path(store_path).stat().st_size if exists else 0
+    return {
+        "configured": True,
+        "urls": {},
+        "driver": "json_file",
+        "usedByAppCode": True,
+        "connected": True,
+        "connectionCheck": {
+            "attempted": True,
+            "ok": True,
+            "message": "Agent and dashboard data is stored in a local JSON file.",
+        },
+        "store": {
+            "path": str(store_path),
+            "exists": exists,
+            "sizeBytes": size,
+        },
+        "note": "Postgres is disabled. Menteso_OS now stores agent snapshots, runs, events, artifacts, and dashboard state in the local JSON data file.",
+    }
+
+
+def _pm2_admin_status():
+    result = _run_local_command(["cmd", "/c", "pm2", "jlist"], timeout=20)
+    processes = []
+    if result.get("ok") and result.get("stdout"):
+        try:
+            payload = json.loads(result["stdout"])
+            for item in payload if isinstance(payload, list) else []:
+                env = item.get("pm2_env", {}) if isinstance(item, dict) else {}
+                processes.append({
+                    "name": item.get("name", ""),
+                    "pid": item.get("pid") or env.get("pm_pid"),
+                    "status": env.get("status", "unknown"),
+                    "restarts": env.get("restart_time", 0),
+                    "uptimeMs": int(time.time() * 1000) - int(env.get("pm_uptime") or 0) if env.get("pm_uptime") else None,
+                    "script": env.get("pm_exec_path", ""),
+                    "args": " ".join(env.get("args") or []),
+                    "watching": bool(env.get("watch")),
+                })
+        except Exception:
+            pass
+    return {
+        "ok": result.get("ok", False),
+        "processes": processes,
+        "error": result.get("stderr", "") if not result.get("ok") else "",
+    }
+
+
+def _git_admin_status():
+    branch = _run_local_command(["git", "branch", "--show-current"], timeout=10)
+    head = _run_local_command(["git", "rev-parse", "--short", "HEAD"], timeout=10)
+    commit = _run_local_command(["git", "log", "-1", "--pretty=format:%h|%an|%ar|%s"], timeout=10)
+    remote = _run_local_command(["git", "remote", "get-url", "origin"], timeout=10)
+    status = _run_local_command(["git", "status", "--short"], timeout=10)
+    return {
+        "branch": branch.get("stdout", ""),
+        "head": head.get("stdout", ""),
+        "latestCommit": commit.get("stdout", ""),
+        "remote": remote.get("stdout", ""),
+        "dirty": bool(status.get("stdout", "")),
+        "changes": status.get("stdout", "").splitlines()[:20],
+    }
+
+
+def _workflow_admin_status():
+    workflow_path = PROJECT_DIR / ".github" / "workflows" / "deploy-main.yml"
+    script_path = PROJECT_DIR / "scripts" / "deploy.ps1"
+    return {
+        "workflowPresent": workflow_path.exists(),
+        "deployScriptPresent": script_path.exists(),
+        "trigger": "push to main and manual workflow_dispatch",
+        "serverAction": "git pull origin main, install dependencies, build/test, reload PM2, health check",
+        "requiredSecrets": ["DEPLOY_HOST", "DEPLOY_USER", "DEPLOY_SSH_KEY", "DEPLOY_PORT"],
+    }
+
+
+def _callback_admin_status():
+    env = _load_env_map()
+    base = _public_base_url()
+    return {
+        "publicBaseUrl": base,
+        "googleSearchConsole": str(env.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip() or f"{base}/api/google/search-console/callback",
+        "meta": str(env.get("META_OAUTH_REDIRECT_URI") or "").strip() or f"{base}/api/meta/callback",
+        "linkedin": str(env.get("LINKEDIN_OAUTH_REDIRECT_URI") or "").strip() or f"{base}/api/linkedin/callback",
+    }
+
+
+def _agent_last_activity(agent_name: str):
+    memory = load_memory(agent_name)
+    learnings = memory.get("learnings", []) if isinstance(memory, dict) else []
+    last_learning = learnings[-1] if learnings else None
+    artifact = {}
+    if agent_name == "pct_agent":
+        candidates = _pct_progress_candidates()
+        if candidates:
+            artifact = {
+                "file": candidates[0].name,
+                "updatedAt": datetime.fromtimestamp(candidates[0].stat().st_mtime, timezone.utc).isoformat(),
+            }
+    elif agent_name == "patentzoom_seo_agent":
+        generated_posts = _seo_workspace_state_paths("patentzoom")["generated_posts"]
+        if generated_posts.exists():
+            artifact = {
+                "file": generated_posts.name,
+                "updatedAt": datetime.fromtimestamp(generated_posts.stat().st_mtime, timezone.utc).isoformat(),
+            }
+
+    return {
+        "runStatus": _get_run_status(agent_name).get("status", "idle"),
+        "lastLearning": last_learning,
+        "lastArtifact": artifact,
+        "stats": memory.get("stats", {}) if isinstance(memory, dict) else {},
+        "learningCount": len(learnings),
+    }
+
+
+def _result_workspace_id(agent_name: str, result: dict | None, payload: dict | None = None):
+    result = result if isinstance(result, dict) else {}
+    payload = payload if isinstance(payload, dict) else {}
+    if agent_name == "patentzoom_seo_agent":
+        return _resolve_seo_workspace_id(
+            result.get("workspaceId")
+            or result.get("workspace_id")
+            or payload.get("workspace_id")
+            or payload.get("workspaceId")
+        )
+    return str(result.get("workspaceId") or payload.get("workspace_id") or payload.get("workspaceId") or "").strip()
+
+
+def _persist_agent_completion(agent_name: str, result: dict | None, payload: dict | None = None, run_id: str = ""):
+    if not isinstance(result, dict):
+        return
+    workspace_id = _result_workspace_id(agent_name, result, payload)
+    memory_key = agent_name
+    if agent_name == "patentzoom_seo_agent" and workspace_id and workspace_id != "patentzoom":
+        memory_key = f"{agent_name}/workspaces/{workspace_id}"
+    memory = load_memory(memory_key)
+    status = str(result.get("status") or result.get("postStatus") or "unknown")
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    execution_time = result.get("executionTime", result.get("execution_time"))
+    try:
+        execution_time = float(execution_time) if execution_time is not None else None
+    except (TypeError, ValueError):
+        execution_time = None
+
+    try:
+        safe_dashboard_result = _database_safe_agent_payload(agent_name, result)
+        safe_run_result = _database_safe_agent_payload(agent_name, result)
+        db_storage.upsert_agent_snapshot(
+            agent_name,
+            workspace_id=workspace_id,
+            agent_name=agent_name,
+            memory=memory,
+            stats=memory.get("stats", {}) if isinstance(memory, dict) else {},
+            dashboard={
+                "lastResult": safe_dashboard_result,
+                "runStatus": _get_run_status(agent_name).get("status", "idle"),
+                "updatedAt": _now_iso(),
+            },
+        )
+        db_storage.insert_agent_run(
+            agent_name,
+            workspace_id=workspace_id,
+            run_id=run_id,
+            task="daily_seo_blog" if agent_name == "patentzoom_seo_agent" else "process_excel",
+            status=status,
+            result=safe_run_result,
+            summary=summary,
+            execution_time=execution_time,
+        )
+        if result.get("wordpressUrl"):
+            db_storage.insert_artifact(
+                agent_name,
+                workspace_id=workspace_id,
+                run_id=run_id,
+                artifact_type="wordpress_post",
+                name=str(result.get("title") or result.get("topic") or result.get("primaryKeyword") or ""),
+                url=str(result.get("wordpressUrl") or ""),
+                payload=result,
+            )
+        if result.get("output_file"):
+            output_path = str(result.get("output_file") or "")
+            db_storage.insert_artifact(
+                agent_name,
+                workspace_id=workspace_id,
+                run_id=run_id,
+                artifact_type="output_file",
+                name=Path(output_path).name,
+                path=output_path,
+                payload={"summary": summary},
+            )
+        if agent_name == "pct_agent":
+            pct_summary = summary if isinstance(summary, dict) else {}
+            subagents = {
+                "Scraper": {
+                    "processed": pct_summary.get("processed", 0),
+                    "found": pct_summary.get("found", 0),
+                    "not_found": pct_summary.get("not_found", 0),
+                },
+                "PDF Extractor": {
+                    "processed": pct_summary.get("processed", 0),
+                    "errors": pct_summary.get("errors", 0),
+                },
+                "CAPTCHA Solver": {
+                    "status": "available",
+                    "captchaEvents": result.get("captcha_events", 0),
+                },
+            }
+            for subagent_name, subagent_stats in subagents.items():
+                db_storage.upsert_subagent_snapshot(
+                    agent_name,
+                    subagent_name,
+                    workspace_id=workspace_id,
+                    status="active",
+                    stats=subagent_stats,
+                    payload=subagent_stats,
+                )
+            if result.get("output_file") and str(result.get("status") or "").lower() in {"success", "stopped"}:
+                try:
+                    email_result = send_pct_completion_email(result)
+                    if email_result.get("sent"):
+                        db_storage.insert_artifact(
+                            agent_name,
+                            workspace_id=workspace_id,
+                            run_id=run_id,
+                            artifact_type="email_notification",
+                            name="PCT completion email",
+                            payload={
+                                "to": email_result.get("to", []),
+                                "attached": email_result.get("attached", False),
+                                "skippedAttachmentReason": email_result.get("skippedAttachmentReason", ""),
+                            },
+                        )
+                except Exception as email_exc:
+                    print(f"PCT completion email failed: {email_exc}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Database run persistence skipped for {agent_name}: {exc}", file=sys.stderr)
+
+
+def _database_safe_agent_payload(agent_name: str, payload):
+    """Keep PCT sheet/contact output local-only.
+
+    PCT results can contain every processed row plus extracted contact data.
+    The database is for dashboard metadata, run status, counts, and local
+    artifact pointers only.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    if agent_name != "pct_agent":
+        return payload
+
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    execution_time = payload.get("execution_time", payload.get("executionTime", 0)) or 0
+    try:
+        execution_seconds = float(execution_time)
+    except (TypeError, ValueError):
+        execution_seconds = 0.0
+    processed = summary.get("processed", 0) or 0
+    try:
+        processed_number = float(processed)
+    except (TypeError, ValueError):
+        processed_number = 0.0
+    rows_per_minute = round((processed_number / execution_seconds) * 60, 2) if execution_seconds > 0 else 0
+    safe = {
+        "status": payload.get("status", ""),
+        "error": payload.get("error", ""),
+        "summary": {
+            "total": summary.get("total", 0),
+            "processed": summary.get("processed", 0),
+            "found": summary.get("found", 0),
+            "not_found": summary.get("not_found", 0),
+            "errors": summary.get("errors", 0),
+            "skipped": summary.get("skipped", 0),
+        },
+        "output_file": payload.get("output_file", ""),
+        "input_file": payload.get("input_file", ""),
+        "input_file_name": payload.get("input_file_name", ""),
+        "mode": payload.get("mode", ""),
+        "gazette": payload.get("gazette", ""),
+        "week_or_sheet": payload.get("gazette") or payload.get("input_file_name") or "",
+        "timestamp": payload.get("timestamp", ""),
+        "execution_time": execution_time,
+        "benchmark": {
+            "execution_seconds": round(execution_seconds, 2),
+            "rows_per_minute": rows_per_minute,
+            "found_rate": round((float(summary.get("found", 0) or 0) / processed_number), 4) if processed_number else 0,
+            "not_found_rate": round((float(summary.get("not_found", 0) or 0) / processed_number), 4) if processed_number else 0,
+        },
+        "attempts": payload.get("attempts", 1),
+        "tests": payload.get("tests", {}),
+    }
+    if safe["output_file"]:
+        safe["output_file_name"] = Path(str(safe["output_file"])).name
+    return safe
+
+
+def _database_safe_agent_event(agent_name: str, event):
+    if agent_name != "pct_agent":
+        return event
+    if not isinstance(event, dict):
+        message = str(event)
+        if message.startswith("[Row ") or "FOUND:" in message:
+            return None
+        return {"message": message}
+
+    event_type = str(event.get("type") or "step")
+    message = str(event.get("message") or "")
+    if event_type in {"browser", "pipeline_stats"} or event.get("row") or event.get("patent_id"):
+        return None
+    if message.startswith("[Row ") or "FOUND:" in message:
+        return None
+
+    safe = {
+        "type": event_type,
+        "message": message,
+    }
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    allowed_data = {}
+    for key in ["stage", "status", "row", "total", "event", "url", "patent_id", "country"]:
+        if key in data:
+            allowed_data[key] = data[key]
+    for key in ["row", "total", "event", "url", "patent_id", "country"]:
+        if key in event:
+            allowed_data[key] = event[key]
+    if allowed_data:
+        safe["data"] = allowed_data
+    if event.get("timestamp"):
+        safe["timestamp"] = event.get("timestamp")
+    return safe
+
+
+def _bootstrap_database_snapshots():
+    if not db_storage.db_enabled():
+        return
+    for agent_config in discover_agents():
+        module_name = agent_config.get("module_name", "")
+        if not module_name:
+            continue
+        memory = load_memory(module_name)
+        db_storage.upsert_agent_snapshot(
+            module_name,
+            agent_name=agent_config.get("name") or module_name,
+            dashboard={
+                "agent": agent_config,
+                "activity": _agent_last_activity(module_name),
+                "source": "startup_bootstrap",
+                "updatedAt": _now_iso(),
+            },
+            memory=memory,
+            stats=memory.get("stats", {}) if isinstance(memory, dict) else {},
+        )
+        for subagent_name in agent_config.get("sub_agents") or []:
+            db_storage.upsert_subagent_snapshot(
+                module_name,
+                subagent_name,
+                status="active" if agent_config.get("status") == "active" else str(agent_config.get("status") or ""),
+                stats={},
+                payload={"source": "agent_config"},
+            )
+
+
+def _admin_status_payload():
+    agents = []
+    for agent_config in discover_agents():
+        module_name = agent_config.get("module_name", "")
+        agents.append({
+            **agent_config,
+            "activity": _agent_last_activity(module_name),
+        })
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "server": {
+            "cwd": str(PROJECT_DIR),
+            "host": os.getenv("DASHBOARD_HOST", "0.0.0.0"),
+            "port": os.getenv("DASHBOARD_PORT", "8000"),
+        },
+        "agents": agents,
+        "pm2": _pm2_admin_status(),
+        "git": _git_admin_status(),
+        "deployment": {
+            **_workflow_admin_status(),
+            "history": _read_jsonl_tail(DEPLOYMENT_LOG_FILE, limit=10),
+        },
+        "callbacks": _callback_admin_status(),
+        "database": _database_admin_status(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Root — serve dashboard HTML
 # ---------------------------------------------------------------------------
@@ -1028,6 +1898,73 @@ async def root():
     html_path = STATIC_DIR / "index.html"
     with open(html_path, encoding="utf-8") as f:
         return f.read()
+
+
+@app.get("/admin-dashbaord", response_class=HTMLResponse)
+async def admin_dashbaord():
+    html_path = STATIC_DIR / "admin-dashboard.html"
+    with open(html_path, encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/admin-dashboard", response_class=HTMLResponse)
+async def admin_dashboard_alias():
+    return await admin_dashbaord()
+
+
+@app.get("/api/admin/status")
+async def admin_status():
+    return _admin_status_payload()
+
+
+@app.post("/api/accountant/gmail-push")
+async def accountant_gmail_push(request: Request):
+    """Authenticated Pub/Sub webhook that wakes the AWS AccountantAgent."""
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        print("Accountant push rejected: missing bearer identity", file=sys.stderr)
+        return _json_response(403, {"error": "missing_push_identity"})
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+
+        claims = id_token.verify_oauth2_token(
+            authorization.split(" ", 1)[1].strip(),
+            google_requests.Request(),
+            audience=None,
+            clock_skew_in_seconds=10,
+        )
+    except Exception as exc:
+        print(f"Accountant push rejected: invalid OIDC token ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return _json_response(403, {"error": "invalid_push_identity"})
+    if str(claims.get("aud") or "").strip() != ACCOUNTANT_PUSH_AUDIENCE:
+        print("Accountant push rejected: audience mismatch", file=sys.stderr)
+        return _json_response(403, {"error": "unexpected_push_audience"})
+    if claims.get("email") != ACCOUNTANT_PUSH_SA_EMAIL:
+        print(
+            f"Accountant push rejected: identity {claims.get('email')!r} does not match expected service account",
+            file=sys.stderr,
+        )
+        return _json_response(403, {"error": "unexpected_push_identity"})
+
+    try:
+        envelope = await request.json()
+        encoded = (envelope.get("message") or {}).get("data") or ""
+        notification = json.loads(base64.b64decode(encoded).decode("utf-8"))
+    except Exception:
+        return _json_response(400, {"error": "invalid_pubsub_message"})
+    if str(notification.get("emailAddress", "")).lower() != "invoicerequest@menteso.com":
+        return _json_response(202, {"status": "ignored_mailbox"})
+
+    try:
+        ACCOUNTANT_TRIGGER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ACCOUNTANT_TRIGGER_FILE.write_text(
+            datetime.now(timezone.utc).isoformat() + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        print(f"Accountant trigger write failed: {exc}", file=sys.stderr)
+        return _json_response(503, {"error": "agent_trigger_unavailable"})
+    return _json_response(200, {"status": "accepted"})
 
 
 # ---------------------------------------------------------------------------
@@ -1065,11 +2002,82 @@ async def agent_detail(name: str):
     }
 
 
+def _refresh_seo_dashboard_cache(workspace_id: str):
+    try:
+        payload = get_seo_dashboard_data(workspace_id)
+        with SEO_DASHBOARD_CACHE_LOCK:
+            SEO_DASHBOARD_CACHE[workspace_id] = {
+                "loaded_at": time.time(),
+                "payload": payload,
+            }
+        return payload
+    except Exception as exc:
+        print(f"SEO dashboard refresh failed for {workspace_id}: {exc}", file=sys.stderr)
+        return None
+
+
+def _prewarm_seo_dashboard_cache():
+    for workspace_id in SEO_WORKSPACE_PROPERTY_KEYS:
+        _refresh_seo_dashboard_cache(workspace_id)
+
+
+@app.on_event("startup")
+async def prewarm_seo_dashboard_cache():
+    threading.Thread(
+        target=_prewarm_seo_dashboard_cache,
+        daemon=True,
+        name="seo-dashboard-prewarm",
+    ).start()
+
+
 @app.get("/api/agents/{name}/dashboard-data")
-async def agent_dashboard_data(name: str, workspace_id: str = "patentzoom"):
+async def agent_dashboard_data(name: str, workspace_id: str = "patent-drawing-experts"):
     if name == "patentzoom_seo_agent":
-        return get_seo_dashboard_data(workspace_id)
+        workspace_id = _resolve_seo_workspace_id(workspace_id)
+        with SEO_DASHBOARD_CACHE_LOCK:
+            cached = SEO_DASHBOARD_CACHE.get(workspace_id)
+        if cached:
+            if time.time() - cached["loaded_at"] > SEO_DASHBOARD_CACHE_TTL_SECONDS:
+                threading.Thread(
+                    target=_refresh_seo_dashboard_cache,
+                    args=(workspace_id,),
+                    daemon=True,
+                ).start()
+            return cached["payload"]
+        payload = await asyncio.to_thread(_refresh_seo_dashboard_cache, workspace_id)
+        if payload is None:
+            return JSONResponse({"error": "SEO dashboard data is temporarily unavailable"}, status_code=503)
+        return payload
+    if name == "accountant_agent":
+        return get_accountant_dashboard_data()
     return JSONResponse({"error": "Dashboard data is not available for this agent"}, status_code=404)
+
+
+@app.post("/api/accountant/reminders/control")
+async def accountant_reminder_control(payload: dict = Body(...)):
+    """Pause or resume the reminder workflow or one customer from the admin UI."""
+    try:
+        state = json.loads(OVERDUE_REMINDER_STATUS_FILE.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return JSONResponse({"error": "Reminder state is unavailable"}, status_code=503)
+    action = str(payload.get("action") or "").lower()
+    customer_id = str(payload.get("customer_id") or "")
+    if action not in {"pause", "resume"}:
+        return JSONResponse({"error": "Action must be pause or resume"}, status_code=400)
+    paused = action == "pause"
+    if customer_id:
+        row = state.setdefault("customers", {}).get(customer_id)
+        if row is None:
+            return JSONResponse({"error": "Customer was not found"}, status_code=404)
+        row["paused"] = paused
+        row["status"] = "paused" if paused else ("test_ready" if state.get("mode") == "test" else "ready")
+        row["updated_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        state["paused"] = paused
+    temporary = OVERDUE_REMINDER_STATUS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.replace(OVERDUE_REMINDER_STATUS_FILE)
+    return {"ok": True, "paused": paused, "customer_id": customer_id or None}
 
 
 @app.get("/api/google/search-console/status")
@@ -1217,15 +2225,16 @@ async def google_search_console_connect(workspace_id: str = "patentzoom"):
 
 @app.get("/api/google/search-console/callback", response_class=HTMLResponse)
 async def google_search_console_callback(code: str = None, state: str = None, error: str = None):
+    return_url = _public_base_url() + "/"
     if error:
         return HTMLResponse(
-            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><p>{error}</p><p><a href='http://127.0.0.1:8000/' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
+            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><p>{error}</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
             status_code=400,
         )
 
     if not code or not state or state not in GOOGLE_OAUTH_STATES:
         return HTMLResponse(
-            "<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><p>Missing or invalid OAuth callback state.</p><p><a href='http://127.0.0.1:8000/' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
+            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><p>Missing or invalid OAuth callback state.</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
             status_code=400,
         )
 
@@ -1247,7 +2256,7 @@ async def google_search_console_callback(code: str = None, state: str = None, er
     )
     if not token_response.ok:
         return HTMLResponse(
-            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><pre style='white-space:pre-wrap'>{token_response.text}</pre><p><a href='http://127.0.0.1:8000/' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
+            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google connection failed</h2><pre style='white-space:pre-wrap'>{token_response.text}</pre><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
             status_code=400,
         )
 
@@ -1259,7 +2268,47 @@ async def google_search_console_callback(code: str = None, state: str = None, er
     }
     _write_env_updates(updates)
     return HTMLResponse(
-        "<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google Search Console connected</h2><p>You can close this tab and return to the Menteso SEO Posting Agent dashboard.</p><p><a href='http://127.0.0.1:8000/' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>"
+        f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Google Search Console connected</h2><p>You can close this tab and return to the Menteso SEO Posting Agent dashboard.</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>"
+    )
+
+
+@app.get("/api/meta/callback", response_class=HTMLResponse)
+async def meta_callback(request: Request):
+    params = request.query_params
+    challenge = params.get("hub.challenge")
+    verify_token = params.get("hub.verify_token")
+    expected_token = str(_load_env_map().get("META_WEBHOOK_VERIFY_TOKEN") or os.getenv("META_WEBHOOK_VERIFY_TOKEN") or "").strip()
+    if challenge is not None:
+        if expected_token and verify_token != expected_token:
+            return JSONResponse({"error": "Invalid Meta webhook verify token"}, status_code=403)
+        return HTMLResponse(str(challenge))
+
+    return_url = _public_base_url() + "/"
+    error = params.get("error") or params.get("error_message")
+    code = params.get("code")
+    if error:
+        return HTMLResponse(
+            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Meta connection callback received</h2><p>{error}</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
+            status_code=400,
+        )
+    return HTMLResponse(
+        f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>Meta callback endpoint is live</h2><p>{'Authorization code received.' if code else 'No authorization code was provided.'}</p><p>Token exchange is not implemented in this server yet; existing Meta publishing uses the configured access token env vars.</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>"
+    )
+
+
+@app.get("/api/linkedin/callback", response_class=HTMLResponse)
+async def linkedin_callback(request: Request):
+    params = request.query_params
+    return_url = _public_base_url() + "/"
+    error = params.get("error") or params.get("error_description")
+    code = params.get("code")
+    if error:
+        return HTMLResponse(
+            f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>LinkedIn connection callback received</h2><p>{error}</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>",
+            status_code=400,
+        )
+    return HTMLResponse(
+        f"<html><body style='font-family:sans-serif;padding:32px;background:#0b1220;color:#fff'><h2>LinkedIn callback endpoint is live</h2><p>{'Authorization code received.' if code else 'No authorization code was provided.'}</p><p>Token exchange is not implemented in this server yet; existing LinkedIn publishing uses the configured access token env vars.</p><p><a href='{return_url}' style='color:#8ab4ff'>Return to Menteso</a></p></body></html>"
     )
 
 
@@ -1288,8 +2337,8 @@ async def upload_file(file: UploadFile = File(...)):
 # ---------------------------------------------------------------------------
 @app.get("/api/download/{filename}")
 async def download_file(filename: str):
-    file_path = OUTPUTS_DIR / filename
-    if not file_path.exists():
+    file_path = _resolve_output_download_path(filename)
+    if not file_path:
         return JSONResponse({"error": "File not found"}, status_code=404)
     return FileResponse(
         str(file_path),
@@ -1321,7 +2370,7 @@ async def list_wipo_gazettes():
 async def agent_progress(name: str):
     """Return current progress from the latest progress JSONL file."""
     import json as _json
-    candidates = sorted(OUTPUTS_DIR.glob("pct_progress_*.jsonl"), reverse=True)
+    candidates = _pct_progress_candidates()
     if not candidates:
         return {"status": "no_progress"}
     path = candidates[0]
@@ -1356,6 +2405,20 @@ async def agent_progress(name: str):
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+def _read_text_tail(path: Path, max_bytes: int = 2_000_000):
+    try:
+        if not path.exists():
+            return ""
+        size = path.stat().st_size
+        with open(path, "rb") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            data = f.read()
+        return data.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
 
 
 @app.get("/api/agents/{name}/run-status")
@@ -1406,6 +2469,22 @@ def _start_agent_run(name: str, input_data: dict | None = None):
         if message is None:
             msg_queue.put(None)
             return
+        _update_live_status(name, message)
+        try:
+            safe_event = _database_safe_agent_event(name, message)
+            if safe_event is None:
+                raise ValueError("skip database event")
+            workspace_id = _result_workspace_id(name, safe_event if isinstance(safe_event, dict) else {}, input_data or {})
+            db_storage.insert_agent_event(
+                name,
+                workspace_id=workspace_id,
+                run_id=str((input_data or {}).get("run_id") or ""),
+                event_type=str(safe_event.get("type") or "step") if isinstance(safe_event, dict) else "step",
+                message=str(safe_event.get("message") or safe_event.get("type") or "") if isinstance(safe_event, dict) else str(safe_event),
+                payload=safe_event if isinstance(safe_event, dict) else {"message": safe_event},
+            )
+        except Exception:
+            pass
         if isinstance(message, dict):
             msg_queue.put(json.dumps(message))
         else:
@@ -1523,4 +2602,6 @@ async def force_clear_agent_run(name: str):
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    port = int(os.getenv("DASHBOARD_PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)

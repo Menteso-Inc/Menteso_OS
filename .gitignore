@@ -55,3 +55,20 @@ services/seo-control-api/*.db
 .tools/
 .runtime-tmp/
 .playwright-browsers/
+
+# Credentials and agent runtime state (public repository)
+client_secret*.json
+credentials*.json
+token*.json
+service_account*.json
+*service-account*.json
+accounts_oauth.json
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+*.db
+*-status.json
+gmail-push.trigger
+backups/
+runtime-data/

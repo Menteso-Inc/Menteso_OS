@@ -48,7 +48,7 @@ const state = {
         publishOverride: "draft",
         enableFeaturedImage: true,
         dryRun: false,
-        activeWorkspaceId: "patentzoom",
+        activeWorkspaceId: "patent-drawing-experts",
         google: {
             clientId: "",
             clientSecret: "",
@@ -70,6 +70,12 @@ const state = {
         },
         previewArticle: null,
         historyEntry: null,
+    },
+    accountantDashboard: {
+        loading: false,
+        error: "",
+        snapshot: null,
+        view: "invoice_request",
     },
     pipelineMode: false,
     pipeline: null,
@@ -141,15 +147,6 @@ let alertAudioContext = null;
 
 const SEO_WORKSPACES = [
     {
-        id: "patentzoom",
-        name: "PatentZoom SEO Agent",
-        kind: "live",
-        status: "active",
-        placeholderTitle: "",
-        placeholderMessage: "",
-        placeholderDetail: "",
-    },
-    {
         id: "ip-docketers",
         name: "IP Docketers SEO Agent",
         kind: "live",
@@ -197,7 +194,7 @@ function getDefaultSearchConsoleProperty(workspaceId) {
     if (workspace.id === "menteso") {
         return "sc-domain:your-domain.com";
     }
-    return "sc-domain:patentzoom.us";
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +208,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     await loadAgents();
     render();
+    setInterval(async () => {
+        if (state.selectedAgent?.ui_type !== "accountant_monitor") return;
+        await loadAccountantDashboardData(state.selectedAgent.module_name);
+        renderMain();
+    }, 3000);
 });
 
 function applyTheme(theme) {
@@ -1666,6 +1668,8 @@ function renderSidebar() {
                     state.seoDashboard.previewArticle = null;
                     state.seoDashboard.historyEntry = null;
                     await loadSeoDashboardData(agent.module_name);
+                } else if ((detail || agent).ui_type === "accountant_monitor") {
+                    await loadAccountantDashboardData(agent.module_name);
                 } else {
                     state.seoDashboard.snapshot = null;
                     state.seoDashboard.error = "";
@@ -1724,10 +1728,12 @@ function renderSidebarFlat() {
             state.browser.event = "idle";
             await loadAgentRunStatus(agent.module_name);
             if ((detail || agent).ui_type === "seo_posting") {
-                state.seo.activeWorkspaceId = "patentzoom";
+                state.seo.activeWorkspaceId = "patent-drawing-experts";
                 state.seoDashboard.previewArticle = null;
                 state.seoDashboard.historyEntry = null;
                 await loadSeoDashboardData(agent.module_name);
+            } else if ((detail || agent).ui_type === "accountant_monitor") {
+                await loadAccountantDashboardData(agent.module_name);
             } else {
                 state.seoDashboard.snapshot = null;
                 state.seoDashboard.error = "";
@@ -1739,6 +1745,118 @@ function renderSidebarFlat() {
         };
         listEl.appendChild(item);
     });
+}
+
+function renderInvoiceRequestSection() {
+    const data = state.accountantDashboard.snapshot;
+    if (state.accountantDashboard.loading) {
+        return '<div class="input-section"><div class="input-card">Loading live AccountantAgent status...</div></div>';
+    }
+    if (!data) {
+        return `<div class="input-section"><div class="input-card"><div class="seo-note-title">Status unavailable</div><div class="seo-note-text">${esc(state.accountantDashboard.error || "No runtime status has been published yet.")}</div></div></div>`;
+    }
+    const stages = [
+        ["sleeping", "Sleeping"], ["wake_up", "Wake Up"], ["mail_check", "Check Mail"],
+        ["mail_found", "Mail Found"], ["parsing", "Read Request"],
+        ["zoho_lookup", "Find Details"], ["routing", "Choose Company"],
+        ["creating_invoice", "Create Invoice"], ["sending_email", "Send Email"],
+        ["complete", "Complete"],
+    ];
+    const activeIndex = Math.max(0, stages.findIndex(([key]) => key === data.stage));
+    return `
+        <div class="input-section">
+            <div class="input-card">
+                <div class="section-title">Live AWS Runtime</div>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-value ${data.live ? "success" : "error"}">${data.live ? "LIVE" : "STALE"}</div><div class="stat-label">Runtime</div></div>
+                    <div class="stat-card"><div class="stat-value">${esc(String(data.processed || 0))}</div><div class="stat-label">Last Run Processed</div></div>
+                    <div class="stat-card"><div class="stat-value">${esc(String(data.skipped || 0))}</div><div class="stat-label">Last Run Skipped</div></div>
+                    <div class="stat-card"><div class="stat-value ${Number(data.failed || 0) ? "error" : "success"}">${esc(String(data.failed || 0))}</div><div class="stat-label">Last Run Failed</div></div>
+                </div>
+                <div class="seo-note-text">Schedule: ${esc(data.schedule || "Every 2 minutes")} · Runtime: ${esc(data.runtime || "ec2-systemd")} · Last check: ${esc(formatTimestamp(data.lastRun || ""))}</div>
+                <div class="seo-note-text">Automatic workflow: Gmail intake → PID parsing → Zoho validation → Wave invoice → threaded reply with PDF.</div>
+                <div class="section-title" style="margin-top:24px">Current Stage</div>
+                <div class="seo-note-text" style="margin-bottom:14px"><strong>${esc(data.message || "Waiting for mail")}</strong></div>
+                <div class="sub-agents-list">
+                    ${stages.map(([key, label], index) => {
+                        const stateClass = key === data.stage ? "ready" : (data.stage !== "sleeping" && index < activeIndex ? "ready" : "");
+                        return `<span class="sub-agent-chip ${stateClass}">${key === data.stage ? "● " : ""}${esc(label)}</span>`;
+                    }).join("")}
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderReminderAgentSection(data) {
+    const reminder = data.reminder || {};
+    const customers = reminder.customers || [];
+    return `<div class="input-section"><div class="input-card">
+        <div class="section-title">Invoice Reminder Agent</div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleCustomers || 0))}</div><div class="stat-label">Clients</div></div>
+            <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleInvoices || 0))}</div><div class="stat-label">Overdue invoices</div></div>
+            <div class="stat-card"><div class="stat-value">${esc(String(reminder.mode || "test").toUpperCase())}</div><div class="stat-label">Delivery mode</div></div>
+            <div class="stat-card"><div class="stat-value ${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</div><div class="stat-label">Scheduler</div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">
+            <div class="seo-note-text">Last Wave scan: ${esc(formatTimestamp(reminder.lastScanAt || ""))}</div>
+            <button class="secondary-btn" onclick="setReminderPause('', ${reminder.paused ? "false" : "true"})">${reminder.paused ? "Resume all" : "Pause all"}</button>
+        </div>
+        <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr><th style="text-align:left;padding:9px">Client</th><th style="text-align:left;padding:9px">Email</th><th style="text-align:right;padding:9px">Invoices</th><th style="text-align:right;padding:9px">Total due</th><th style="text-align:left;padding:9px">Oldest due</th><th style="text-align:left;padding:9px">Status</th><th style="padding:9px">Control</th></tr></thead>
+            <tbody>${customers.map(row => `<tr style="border-top:1px solid var(--border-color)">
+                <td style="padding:9px"><strong>${esc(row.customer || "")}</strong><div class="seo-note-text">${esc((row.invoice_numbers || []).join(", "))}</div></td>
+                <td style="padding:9px">${esc(row.email || "")}</td>
+                <td style="padding:9px;text-align:right">${esc(String(row.invoice_count || 0))}</td>
+                <td style="padding:9px;text-align:right">${esc(Number(row.total_due || 0).toFixed(2))} ${esc(row.currency || "")}</td>
+                <td style="padding:9px">${esc(row.oldest_due_date || "")}</td>
+                <td style="padding:9px"><span class="sub-agent-chip ${row.status === "paused" ? "" : "ready"}">${esc(row.status || "")}</span></td>
+                <td style="padding:9px;text-align:center"><button class="secondary-btn" onclick="setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "Resume" : "Pause"}</button></td>
+            </tr>`).join("") || '<tr><td colspan="7" style="padding:18px">No eligible overdue clients found.</td></tr>'}</tbody>
+        </table></div>
+    </div></div>`;
+}
+
+function renderAccountantOverviewSection() {
+    const data = state.accountantDashboard.snapshot;
+    if (state.accountantDashboard.loading || !data) return renderInvoiceRequestSection();
+    const view = state.accountantDashboard.view || "invoice_request";
+    return `<div class="input-section"><div class="sub-agents-list" style="margin-bottom:14px">
+        <button class="sub-agent-chip ${view === "invoice_request" ? "ready" : ""}" onclick="setAccountantView('invoice_request')">Invoice Request Agent</button>
+        <button class="sub-agent-chip ${view === "invoice_reminder" ? "ready" : ""}" onclick="setAccountantView('invoice_reminder')">Invoice Reminder Agent</button>
+    </div></div>${view === "invoice_reminder" ? renderReminderAgentSection(data) : renderInvoiceRequestSection()}`;
+}
+
+function setAccountantView(view) {
+    state.accountantDashboard.view = view;
+    render();
+}
+
+async function setReminderPause(customerId, paused) {
+    const response = await fetch('/api/accountant/reminders/control', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: paused ? 'pause' : 'resume', customer_id: customerId}),
+    });
+    const result = await response.json();
+    if (!response.ok) { alert(result.error || 'Unable to update reminder control'); return; }
+    await loadAccountantDashboardData('accountant_agent');
+    render();
+}
+
+async function loadAccountantDashboardData(name = "accountant_agent") {
+    state.accountantDashboard.loading = true;
+    state.accountantDashboard.error = "";
+    try {
+        const response = await fetch(`/api/agents/${name}/dashboard-data`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Failed to load AccountantAgent status");
+        state.accountantDashboard.snapshot = data;
+    } catch (error) {
+        state.accountantDashboard.snapshot = null;
+        state.accountantDashboard.error = error.message || "Failed to load AccountantAgent status";
+    } finally {
+        state.accountantDashboard.loading = false;
+    }
 }
 
 function renderMain() {
@@ -1764,6 +1882,7 @@ function renderMain() {
     const subAgents = agent.sub_agents || [];
     const isPCTAgent = agent.module_name === "pct_agent";
     const isSeoAgent = agent.ui_type === "seo_posting";
+    const isAccountantAgent = agent.ui_type === "accountant_monitor";
     const activeSeoWorkspace = isSeoAgent ? getActiveSeoWorkspace() : null;
     const isLiveSeoWorkspace = !!activeSeoWorkspace && activeSeoWorkspace.kind === "live";
     const workspaceStats = isSeoAgent
@@ -1790,6 +1909,7 @@ function renderMain() {
                 ${state.agentRunStatus === "stopping" ? '<span class="badge badge-warning">Stopping</span>' : ""}
                 ${agent.requires_llm === false ? '<span class="badge badge-version">No LLM Required</span>' : ""}
                 ${agent.accepts_upload ? '<span class="badge badge-role">Accepts Upload</span>' : ""}
+                ${agent.hosted_on === "aws" ? '<span class="badge badge-role">AWS Hosted</span>' : ""}
             </div>
             ${isSeoAgent ? renderSeoWorkspaceTabs() : ""}
         </div>
@@ -1829,6 +1949,8 @@ function renderMain() {
         html += renderSEOOverviewSection();
     } else if (isSeoAgent) {
         html += renderSeoWorkspacePlaceholder(activeSeoWorkspace);
+    } else if (isAccountantAgent) {
+        html += renderAccountantOverviewSection();
     }
 
     if (isPCTAgent && state.captcha.active) {
@@ -1862,6 +1984,8 @@ function renderMain() {
                 </div>
             </div>
         `;
+    } else if (isAccountantAgent) {
+        // The AccountantAgent is scheduler-managed; there is no manual run control.
     } else if (agent.accepts_upload) {
         html += renderUploadSection(agent);
     } else {
@@ -1883,7 +2007,7 @@ function renderMain() {
     // Scraping Browser stays visible in pool mode too — with N tabs running
     // it cycles through whichever worker emitted the most recent event,
     // which is what the user wants ("show what's being scraped right now").
-    if (!isSeoAgent || isLiveSeoWorkspace) {
+    if ((!isSeoAgent || isLiveSeoWorkspace) && !isAccountantAgent) {
         const showBrowserPanel = isPCTAgent;
         html += `
             <div class="execution-split">
@@ -1938,7 +2062,7 @@ function renderMain() {
     }
 
     // --- Memory ---
-    if (!isSeoAgent || isLiveSeoWorkspace) {
+    if ((!isSeoAgent || isLiveSeoWorkspace) && !isAccountantAgent) {
         html += renderMemorySection(learnings);
     }
 
@@ -2762,9 +2886,8 @@ function renderSEOOverviewSection() {
                             <div>
                                 <div class="seo-status-name">Auto Social Posting</div>
                                 <div class="seo-status-detail">${socialStatus.autoPostEnabled ? "Published articles are shared automatically after a successful live publish." : "Automatic social posting is turned off for this workspace."}</div>
-                                <div class="seo-status-detail">Token health: ${esc(socialStatus.healthStatus || "Not checked")}</div>
                             </div>
-                            <span class="seo-status-pill ${socialStatus.reconnectRequired ? "blocked" : socialStatus.autoPostEnabled ? "ready" : "blocked"}">${socialStatus.reconnectRequired ? "Reconnect" : socialStatus.autoPostEnabled ? "Enabled" : "Disabled"}</span>
+                            <span class="seo-status-pill ${socialStatus.autoPostEnabled ? "ready" : "blocked"}">${socialStatus.autoPostEnabled ? "Enabled" : "Disabled"}</span>
                         </div>
                         <div class="seo-status-item">
                             <div>
@@ -2778,9 +2901,8 @@ function renderSEOOverviewSection() {
                                 <div>
                                     <div class="seo-status-name">${esc(item.label || "-")}</div>
                                     <div class="seo-status-detail">${esc(item.detail || "")}${item.postId ? ` • Post ID: ${esc(item.postId)}` : ""}</div>
-                                    ${item.tokenStatus ? `<div class="seo-status-detail">Token: ${esc(item.tokenStatus)}</div>` : ""}
                                 </div>
-                                <span class="seo-status-pill ${item.status === "Posted" || item.tokenValid === true ? "ready" : "blocked"}">${esc(item.status || "-")}</span>
+                                <span class="seo-status-pill ${item.status === "Posted" ? "ready" : "blocked"}">${esc(item.status || "-")}</span>
                             </div>
                         `).join("")}
                         ${(socialStatus.pendingPlatforms || []).length
