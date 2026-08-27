@@ -51,3 +51,13 @@ def test_weekly_schedule_and_manual_pause(tmp_path):
     assert agent.due_for_follow_up("c",now+timedelta(days=7))
     agent.set_customer_paused("c",True)
     assert not agent.due_for_follow_up("c",now+timedelta(days=30))
+
+def test_group_test_recipients_must_be_authorized():
+    agent=object.__new__(OverdueReminderAgent)
+    agent.state={"mode":"test"}
+    try:
+        agent.send_tests(1,["client@example.com"])
+    except ValueError as exc:
+        assert "authorized" in str(exc)
+    else:
+        raise AssertionError("External test recipient was accepted")

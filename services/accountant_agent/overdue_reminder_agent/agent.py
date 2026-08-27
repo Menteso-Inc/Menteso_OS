@@ -263,8 +263,12 @@ accounts@menteso.com
             return now.isoformat()
         return (datetime.fromisoformat(last.replace("Z", "+00:00")) + timedelta(days=FOLLOW_UP_DAYS)).isoformat()
 
-    def send_tests(self, count=3):
+    def send_tests(self, count=3, recipients=None):
         assert self.state.get("mode")=="test", "Test sender refuses to run outside test mode"
+        recipients = recipients or [TEST_RECIPIENT]
+        normalized = {str(address).strip().lower() for address in recipients}
+        if not normalized or not normalized.issubset(AUTHORIZED_APPROVERS):
+            raise ValueError("Test recipients must be authorized Menteso approvers")
         # Domain-wide delegation impersonates the real Accounts mailbox; test
         # mode still hard-locks every recipient to Shweta.
         gmail=GmailClient(replace(self.cfg, mailbox_address="accounts@menteso.com"))
@@ -276,7 +280,7 @@ accounts@menteso.com
             subject=f"[OVERDUE AGENT TEST] {p['subject']}"
             html=self.render_html(group, f"Intended real recipient: {p['intended_to']} | Customer: {p['customer']}")
             sent.append(gmail.send_message(
-                TEST_RECIPIENT,subject,banner+p["body"],pdf_bytes,pdf_filename,html
+                sorted(normalized),subject,banner+p["body"],pdf_bytes,pdf_filename,html
             ))
         self.state["last_test_at"]=datetime.now(timezone.utc).isoformat(); self.state["last_test_count"]=len(sent); self.save()
         return sent
