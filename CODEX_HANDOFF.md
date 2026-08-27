@@ -1,6 +1,6 @@
 # Codex Handoff
 
-Read `AGENTS.md` and `AGENT_LOGBOOK.md` completely before changing code.
+Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
 ## Repository layout
 
@@ -39,4 +39,3 @@ Complete isolated Gmail OAuth for the Invoice Reminder Agent:
 4. Verify the delivered `From` header.
 5. Back up only the target service.
 6. Deploy/restart only the target service; do not restart unrelated agents.
-
