@@ -1,0 +1,15 @@
+[Unit]
+Description=Menteso single-invoice reminder run
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/accountant_agent
+EnvironmentFile=/home/menteso_os/secrets/accountant_agent.env
+Environment=INVOICE_REMINDER_SINGLE_LIVE_ENABLED=true
+ExecStart=/home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/run.py --send-live-singles --max-live 25
+
+[Install]
+WantedBy=multi-user.target

@@ -1805,16 +1805,18 @@ function renderReminderAgentSection(data) {
             <button class="secondary-btn" onclick="setReminderPause('', ${reminder.paused ? "false" : "true"})">${reminder.paused ? "Resume all" : "Pause all"}</button>
         </div>
         <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-            <thead><tr><th style="text-align:left;padding:9px">Client</th><th style="text-align:left;padding:9px">Email</th><th style="text-align:right;padding:9px">Invoices</th><th style="text-align:right;padding:9px">Total due</th><th style="text-align:left;padding:9px">Oldest due</th><th style="text-align:left;padding:9px">Status</th><th style="padding:9px">Control</th></tr></thead>
+            <thead><tr><th style="text-align:left;padding:9px">Client</th><th style="text-align:left;padding:9px">Email</th><th style="text-align:right;padding:9px">Invoices</th><th style="text-align:right;padding:9px">Total due</th><th style="text-align:left;padding:9px">Oldest due</th><th style="text-align:left;padding:9px">Last sent</th><th style="text-align:left;padding:9px">Next sent</th><th style="text-align:left;padding:9px">Status</th><th style="padding:9px">Control</th></tr></thead>
             <tbody>${customers.map(row => `<tr style="border-top:1px solid var(--border-color)">
                 <td style="padding:9px"><strong>${esc(row.customer || "")}</strong><div class="seo-note-text">${esc((row.invoice_numbers || []).join(", "))}</div></td>
                 <td style="padding:9px">${esc(row.email || "")}</td>
                 <td style="padding:9px;text-align:right">${esc(String(row.invoice_count || 0))}</td>
                 <td style="padding:9px;text-align:right">${esc(Number(row.total_due || 0).toFixed(2))} ${esc(row.currency || "")}</td>
                 <td style="padding:9px">${esc(row.oldest_due_date || "")}</td>
+                <td style="padding:9px">${esc(formatTimestamp(row.last_live_sent_at || ""))}</td>
+                <td style="padding:9px">${esc(row.reminder_type === "multiple" ? "Stopped" : formatTimestamp(row.next_follow_up || ""))}</td>
                 <td style="padding:9px"><span class="sub-agent-chip ${row.status === "paused" ? "" : "ready"}">${esc(row.status || "")}</span></td>
-                <td style="padding:9px;text-align:center"><button class="secondary-btn" onclick="setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "Resume" : "Pause"}</button></td>
-            </tr>`).join("") || '<tr><td colspan="7" style="padding:18px">No eligible overdue clients found.</td></tr>'}</tbody>
+                <td style="padding:9px;text-align:center">${row.reminder_type === "multiple" ? '<button class="secondary-btn" disabled title="Multiple-invoice reminders are stopped">⏸</button>' : `<button class="secondary-btn" style="min-width:40px" title="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" aria-label="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" onclick="setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "▶" : "⏸"}</button>`}</td>
+            </tr>`).join("") || '<tr><td colspan="9" style="padding:18px">No eligible overdue clients found.</td></tr>'}</tbody>
         </table></div>
     </div></div>`;
 }

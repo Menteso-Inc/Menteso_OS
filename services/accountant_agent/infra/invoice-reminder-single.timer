@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Menteso single-invoice reminder hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+Unit=invoice-reminder-single.service
+
+[Install]
+WantedBy=timers.target
