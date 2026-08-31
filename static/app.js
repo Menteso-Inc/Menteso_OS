@@ -76,6 +76,8 @@ const state = {
         error: "",
         snapshot: null,
         view: "invoice_request",
+        snapshotFingerprint: "",
+        tableScrollLeft: 0,
     },
     pipelineMode: false,
     pipeline: null,
@@ -210,8 +212,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     render();
     setInterval(async () => {
         if (state.selectedAgent?.ui_type !== "accountant_monitor") return;
-        await loadAccountantDashboardData(state.selectedAgent.module_name);
-        renderMain();
+        const changed = await loadAccountantDashboardData(state.selectedAgent.module_name);
+        if (changed) renderMain();
     }, 3000);
 });
 
@@ -1811,7 +1813,7 @@ function renderReminderAgentSection(data) {
             <div class="seo-note-text">Last Wave scan: ${esc(formatTimestamp(reminder.lastScanAt || ""))}</div>
             <button class="secondary-btn" onclick="setReminderPause('', ${reminder.paused ? "false" : "true"})">${reminder.paused ? "Resume all" : "Pause all"}</button>
         </div>
-        <div style="overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:1320px;border-collapse:collapse;font-size:13px;white-space:nowrap">
+        <div id="reminder-table-scroll" onscroll="state.accountantDashboard.tableScrollLeft=this.scrollLeft" style="overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable"><table style="width:100%;min-width:1320px;border-collapse:collapse;font-size:13px;white-space:nowrap">
             <thead><tr><th style="text-align:left;padding:9px">Client</th><th style="text-align:left;padding:9px">Email</th><th style="text-align:right;padding:9px">Invoices</th><th style="text-align:right;padding:9px">Total due</th><th style="text-align:left;padding:9px">Oldest due</th><th style="text-align:left;padding:9px">Last sent</th><th style="text-align:left;padding:9px">Next sent</th><th style="text-align:left;padding:9px">Client activity</th><th style="text-align:left;padding:9px">Status</th><th style="padding:9px">Control</th></tr></thead>
             <tbody>${customers.map(row => `<tr onclick="openReminderDrawer('${esc(row.customer_id || "")}')" style="border-top:1px solid var(--border-color);cursor:pointer">
                 <td style="padding:9px"><strong>${esc(row.customer || "")}</strong><div class="seo-note-text">${esc((row.invoice_numbers || []).join(", "))}</div></td>
@@ -1872,10 +1874,15 @@ async function loadAccountantDashboardData(name = "accountant_agent") {
         const response = await fetch(`/api/agents/${name}/dashboard-data`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to load AccountantAgent status");
+        const fingerprint = JSON.stringify(data);
+        const changed = fingerprint !== state.accountantDashboard.snapshotFingerprint;
         state.accountantDashboard.snapshot = data;
+        state.accountantDashboard.snapshotFingerprint = fingerprint;
+        return changed;
     } catch (error) {
         state.accountantDashboard.snapshot = null;
         state.accountantDashboard.error = error.message || "Failed to load AccountantAgent status";
+        return true;
     } finally {
         state.accountantDashboard.loading = false;
     }
@@ -2105,6 +2112,10 @@ function renderMain() {
     }
 
     main.innerHTML = html;
+    const reminderScroll = document.getElementById("reminder-table-scroll");
+    if (reminderScroll) {
+        reminderScroll.scrollLeft = state.accountantDashboard.tableScrollLeft || 0;
+    }
     if (isSeoAgent && isLiveSeoWorkspace) {
         applySeoInsightsAccordion();
     }
