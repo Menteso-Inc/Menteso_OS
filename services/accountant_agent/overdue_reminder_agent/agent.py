@@ -13,6 +13,8 @@ from reportlab.pdfgen import canvas
 from src.companies import MENTESO
 from src.email_client import GmailClient
 from src.wave_client import WaveClient
+from src.zoho_client import ZohoClient
+from overdue_reminder_agent.checkout import CheckoutToken
 
 TEST_RECIPIENT = "shweta@menteso.com"
 AUTHORIZED_APPROVERS = {TEST_RECIPIENT, "sajan@menteso.com", "azam@menteso.com"}
@@ -168,9 +170,11 @@ accounts@menteso.com
                 rows.append(
                     f"<li style='margin-bottom:18px'><strong>Invoice {escape(str(invoice['invoiceNumber']))}</strong> "
                     f"- {escape(str(invoice['amountDue']['value']))} {escape(invoice['amountDue']['currency']['code'])}"
-                    f"<div style='margin-top:8px'>{cls._pay_button(invoice.get('viewUrl') or '', 'Pay now')}</div></li>"
+                    f"<div style='margin-top:5px'><a href='{escape(invoice.get('viewUrl') or '', quote=True)}'>Preview invoice</a></div></li>"
                 )
-            actions = "<ul style='padding-left:22px;margin:18px 0'>" + "".join(rows) + "</ul>"
+            portal_url = cls.multi_invoice_portal_url(group.customer_id)
+            actions = ("<ul style='padding-left:22px;margin:18px 0'>" + "".join(rows) + "</ul>" +
+                       f"<div style='margin:20px 0'>{cls._pay_button(portal_url, 'Review and pay invoices')}</div>")
         banner = (
             f"<div style='background:#fff3cd;padding:10px;margin-bottom:18px'><strong>TEST MODE</strong><br>"
             f"{escape(test_banner)}</div>" if test_banner else ""
@@ -195,6 +199,16 @@ accounts@menteso.com
             f'<a href="{safe_url}" style="display:inline-block;background:#1d4ed8;color:#fff;'
             f'text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold">{escape(label)}</a>'
         )
+
+    @staticmethod
+    def multi_invoice_portal_url(customer_id: str) -> str:
+        base = os.getenv("INVOICE_REMINDER_PORTAL_URL", "https://os.menteso.com/pay/invoices").rstrip("/")
+        secret = os.getenv("INVOICE_REMINDER_PORTAL_SECRET")
+        if not secret:
+            # Test mode remains non-chargeable until the shared portal secret is installed.
+            return f"{base}?unconfigured=1"
+        token = CheckoutToken(secret).issue(customer_id)
+        return f"{base}?token={token}"
 
     @staticmethod
     def statement_pdf(group: Group) -> bytes:
@@ -273,6 +287,13 @@ accounts@menteso.com
                 "email": group.email,
                 "invoice_count": len(group.invoices),
                 "invoice_numbers": [str(i["invoiceNumber"]) for i in group.invoices],
+                "invoices": [{
+                    "id": str(i["id"]), "number": str(i["invoiceNumber"]),
+                    "pid": str(i.get("poNumber") or ""), "due_date": str(i["dueDate"]),
+                    "amount_due": str(i["amountDue"]["value"]),
+                    "currency": str(i["amountDue"]["currency"]["code"]),
+                    "preview_url": str(i.get("viewUrl") or ""),
+                } for i in group.invoices],
                 "total_due": sum(float(str(i["amountDue"]["value"]).replace(",", "")) for i in group.invoices),
                 "currency": group.invoices[0]["amountDue"]["currency"]["code"],
                 "oldest_due_date": min(i["dueDate"] for i in group.invoices),
@@ -317,3 +338,35 @@ accounts@menteso.com
             ))
         self.state["last_test_at"]=datetime.now(timezone.utc).isoformat(); self.state["last_test_count"]=len(sent); self.save()
         return sent
+
+    def reconcile_payments(self) -> dict:
+        """Idempotently allocate verified Stripe events to Wave, then Zoho."""
+        zoho = ZohoClient(self.cfg)
+        today = datetime.now(timezone.utc).date().isoformat()
+        for event_id, event in self.state.get("payment_events", {}).items():
+            if event.get("status") == "reconciled":
+                continue
+            event.setdefault("allocations", {})
+            try:
+                for invoice in event.get("invoices", []):
+                    allocation = event["allocations"].setdefault(invoice["id"], {})
+                    if not allocation.get("wave_payment_id"):
+                        allocation["wave_payment_id"] = self.wave.record_stripe_payment(
+                            invoice["id"], invoice["amount_due"], today,
+                            str(event.get("stripe_payment_intent") or event["stripe_session_id"]),
+                        )
+                        self.save()
+                    if invoice.get("pid") and not allocation.get("zoho_updated"):
+                        zoho.mark_invoice_paid(invoice["pid"], today, str(event.get("stripe_payment_intent") or ""))
+                        allocation["zoho_updated"] = True
+                        self.save()
+                event["status"] = "reconciled"
+                event["reconciled_at"] = datetime.now(timezone.utc).isoformat()
+                row = self.state.get("customers", {}).get(event.get("customer_id"), {})
+                row["status"] = "paid_reconciled"
+            except Exception as exc:
+                event["status"] = "reconciliation_retry"
+                event["last_error"] = str(exc)
+                event["last_attempt_at"] = datetime.now(timezone.utc).isoformat()
+            self.save()
+        return self.state.get("payment_events", {})

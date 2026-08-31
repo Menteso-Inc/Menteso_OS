@@ -250,6 +250,29 @@ class ZohoClient:
             )
         return attached
 
+    def mark_invoice_paid(self, pid: str, payment_date: str, reference: str) -> None:
+        """Mark the PID paid only after Stripe and Wave reconciliation succeeded."""
+        details = self.find_by_pid(pid)
+        if details is None:
+            raise RuntimeError(f"Zoho PID {pid} was not found during payment reconciliation")
+        payload = {"Payment_Status": "Paid", "Payment_Date_Services": payment_date}
+        response = requests.put(
+            f"{self._cfg.zoho_api_base}/{self._cfg.zoho_module}/{details.zoho_record_id}",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json={"data": [payload]}, timeout=30,
+        )
+        response.raise_for_status()
+        result = (response.json().get("data") or [{}])[0]
+        if result.get("status") != "success":
+            raise RuntimeError(f"Zoho payment update failed: {result}")
+        note = {"Note_Title": "Payment reconciled by Invoice Reminder Agent",
+                "Note_Content": f"PID: {pid}\nStripe reference: {reference}\nPayment date: {payment_date}",
+                "Parent_Id": details.zoho_record_id, "$se_module": self._cfg.zoho_module}
+        note_response = requests.post(f"{self._cfg.zoho_api_base}/Notes",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json={"data": [note]}, timeout=30)
+        note_response.raise_for_status()
+
     def _attach_if_changed(self, module: str, record_id: str, filename: str,
                            content: bytes, pid: str, invoice_number: str) -> bool:
         """Upload only when this exact invoice PDF is not already on the record.

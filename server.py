@@ -49,6 +49,23 @@ OVERDUE_REMINDER_STATUS_FILE = Path(os.getenv(
     "OVERDUE_REMINDER_STATUS_FILE", "/app/accountant-status/overdue-reminder-status.json"
 ))
 
+def _payment_customer(token: str) -> tuple[dict, dict]:
+    secret = os.getenv("INVOICE_REMINDER_PORTAL_SECRET", "")
+    if len(secret) < 32:
+        raise ValueError("Payment portal is not configured")
+    body, supplied = token.split(".", 1)
+    expected = base64.urlsafe_b64encode(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+    if not hmac.compare_digest(supplied, expected):
+        raise ValueError("Invalid or expired payment link")
+    claim = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
+    if int(claim["exp"]) < int(time.time()):
+        raise ValueError("Invalid or expired payment link")
+    state = json.loads(OVERDUE_REMINDER_STATUS_FILE.read_text(encoding="utf-8-sig"))
+    row = state.get("customers", {}).get(str(claim["customer_id"]))
+    if not row or int(row.get("invoice_count", 0)) < 2:
+        raise ValueError("No multi-invoice account was found")
+    return state, row
+
 app = FastAPI(title="Menteso Virtual Office")
 RUN_CONTROLS = {}
 RUN_LIVE_STATUS = {}
@@ -2083,6 +2100,107 @@ async def accountant_reminder_control(payload: dict = Body(...)):
 @app.get("/api/google/search-console/status")
 async def google_search_console_status(workspace_id: str = "patentzoom"):
     return _google_search_console_status(workspace_id)
+
+
+@app.get("/pay/invoices", response_class=HTMLResponse)
+async def multi_invoice_portal(token: str = ""):
+    try:
+        _state, customer = _payment_customer(token)
+    except Exception as exc:
+        return HTMLResponse(f"<h2>Payment link unavailable</h2><p>{str(exc)}</p>", status_code=400)
+    invoice_data = customer.get("invoices", [])
+    rows = "".join(
+        f'''<label class="invoice"><input type="checkbox" value="{i['id']}" checked>
+        <span><b>Invoice {i['number']}</b><small>Due {i['due_date']} · {i['amount_due']} {i['currency']}</small></span>
+        <a href="{i['preview_url']}" target="_blank" rel="noopener">Preview</a></label>'''
+        for i in invoice_data
+    )
+    amounts = json.dumps([i.get("amount_due") for i in invoice_data])
+    safe_token = token.replace('"', "&quot;")
+    currency = customer.get("currency", "USD")
+    return HTMLResponse(f'''<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>Outstanding invoices</title>
+    <style>body{{font:16px Arial;background:#f5f7fb;color:#172033;margin:0}}main{{max-width:720px;margin:40px auto;background:white;padding:28px;border-radius:12px;box-shadow:0 8px 30px #0001}}.invoice{{display:flex;gap:14px;align-items:center;border:1px solid #dbe2ee;padding:16px;margin:12px 0;border-radius:9px}}.invoice span{{flex:1}}small{{display:block;color:#64748b;margin-top:5px}}button{{background:#1d4ed8;color:white;border:0;padding:13px 22px;border-radius:7px;font-weight:bold;font-size:16px}}#total{{font-size:20px;font-weight:bold;margin:22px 0}}a{{color:#1d4ed8}}</style></head>
+    <body><main><h1>Review outstanding invoices</h1><p>{customer.get('customer','')}</p>{rows}<div id="total"></div>
+    <button id="pay">Pay selected invoices securely</button><p><small>Stripe securely hosts card processing. Menteso does not receive your card details.</small></p></main>
+    <script>const token="{safe_token}",amounts={amounts},boxes=[...document.querySelectorAll('input')];function total(){{let n=0;boxes.forEach((b,i)=>{{if(b.checked)n+=Number(amounts[i].replace(',',''))}});document.querySelector('#total').textContent='Selected total: '+n.toFixed(2)+' {currency}'}}boxes.forEach(b=>b.onchange=total);total();document.querySelector('#pay').onclick=async()=>{{let ids=boxes.filter(b=>b.checked).map(b=>b.value);if(!ids.length)return alert('Select at least one invoice');let r=await fetch('/api/pay/invoices/checkout',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{token,invoice_ids:ids}})}});let d=await r.json();if(!r.ok)return alert(d.error||'Checkout unavailable');location.href=d.url}};</script></body></html>''')
+
+
+@app.post("/api/pay/invoices/checkout")
+async def create_multi_invoice_checkout(payload: dict = Body(...)):
+    try:
+        _state, customer = _payment_customer(str(payload.get("token") or ""))
+        selected = {str(x) for x in payload.get("invoice_ids", [])}
+        invoices = [i for i in customer.get("invoices", []) if i["id"] in selected]
+        if not invoices:
+            raise ValueError("Select at least one invoice")
+        if len({i["currency"].lower() for i in invoices}) != 1:
+            raise ValueError("Selected invoices must use the same currency")
+        key = os.getenv("INVOICE_REMINDER_STRIPE_SECRET_KEY", "")
+        if not key.startswith(("sk_test_", "sk_live_")):
+            raise ValueError("Stripe Checkout is not configured")
+        form = [("mode", "payment"), ("customer_email", customer["email"]),
+                ("success_url", "https://os.menteso.com/pay/success?session_id={CHECKOUT_SESSION_ID}"),
+                ("cancel_url", f"https://os.menteso.com/pay/invoices?token={payload['token']}"),
+                ("metadata[wave_customer_id]", customer["customer_id"]),
+                ("metadata[wave_invoice_ids]", ",".join(i["id"] for i in invoices))]
+        for n, invoice in enumerate(invoices):
+            amount = int(round(float(str(invoice["amount_due"]).replace(",", "")) * 100))
+            form += [(f"line_items[{n}][quantity]", "1"), (f"line_items[{n}][price_data][currency]", invoice["currency"].lower()),
+                     (f"line_items[{n}][price_data][unit_amount]", str(amount)),
+                     (f"line_items[{n}][price_data][product_data][name]", f"Invoice {invoice['number']}"),
+                     (f"line_items[{n}][price_data][product_data][description]", f"Due {invoice['due_date']}")]
+        response = requests.post("https://api.stripe.com/v1/checkout/sessions", auth=(key, ""), data=form, timeout=30,
+                                 headers={"Idempotency-Key": hashlib.sha256(json.dumps(form).encode()).hexdigest()})
+        response.raise_for_status()
+        return {"url": response.json()["url"]}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@app.get("/pay/success", response_class=HTMLResponse)
+async def multi_invoice_success(session_id: str = ""):
+    return HTMLResponse("<main style='font:16px Arial;max-width:650px;margin:60px auto'><h1>Thank you</h1><p>Your payment is being verified. A receipt will be sent after the selected invoices are reconciled.</p></main>")
+
+
+@app.post("/api/pay/stripe/webhook")
+async def stripe_invoice_webhook(request: Request):
+    payload = await request.body()
+    header = request.headers.get("stripe-signature", "")
+    secret = os.getenv("INVOICE_REMINDER_STRIPE_WEBHOOK_SECRET", "")
+    try:
+        parts = [p.split("=", 1) for p in header.split(",") if "=" in p]
+        stamp = int(next(v for k, v in parts if k == "t"))
+        signatures = [v for k, v in parts if k == "v1"]
+        if abs(int(time.time()) - stamp) > 300:
+            raise ValueError("expired signature")
+        expected = hmac.new(secret.encode(), str(stamp).encode() + b"." + payload, hashlib.sha256).hexdigest()
+        if not secret or not any(hmac.compare_digest(expected, value) for value in signatures):
+            raise ValueError("invalid signature")
+        event = json.loads(payload)
+        if event.get("type") != "checkout.session.completed":
+            return {"received": True}
+        session = event["data"]["object"]
+        if session.get("payment_status") != "paid":
+            return {"received": True}
+        metadata = session.get("metadata") or {}
+        customer_id = str(metadata.get("wave_customer_id") or "")
+        invoice_ids = [x for x in str(metadata.get("wave_invoice_ids") or "").split(",") if x]
+        state = json.loads(OVERDUE_REMINDER_STATUS_FILE.read_text(encoding="utf-8-sig"))
+        events = state.setdefault("payment_events", {})
+        if event["id"] not in events:
+            row = state.setdefault("customers", {}).get(customer_id, {})
+            selected = [i for i in row.get("invoices", []) if i.get("id") in invoice_ids]
+            events[event["id"]] = {"status": "pending_reconciliation", "stripe_session_id": session["id"],
+                                    "stripe_payment_intent": session.get("payment_intent"), "customer_id": customer_id,
+                                    "invoices": selected, "created_at": datetime.now(timezone.utc).isoformat()}
+            row["paused"] = True
+            row["status"] = "payment_reconciliation"
+            temporary = OVERDUE_REMINDER_STATUS_FILE.with_suffix(".tmp")
+            temporary.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+            temporary.replace(OVERDUE_REMINDER_STATUS_FILE)
+        return {"received": True}
+    except Exception:
+        return JSONResponse({"error": "Invalid Stripe webhook"}, status_code=400)
 
 
 @app.get("/api/social/status")

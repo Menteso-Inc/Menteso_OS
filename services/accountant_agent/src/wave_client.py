@@ -20,6 +20,7 @@ Requires a paid Wave plan (Pro/Advisor).
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 import requests
@@ -102,6 +103,13 @@ mutation ($input: InvoicePatchInput!) {
   }
 }
 """
+_INVOICE_PAYMENT_CREATE = """
+mutation ($input: InvoicePaymentCreateManualInput!) {
+  invoicePaymentCreateManual(input: $input) {
+    didSucceed inputErrors { code message path } invoicePayment { id }
+  }
+}
+"""
 
 
 class WaveClient:
@@ -123,6 +131,20 @@ class WaveClient:
         if payload.get("errors"):
             raise RuntimeError(f"Wave GraphQL error: {payload['errors']}")
         return payload["data"]
+
+    def record_stripe_payment(self, invoice_id: str, amount: str, payment_date: str,
+                              stripe_payment_intent: str) -> str:
+        account = os.getenv("INVOICE_REMINDER_WAVE_PAYMENT_ACCOUNT_ID", "")
+        if not account:
+            raise RuntimeError("INVOICE_REMINDER_WAVE_PAYMENT_ACCOUNT_ID is not configured")
+        result = self._gql(_INVOICE_PAYMENT_CREATE, {"input": {
+            "invoiceId": invoice_id, "paymentAccountId": account, "amount": str(amount),
+            "paymentDate": payment_date, "paymentMethod": "CREDIT_CARD", "exchangeRate": "1",
+            "memo": f"Stripe PaymentIntent {stripe_payment_intent}",
+        }})["invoicePaymentCreateManual"]
+        if not result.get("didSucceed"):
+            raise RuntimeError(f"Wave payment allocation failed: {result.get('inputErrors')}")
+        return result["invoicePayment"]["id"]
 
     def get_invoice(self, business_id: str, invoice_id: str) -> dict:
         page=1

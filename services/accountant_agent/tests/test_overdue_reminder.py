@@ -6,6 +6,7 @@ import json
 from pypdf import PdfReader
 
 from overdue_reminder_agent.agent import Group, OverdueReminderAgent, reminder_gmail_config
+from overdue_reminder_agent.checkout import CheckoutToken, StripeCheckout, cents, verify_stripe_event
 
 def inv(number="1", status="OVERDUE", sent=True):
     return {"invoiceNumber":number,"status":status,"dueDate":"2025-01-01","viewUrl":"https://pay.test/1","amountDue":{"value":"100.00","currency":{"code":"USD"}},"invoiceReminders":[{"sent":sent}]}
@@ -36,11 +37,42 @@ def test_personal_html_uses_first_name_and_short_payment_buttons():
     assert ">Pay now</a>" in html
     assert ">https://pay.test/1<" not in html
 
-def test_multiple_invoice_html_has_one_pay_button_per_invoice():
+def test_multiple_invoice_html_has_one_portal_button(monkeypatch):
+    monkeypatch.setenv("INVOICE_REMINDER_PORTAL_SECRET", "x" * 32)
     g=Group("c","Individual-Egypt Lawson","billing@acme.test",[inv("1"),inv("2")])
     html=OverdueReminderAgent.render_html(g)
     assert "Hi Egypt," in html
-    assert html.count(">Pay now</a>") == 2
+    assert html.count(">Review and pay invoices</a>") == 1
+    assert html.count("Preview invoice</a>") == 2
+
+def test_checkout_token_rejects_tampering_and_expiry(monkeypatch):
+    monkeypatch.setattr("time.time", lambda: 1000)
+    signer=CheckoutToken("x"*32); token=signer.issue("customer-1",60)
+    assert signer.verify(token,1059)["customer_id"]=="customer-1"
+    try: signer.verify(token+"x",1059)
+    except ValueError: pass
+    else: raise AssertionError("tampered token accepted")
+    try: signer.verify(token,1061)
+    except ValueError: pass
+    else: raise AssertionError("expired token accepted")
+
+def test_stripe_checkout_contains_selected_invoices(monkeypatch):
+    captured={}
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {"id":"cs_test","url":"https://checkout.stripe.test"}
+    def post(url,**kwargs): captured.update(kwargs); return Response()
+    monkeypatch.setattr("requests.post",post)
+    rows=[dict(inv("1"),id="wave-1"),dict(inv("2"),id="wave-2")]
+    result=StripeCheckout("sk_test","https://ok","https://cancel").create("a@test","c",rows)
+    assert result["id"]=="cs_test"
+    assert ("metadata[wave_invoice_ids]","wave-1,wave-2") in captured["data"]
+    assert cents("100.00")==10000
+
+def test_stripe_webhook_signature():
+    payload=b'{"id":"evt_1"}'; stamp=1000; secret="whsec_test"
+    digest=__import__("hmac").new(secret.encode(),str(stamp).encode()+b"."+payload,__import__("hashlib").sha256).hexdigest()
+    assert verify_stripe_event(payload,f"t={stamp},v1={digest}",secret,now=stamp)["id"]=="evt_1"
 
 def test_weekly_schedule_and_manual_pause(tmp_path):
     agent=object.__new__(OverdueReminderAgent)
