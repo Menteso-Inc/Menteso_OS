@@ -73,6 +73,8 @@ def get_dashboard_data():
             "lastTestAt": reminder.get("last_test_at", ""),
             "eligibleCustomers": int(reminder.get("eligible_customers", 0)),
             "eligibleInvoices": int(reminder.get("eligible_invoices", 0)),
+            "singleInvoiceCustomers": int(reminder.get("single_invoice_customers", 0)),
+            "multipleInvoiceCustomers": int(reminder.get("multiple_invoice_customers", 0)),
             "customers": reminder_customers,
         },
     }

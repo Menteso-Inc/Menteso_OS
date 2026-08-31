@@ -96,6 +96,31 @@ def test_group_test_recipients_must_be_authorized():
     else:
         raise AssertionError("External test recipient was accepted")
 
+def test_live_sender_requires_two_independent_safety_switches(monkeypatch, tmp_path):
+    agent=object.__new__(OverdueReminderAgent); agent.state_path=tmp_path/"state.json"
+    agent.state={"mode":"test","paused":False,"customers":{}}
+    monkeypatch.setenv("INVOICE_REMINDER_SINGLE_LIVE_ENABLED","true")
+    try: agent.send_live_singles()
+    except RuntimeError as exc: assert "single_live" in str(exc)
+    else: raise AssertionError("test mode sent live mail")
+
+def test_live_sender_hard_blocks_multiple_invoice_groups(monkeypatch, tmp_path):
+    single=Group("one","One Client","one@example.com",[inv("1")])
+    multiple=Group("many","Many Client","many@example.com",[inv("2"),inv("3")])
+    agent=object.__new__(OverdueReminderAgent); agent.state_path=tmp_path/"state.json"
+    agent.state={"mode":"single_live","paused":False,"customers":{}}
+    agent.collect=lambda:[single,multiple]; agent.sync_dashboard=lambda groups:None
+    agent.attachment=lambda group:(b"pdf","invoice.pdf")
+    class Gmail:
+        def __init__(self,*_): pass
+        def send_message(self,to,*_args): assert to==["one@example.com"]; return "message-1"
+    monkeypatch.setenv("INVOICE_REMINDER_SINGLE_LIVE_ENABLED","true")
+    monkeypatch.setattr("overdue_reminder_agent.agent.GmailClient",Gmail)
+    monkeypatch.setattr("overdue_reminder_agent.agent.reminder_gmail_config",lambda cfg:cfg)
+    agent.cfg=object()
+    sent=agent.send_live_singles()
+    assert [row["customer_id"] for row in sent]==["one"]
+
 def test_reminder_gmail_config_is_isolated_from_invoice_request(monkeypatch):
     @dataclass(frozen=True)
     class FakeConfig:

@@ -1795,6 +1795,8 @@ function renderReminderAgentSection(data) {
         <div class="stats-grid">
             <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleCustomers || 0))}</div><div class="stat-label">Clients</div></div>
             <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleInvoices || 0))}</div><div class="stat-label">Overdue invoices</div></div>
+            <div class="stat-card"><div class="stat-value success">${esc(String(reminder.singleInvoiceCustomers || 0))}</div><div class="stat-label">Single invoice · eligible</div></div>
+            <div class="stat-card"><div class="stat-value">${esc(String(reminder.multipleInvoiceCustomers || 0))}</div><div class="stat-label">Multiple invoices · stopped</div></div>
             <div class="stat-card"><div class="stat-value">${esc(String(reminder.mode || "test").toUpperCase())}</div><div class="stat-label">Delivery mode</div></div>
             <div class="stat-card"><div class="stat-value ${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</div><div class="stat-label">Scheduler</div></div>
         </div>

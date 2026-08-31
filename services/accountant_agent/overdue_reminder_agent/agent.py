@@ -278,7 +278,12 @@ accounts@menteso.com
         now = datetime.now(timezone.utc)
         customers = self.state.setdefault("customers", {})
         live_ids = set()
+        single_count = 0
+        multiple_count = 0
         for group in groups:
+            is_multiple = len(group.invoices) > 1
+            multiple_count += int(is_multiple)
+            single_count += int(not is_multiple)
             live_ids.add(group.customer_id)
             row = customers.setdefault(group.customer_id, {})
             row.update({
@@ -298,8 +303,11 @@ accounts@menteso.com
                 "currency": group.invoices[0]["amountDue"]["currency"]["code"],
                 "oldest_due_date": min(i["dueDate"] for i in group.invoices),
                 "wave_reminders_finished": True,
-                "status": "paused" if row.get("paused") else ("test_ready" if self.state.get("mode") == "test" else "ready"),
-                "next_follow_up": None if row.get("paused") else self._next_follow_up(row, now),
+                "reminder_type": "multiple" if is_multiple else "single",
+                "status": ("multiple_invoice_paused" if is_multiple else
+                           ("paused" if row.get("paused") else
+                            ("test_ready" if self.state.get("mode") == "test" else "single_ready"))),
+                "next_follow_up": None if (row.get("paused") or is_multiple) else self._next_follow_up(row, now),
             })
         for customer_id, row in customers.items():
             if customer_id not in live_ids:
@@ -307,6 +315,8 @@ accounts@menteso.com
         self.state["last_scan_at"] = now.isoformat()
         self.state["eligible_customers"] = len(groups)
         self.state["eligible_invoices"] = sum(len(g.invoices) for g in groups)
+        self.state["single_invoice_customers"] = single_count
+        self.state["multiple_invoice_customers"] = multiple_count
         self.save()
         return self.state
 
@@ -337,6 +347,35 @@ accounts@menteso.com
                 sorted(normalized),subject,banner+p["body"],pdf_bytes,pdf_filename,html
             ))
         self.state["last_test_at"]=datetime.now(timezone.utc).isoformat(); self.state["last_test_count"]=len(sent); self.save()
+        return sent
+
+    def send_live_singles(self, max_count=10):
+        """Send only one-invoice reminders; multiple-invoice customers are hard-blocked."""
+        if os.getenv("INVOICE_REMINDER_SINGLE_LIVE_ENABLED", "").lower() != "true":
+            raise RuntimeError("INVOICE_REMINDER_SINGLE_LIVE_ENABLED is not true")
+        if self.state.get("mode") != "single_live":
+            raise RuntimeError("Reminder state mode must be single_live")
+        groups = self.collect()
+        self.sync_dashboard(groups)
+        gmail = GmailClient(reminder_gmail_config(self.cfg))
+        sent = []
+        now = datetime.now(timezone.utc)
+        for group in groups:
+            if len(sent) >= max_count:
+                break
+            if len(group.invoices) != 1 or not self.due_for_follow_up(group.customer_id, now):
+                continue
+            subject, body = self.render(group)
+            pdf_bytes, pdf_filename = self.attachment(group)
+            message_id = gmail.send_message([group.email], subject, body, pdf_bytes,
+                                            pdf_filename, self.render_html(group))
+            row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
+            row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
+                        "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
+            self.save()
+            sent.append({"customer_id": group.customer_id, "customer": group.name,
+                         "email": group.email, "invoice": str(group.invoices[0]["invoiceNumber"]),
+                         "message_id": message_id})
         return sent
 
     def reconcile_payments(self) -> dict:
