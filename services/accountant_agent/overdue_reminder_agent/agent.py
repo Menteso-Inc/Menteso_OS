@@ -388,7 +388,7 @@ accounts@menteso.com
         customers = self.state.setdefault("customers", {})
         processed = set(self.state.setdefault("processed_reply_ids", []))
         by_email = {str(row.get("email") or "").lower(): row for row in customers.values() if row.get("email")}
-        for message in gmail.fetch_unprocessed("in:inbox is:unread newer_than:30d"):
+        for message in gmail.fetch_unprocessed("in:inbox newer_than:30d"):
             row = by_email.get(str(message.from_address or "").lower())
             if not row or message.message_id in processed:
                 continue
