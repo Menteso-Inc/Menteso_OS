@@ -9,6 +9,8 @@ Group=menteso_os
 WorkingDirectory=/home/menteso_os/agents/accountant_agent
 EnvironmentFile=/home/menteso_os/secrets/accountant_agent.env
 Environment=INVOICE_REMINDER_SINGLE_LIVE_ENABLED=true
+ExecStartPre=+/usr/bin/chown menteso_os:menteso_os /home/menteso_os/data/accountant_agent/overdue-reminder-status.json
+ExecStartPre=+/usr/bin/chmod 664 /home/menteso_os/data/accountant_agent/overdue-reminder-status.json
 ExecStart=/home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/run.py --send-live-singles --max-live 25
 
 [Install]

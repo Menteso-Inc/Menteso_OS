@@ -4021,7 +4021,11 @@ function formatPercent(rate) {
 function formatTimestamp(ts) {
     if (!ts) return "";
     try {
-        return new Date(ts).toLocaleString();
+        return `${new Date(ts).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit", hour12: true,
+        })} IST`;
     } catch {
         return ts;
     }
