@@ -51,8 +51,11 @@ runtime, data directory, and deployment process.
   original Wave PDF for one invoice; consolidated statement for multiple invoices;
   weekly cadence; per-customer and global pause controls.
 - Approval authority: Shweta; administrative visibility for Shweta, Sajan, and Azam.
-- Current setup task: authorize OAuth specifically as `accounts@menteso.com`,
-  store the credentials separately, verify delivered headers, and connect replies.
+- OAuth secret: `invoice-reminder-agent/gmail` in `us-east-2`; required keys and
+  mailbox identity were validated on 2026-08-31. EC2 reads it through the
+  restricted `MentesoOSInvoiceReminderRole` instance role.
+- Current setup task: verify Gmail `users.getProfile`, verify one delivered
+  internal test header, and connect replies.
 
 ### PCT Agent
 

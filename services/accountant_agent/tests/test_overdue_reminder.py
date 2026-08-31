@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+import json
 
 from pypdf import PdfReader
 
-from overdue_reminder_agent.agent import Group, OverdueReminderAgent
+from overdue_reminder_agent.agent import Group, OverdueReminderAgent, reminder_gmail_config
 
 def inv(number="1", status="OVERDUE", sent=True):
     return {"invoiceNumber":number,"status":status,"dueDate":"2025-01-01","viewUrl":"https://pay.test/1","amountDue":{"value":"100.00","currency":{"code":"USD"}},"invoiceReminders":[{"sent":sent}]}
@@ -61,3 +63,36 @@ def test_group_test_recipients_must_be_authorized():
         assert "authorized" in str(exc)
     else:
         raise AssertionError("External test recipient was accepted")
+
+def test_reminder_gmail_config_is_isolated_from_invoice_request(monkeypatch):
+    @dataclass(frozen=True)
+    class FakeConfig:
+        mailbox_address:str
+        google_client_id:str
+        google_client_secret:str
+        google_refresh_token:str
+        google_service_account_file:str
+        google_service_account_json:str
+    base=FakeConfig(
+        mailbox_address="invoicerequest@menteso.com",
+        google_client_id="old",google_client_secret="old",google_refresh_token="old",
+        google_service_account_file="scripts/service_account.json",
+        google_service_account_json="old-service-account",
+    )
+    payload={
+        "MAILBOX_ADDRESS":"accounts@menteso.com",
+        "GOOGLE_CLIENT_ID":"accounts-client",
+        "GOOGLE_CLIENT_SECRET":"accounts-secret",
+        "GOOGLE_REFRESH_TOKEN":"accounts-refresh",
+        "GOOGLE_SCOPES":["https://www.googleapis.com/auth/gmail.modify"],
+    }
+    class Secrets:
+        def get_secret_value(self,SecretId):
+            assert SecretId=="invoice-reminder-agent/gmail"
+            return {"SecretString":json.dumps(payload)}
+    monkeypatch.setattr("boto3.client",lambda service,region_name: Secrets())
+    cfg=reminder_gmail_config(base)
+    assert cfg.mailbox_address=="accounts@menteso.com"
+    assert cfg.google_refresh_token=="accounts-refresh"
+    assert cfg.google_service_account_file==""
+    assert cfg.google_service_account_json==""

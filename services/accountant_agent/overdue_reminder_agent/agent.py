@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import io, json
+import io, json, os
 from html import escape
 from dataclasses import replace
 from dataclasses import dataclass
@@ -17,6 +17,39 @@ from src.wave_client import WaveClient
 TEST_RECIPIENT = "shweta@menteso.com"
 AUTHORIZED_APPROVERS = {TEST_RECIPIENT, "sajan@menteso.com", "azam@menteso.com"}
 FOLLOW_UP_DAYS = 7
+
+
+def reminder_gmail_config(base_cfg):
+    """Load the isolated Accounts OAuth bundle without touching invoice-request auth."""
+    secret_name = os.getenv("INVOICE_REMINDER_AWS_SECRET_NAME", "invoice-reminder-agent/gmail")
+    region = os.getenv("INVOICE_REMINDER_AWS_REGION", "us-east-2")
+    import boto3
+
+    secret = boto3.client("secretsmanager", region_name=region).get_secret_value(
+        SecretId=secret_name
+    )
+    values = json.loads(secret["SecretString"])
+    required = {
+        "MAILBOX_ADDRESS", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REFRESH_TOKEN", "GOOGLE_SCOPES",
+    }
+    missing = sorted(key for key in required if not values.get(key))
+    if missing:
+        raise RuntimeError(f"Invoice Reminder Gmail secret is missing: {', '.join(missing)}")
+    mailbox = str(values["MAILBOX_ADDRESS"]).strip().lower()
+    if mailbox != "accounts@menteso.com":
+        raise RuntimeError(f"Invoice Reminder Gmail secret has the wrong mailbox: {mailbox}")
+    return replace(
+        base_cfg,
+        mailbox_address=mailbox,
+        google_client_id=values["GOOGLE_CLIENT_ID"],
+        google_client_secret=values["GOOGLE_CLIENT_SECRET"],
+        google_refresh_token=values["GOOGLE_REFRESH_TOKEN"],
+        # Clearing both fields is essential: GmailClient otherwise prefers the
+        # Invoice Request service account over this dedicated OAuth grant.
+        google_service_account_file="",
+        google_service_account_json="",
+    )
 
 QUERY = '''query($id:ID!,$page:Int!){business(id:$id){id name invoices(page:$page,pageSize:100){pageInfo{totalPages} edges{node{id invoiceNumber poNumber status dueDate pdfUrl viewUrl lastSentAt amountDue{value currency{code}} customer{id name email} invoiceReminders{id daysDelta sent sentManually issueDate}}}}}}'''
 
@@ -271,7 +304,7 @@ accounts@menteso.com
             raise ValueError("Test recipients must be authorized Menteso approvers")
         # Domain-wide delegation impersonates the real Accounts mailbox; test
         # mode still hard-locks every recipient to Shweta.
-        gmail=GmailClient(replace(self.cfg, mailbox_address="accounts@menteso.com"))
+        gmail=GmailClient(reminder_gmail_config(self.cfg))
         sent=[]
         for p in self.previews(count):
             group=Group(p["customer_id"],p["customer"],p["intended_to"],p["invoices"])
