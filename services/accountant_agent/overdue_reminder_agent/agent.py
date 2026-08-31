@@ -5,6 +5,7 @@ from html import escape
 from dataclasses import replace
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from reportlab.lib.pagesizes import LETTER
@@ -19,6 +20,7 @@ from overdue_reminder_agent.checkout import CheckoutToken
 TEST_RECIPIENT = "shweta@menteso.com"
 AUTHORIZED_APPROVERS = {TEST_RECIPIENT, "sajan@menteso.com", "azam@menteso.com"}
 FOLLOW_UP_DAYS = 7
+ACTIVITY_RECIPIENTS = ["sajan@menteso.com", "shweta@menteso.com", "accounts@menteso.com", "azam@menteso.com"]
 
 
 def reminder_gmail_config(base_cfg):
@@ -54,6 +56,7 @@ def reminder_gmail_config(base_cfg):
     )
 
 QUERY = '''query($id:ID!,$page:Int!){business(id:$id){id name invoices(page:$page,pageSize:100){pageInfo{totalPages} edges{node{id invoiceNumber poNumber status dueDate pdfUrl viewUrl lastSentAt amountDue{value currency{code}} customer{id name email} invoiceReminders{id daysDelta sent sentManually issueDate}}}}}}'''
+INVOICE_ACTIVITY_QUERY = '''query($businessId:ID!,$invoiceId:ID!){business(id:$businessId){invoice(id:$invoiceId){id invoiceNumber status amountPaid{value currency{code}} payments{id paymentDate createdAt amount paymentMethod}}}}'''
 
 @dataclass
 class Group:
@@ -377,6 +380,66 @@ accounts@menteso.com
                          "email": group.email, "invoice": str(group.invoices[0]["invoiceNumber"]),
                          "message_id": message_id})
         return sent
+
+    def monitor_activity(self) -> list[dict]:
+        """Notify the internal team once for client replies and confirmed Wave payments."""
+        gmail = GmailClient(reminder_gmail_config(self.cfg))
+        events = []
+        customers = self.state.setdefault("customers", {})
+        processed = set(self.state.setdefault("processed_reply_ids", []))
+        by_email = {str(row.get("email") or "").lower(): row for row in customers.values() if row.get("email")}
+        for message in gmail.fetch_unprocessed("in:inbox is:unread newer_than:30d"):
+            row = by_email.get(str(message.from_address or "").lower())
+            if not row or message.message_id in processed:
+                continue
+            detected = datetime.now(ZoneInfo("Asia/Kolkata"))
+            body = (message.body_text or "").strip()[:3000]
+            subject = f"[Invoice Reminder] Client replied: {row.get('customer')}"
+            text = (f"Client: {row.get('customer')}\nEmail: {row.get('email')}\n"
+                    f"Invoice(s): {', '.join(row.get('invoice_numbers') or [])}\n"
+                    f"Detected: {detected.strftime('%d %b %Y, %I:%M %p IST')}\n\nReply:\n{body}")
+            gmail.send_message(ACTIVITY_RECIPIENTS, subject, text)
+            processed.add(message.message_id)
+            row.update({"last_activity": "client_replied", "last_activity_at": detected.isoformat(),
+                        "last_activity_detail": body[:500]})
+            events.append({"type": "client_replied", "customer": row.get("customer")})
+            self.state["processed_reply_ids"] = sorted(processed)
+            self.save()
+
+        notified = set(self.state.setdefault("notified_wave_payment_ids", []))
+        for row in customers.values():
+            if not row.get("last_live_sent_at"):
+                continue
+            for invoice in row.get("invoices", []):
+                result = self.wave._gql(INVOICE_ACTIVITY_QUERY, {
+                    "businessId": MENTESO.wave_business_id, "invoiceId": invoice["id"],
+                })["business"]["invoice"]
+                for payment in result.get("payments") or []:
+                    if payment["id"] in notified:
+                        continue
+                    created_at = datetime.fromisoformat(str(payment.get("createdAt") or "").replace("Z", "+00:00"))
+                    reminder_sent = datetime.fromisoformat(str(row["last_live_sent_at"]).replace("Z", "+00:00"))
+                    if created_at <= reminder_sent:
+                        notified.add(payment["id"])
+                        self.state["notified_wave_payment_ids"] = sorted(notified)
+                        self.save()
+                        continue
+                    subject = f"[Invoice Reminder] Payment received: invoice {result['invoiceNumber']}"
+                    text = (f"Client: {row.get('customer')}\nEmail: {row.get('email')}\n"
+                            f"Invoice: {result['invoiceNumber']}\nPayment date: {payment.get('paymentDate')}\n"
+                            f"Amount: {payment.get('amount')} {result['amountPaid']['currency']['code']}\n"
+                            f"Method: {payment.get('paymentMethod') or 'Not specified'}\nWave status: {result.get('status')}")
+                    gmail.send_message(ACTIVITY_RECIPIENTS, subject, text)
+                    notified.add(payment["id"])
+                    row.update({"last_activity": "paid", "last_activity_at": str(payment.get("paymentDate") or ""),
+                                "last_activity_detail": f"{payment.get('amount')} {result['amountPaid']['currency']['code']}"})
+                    events.append({"type": "paid", "customer": row.get("customer"),
+                                   "invoice": result["invoiceNumber"]})
+                    self.state["notified_wave_payment_ids"] = sorted(notified)
+                    self.save()
+        self.state["last_activity_scan_at"] = datetime.now(timezone.utc).isoformat()
+        self.save()
+        return events
 
     def reconcile_payments(self) -> dict:
         """Idempotently allocate verified Stripe events to Wave, then Zoho."""

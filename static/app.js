@@ -1790,6 +1790,13 @@ function renderInvoiceRequestSection() {
 function renderReminderAgentSection(data) {
     const reminder = data.reminder || {};
     const customers = reminder.customers || [];
+    const selected = customers.find(row => row.customer_id === state.accountantDashboard.selectedReminderCustomer);
+    const drawer = selected ? `<div onclick="closeReminderDrawer()" style="position:fixed;inset:0;background:#0f172a55;z-index:9998"></div>
+        <aside style="position:fixed;right:0;top:0;height:100vh;width:min(480px,92vw);background:var(--card-bg,#fff);z-index:9999;box-shadow:-12px 0 35px #0003;padding:24px;overflow:auto">
+        <div style="display:flex;justify-content:space-between;gap:16px;align-items:start"><div><div class="section-title">${esc(selected.customer || "Client details")}</div><div class="seo-note-text">${esc(selected.email || "")}</div></div><button class="secondary-btn" onclick="closeReminderDrawer()" aria-label="Close">✕</button></div>
+        <div class="stats-grid" style="margin-top:20px"><div class="stat-card"><div class="stat-value">${esc(String(selected.invoice_count || 0))}</div><div class="stat-label">Invoices</div></div><div class="stat-card"><div class="stat-value">${esc(Number(selected.total_due || 0).toFixed(2))}</div><div class="stat-label">${esc(selected.currency || "")} due</div></div></div>
+        <div class="input-card" style="margin-top:16px"><div><strong>Status</strong><div>${esc(selected.status || "")}</div></div><hr><div><strong>Invoice numbers</strong><div>${esc((selected.invoice_numbers || []).join(", "))}</div></div><hr><div><strong>Oldest due date</strong><div>${esc(selected.oldest_due_date || "")}</div></div><hr><div><strong>Last reminder sent</strong><div>${esc(formatTimestamp(selected.last_live_sent_at || "") || "Not sent")}</div></div><hr><div><strong>Next reminder</strong><div>${esc(selected.reminder_type === "multiple" ? "Stopped" : (formatTimestamp(selected.next_follow_up || "") || "Not scheduled"))}</div></div><hr><div><strong>Latest client activity</strong><div>${esc((selected.last_activity || "No action").replaceAll("_", " "))}</div><div class="seo-note-text">${esc(formatTimestamp(selected.last_activity_at || ""))}</div><div>${esc(selected.last_activity_detail || "")}</div></div></div>
+        </aside>` : "";
     return `<div class="input-section"><div class="input-card">
         <div class="section-title">Invoice Reminder Agent</div>
         <div class="stats-grid">
@@ -1804,9 +1811,9 @@ function renderReminderAgentSection(data) {
             <div class="seo-note-text">Last Wave scan: ${esc(formatTimestamp(reminder.lastScanAt || ""))}</div>
             <button class="secondary-btn" onclick="setReminderPause('', ${reminder.paused ? "false" : "true"})">${reminder.paused ? "Resume all" : "Pause all"}</button>
         </div>
-        <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <div style="overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch"><table style="width:100%;min-width:1320px;border-collapse:collapse;font-size:13px;white-space:nowrap">
             <thead><tr><th style="text-align:left;padding:9px">Client</th><th style="text-align:left;padding:9px">Email</th><th style="text-align:right;padding:9px">Invoices</th><th style="text-align:right;padding:9px">Total due</th><th style="text-align:left;padding:9px">Oldest due</th><th style="text-align:left;padding:9px">Last sent</th><th style="text-align:left;padding:9px">Next sent</th><th style="text-align:left;padding:9px">Status</th><th style="padding:9px">Control</th></tr></thead>
-            <tbody>${customers.map(row => `<tr style="border-top:1px solid var(--border-color)">
+            <tbody>${customers.map(row => `<tr onclick="openReminderDrawer('${esc(row.customer_id || "")}')" style="border-top:1px solid var(--border-color);cursor:pointer">
                 <td style="padding:9px"><strong>${esc(row.customer || "")}</strong><div class="seo-note-text">${esc((row.invoice_numbers || []).join(", "))}</div></td>
                 <td style="padding:9px">${esc(row.email || "")}</td>
                 <td style="padding:9px;text-align:right">${esc(String(row.invoice_count || 0))}</td>
@@ -1815,10 +1822,20 @@ function renderReminderAgentSection(data) {
                 <td style="padding:9px">${esc(formatTimestamp(row.last_live_sent_at || ""))}</td>
                 <td style="padding:9px">${esc(row.reminder_type === "multiple" ? "Stopped" : formatTimestamp(row.next_follow_up || ""))}</td>
                 <td style="padding:9px"><span class="sub-agent-chip ${row.status === "paused" ? "" : "ready"}">${esc(row.status || "")}</span></td>
-                <td style="padding:9px;text-align:center">${row.reminder_type === "multiple" ? '<button class="secondary-btn" disabled title="Multiple-invoice reminders are stopped">⏸</button>' : `<button class="secondary-btn" style="min-width:40px" title="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" aria-label="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" onclick="setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "▶" : "⏸"}</button>`}</td>
+                <td style="padding:9px;text-align:center">${row.reminder_type === "multiple" ? '<button class="secondary-btn" disabled title="Multiple-invoice reminders are stopped">⏸</button>' : `<button class="secondary-btn" style="min-width:40px" title="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" aria-label="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" onclick="event.stopPropagation();setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "▶" : "⏸"}</button>`}</td>
             </tr>`).join("") || '<tr><td colspan="9" style="padding:18px">No eligible overdue clients found.</td></tr>'}</tbody>
         </table></div>
-    </div></div>`;
+    </div></div>${drawer}`;
+}
+
+function openReminderDrawer(customerId) {
+    state.accountantDashboard.selectedReminderCustomer = customerId;
+    render();
+}
+
+function closeReminderDrawer() {
+    state.accountantDashboard.selectedReminderCustomer = "";
+    render();
 }
 
 function renderAccountantOverviewSection() {
