@@ -2136,9 +2136,10 @@ async def create_multi_invoice_checkout(payload: dict = Body(...)):
         if len({i["currency"].lower() for i in invoices}) != 1:
             raise ValueError("Selected invoices must use the same currency")
         key = os.getenv("INVOICE_REMINDER_STRIPE_SECRET_KEY", "")
-        if not key.startswith(("sk_test_", "sk_live_")):
+        if not key.startswith(("rk_live_", "sk_live_", "rk_test_", "sk_test_")):
             raise ValueError("Stripe Checkout is not configured")
-        form = [("mode", "payment"), ("customer_email", customer["email"]),
+        form = [("mode", "payment"), ("payment_method_types[]", "card"),
+                ("customer_email", customer["email"]),
                 ("success_url", "https://os.menteso.com/pay/success?session_id={CHECKOUT_SESSION_ID}"),
                 ("cancel_url", f"https://os.menteso.com/pay/invoices?token={payload['token']}"),
                 ("metadata[wave_customer_id]", customer["customer_id"]),

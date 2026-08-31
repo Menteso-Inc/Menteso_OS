@@ -69,7 +69,8 @@ class StripeCheckout:
         if len(currencies) != 1:
             raise ValueError("Selected invoices must use one currency")
         form: list[tuple[str, str]] = [
-            ("mode", "payment"), ("customer_email", customer_email),
+            ("mode", "payment"), ("payment_method_types[]", "card"),
+            ("customer_email", customer_email),
             ("success_url", self.success_url), ("cancel_url", self.cancel_url),
             ("metadata[wave_customer_id]", customer_id),
             ("metadata[wave_invoice_ids]", ",".join(str(i["id"]) for i in invoices)),
