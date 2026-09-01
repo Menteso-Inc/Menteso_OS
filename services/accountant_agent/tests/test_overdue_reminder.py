@@ -7,6 +7,18 @@ from pypdf import PdfReader
 
 from overdue_reminder_agent.agent import Group, OverdueReminderAgent, reminder_gmail_config
 from overdue_reminder_agent.checkout import CheckoutToken, StripeCheckout, cents, verify_stripe_event
+from overdue_reminder_agent.ses_sender import ReminderSesSender
+
+def test_ses_sender_uses_accounts_from_reply_to_and_configuration_set():
+    captured={}
+    class Ses:
+        def send_email(self,**kwargs): captured.update(kwargs); return {"MessageId":"ses-1"}
+    sender=ReminderSesSender(client=Ses())
+    assert sender.send_message(["sajan@menteso.com"],"Test","Body") == "ses-1"
+    raw=captured["Content"]["Raw"]["Data"].decode("utf-8", "replace")
+    assert "accounts@menteso.com" in raw
+    assert "Reply-To: accounts@menteso.com" in raw
+    assert captured["ConfigurationSetName"] == "invoice-reminder-agent"
 
 def inv(number="1", status="OVERDUE", sent=True):
     return {"invoiceNumber":number,"status":status,"dueDate":"2025-01-01","viewUrl":"https://pay.test/1","amountDue":{"value":"100.00","currency":{"code":"USD"}},"invoiceReminders":[{"sent":sent}]}
@@ -111,12 +123,11 @@ def test_live_sender_hard_blocks_multiple_invoice_groups(monkeypatch, tmp_path):
     agent.state={"mode":"single_live","paused":False,"customers":{}}
     agent.collect=lambda:[single,multiple]; agent.sync_dashboard=lambda groups:None
     agent.attachment=lambda group:(b"pdf","invoice.pdf")
-    class Gmail:
+    class Ses:
         def __init__(self,*_): pass
         def send_message(self,to,*_args): assert to==["one@example.com"]; return "message-1"
     monkeypatch.setenv("INVOICE_REMINDER_SINGLE_LIVE_ENABLED","true")
-    monkeypatch.setattr("overdue_reminder_agent.agent.GmailClient",Gmail)
-    monkeypatch.setattr("overdue_reminder_agent.agent.reminder_gmail_config",lambda cfg:cfg)
+    monkeypatch.setattr("overdue_reminder_agent.agent.ReminderSesSender",Ses)
     agent.cfg=object()
     sent=agent.send_live_singles()
     assert [row["customer_id"] for row in sent]==["one"]

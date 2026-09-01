@@ -1792,6 +1792,7 @@ function renderInvoiceRequestSection() {
 function renderReminderAgentSection(data) {
     const reminder = data.reminder || {};
     const customers = reminder.customers || [];
+    const sentEmails = reminder.sentEmails || [];
     const selected = customers.find(row => row.customer_id === state.accountantDashboard.selectedReminderCustomer);
     const drawer = selected ? `<div onclick="closeReminderDrawer()" style="position:fixed;inset:0;background:#0f172a55;z-index:9998"></div>
         <aside style="position:fixed;right:0;top:0;height:100vh;width:min(480px,92vw);background:var(--card-bg,#fff);z-index:9999;box-shadow:-12px 0 35px #0003;padding:24px;overflow:auto">
@@ -1827,6 +1828,12 @@ function renderReminderAgentSection(data) {
                 <td style="padding:9px"><span class="sub-agent-chip ${row.status === "paused" ? "" : "ready"}">${esc(row.status || "")}</span></td>
                 <td style="padding:9px;text-align:center">${row.reminder_type === "multiple" ? '<button class="secondary-btn" disabled title="Multiple-invoice reminders are stopped">⏸</button>' : `<button class="secondary-btn" style="min-width:40px" title="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" aria-label="${row.status === "paused" ? "Resume reminders" : "Pause reminders"}" onclick="event.stopPropagation();setReminderPause('${esc(row.customer_id || "")}', ${row.status === "paused" ? "false" : "true"})">${row.status === "paused" ? "▶" : "⏸"}</button>`}</td>
             </tr>`).join("") || '<tr><td colspan="10" style="padding:18px">No eligible overdue clients found.</td></tr>'}</tbody>
+        </table></div>
+        <div class="section-title" style="margin-top:24px">Agent Sent Emails</div>
+        <div class="seo-note-text" style="margin-bottom:10px">Messages sent through Amazon SES. Human Gmail messages remain in Gmail Sent.</div>
+        <div style="overflow-x:auto"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px;white-space:nowrap">
+            <thead><tr><th style="text-align:left;padding:9px">Sent (IST)</th><th style="text-align:left;padding:9px">From</th><th style="text-align:left;padding:9px">To</th><th style="text-align:left;padding:9px">Subject</th><th style="text-align:left;padding:9px">Type</th><th style="text-align:left;padding:9px">SES status</th></tr></thead>
+            <tbody>${sentEmails.map(mail => `<tr style="border-top:1px solid var(--border-color)"><td style="padding:9px">${esc(formatTimestamp(mail.sent_at || ""))}</td><td style="padding:9px">${esc(mail.from || "")}</td><td style="padding:9px">${esc((mail.recipients || []).join(", "))}</td><td style="padding:9px">${esc(mail.subject || "")}</td><td style="padding:9px">${esc((mail.kind || "").replaceAll("_", " "))}</td><td style="padding:9px"><span class="sub-agent-chip ready">${esc(mail.status || "sent")}</span></td></tr>`).join("") || '<tr><td colspan="6" style="padding:18px">No agent email has been sent through SES yet.</td></tr>'}</tbody>
         </table></div>
     </div></div>${drawer}`;
 }

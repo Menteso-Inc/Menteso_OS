@@ -16,6 +16,7 @@ from src.email_client import GmailClient
 from src.wave_client import WaveClient
 from src.zoho_client import ZohoClient
 from overdue_reminder_agent.checkout import CheckoutToken
+from overdue_reminder_agent.ses_sender import ReminderSesSender
 
 TEST_RECIPIENT = "shweta@menteso.com"
 AUTHORIZED_APPROVERS = {TEST_RECIPIENT, "sajan@menteso.com", "azam@menteso.com"}
@@ -77,6 +78,25 @@ class OverdueReminderAgent:
     def save(self):
         self.state_path.parent.mkdir(parents=True,exist_ok=True)
         self.state_path.write_text(json.dumps(self.state,indent=2,sort_keys=True))
+
+    def _record_sent(self, message_id, recipients, subject, kind, customer=None, invoices=None):
+        entry = {
+            "message_id": message_id,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "from": "accounts@menteso.com",
+            "recipients": list(recipients),
+            "subject": subject,
+            "kind": kind,
+            "customer": customer or "",
+            "invoice_numbers": list(invoices or []),
+            "provider": "amazon_ses",
+            "status": "sent",
+        }
+        history = self.state.setdefault("sent_emails", [])
+        history.insert(0, entry)
+        del history[500:]
+        self.save()
+        return entry
 
     def customer_paused(self, customer_id: str) -> bool:
         return bool(self.state.get("customers", {}).get(customer_id, {}).get("paused"))
@@ -336,9 +356,7 @@ accounts@menteso.com
         normalized = {str(address).strip().lower() for address in recipients}
         if not normalized or not normalized.issubset(AUTHORIZED_APPROVERS):
             raise ValueError("Test recipients must be authorized Menteso approvers")
-        # Domain-wide delegation impersonates the real Accounts mailbox; test
-        # mode still hard-locks every recipient to Shweta.
-        gmail=GmailClient(reminder_gmail_config(self.cfg))
+        sender=ReminderSesSender()
         sent=[]
         for p in self.previews(count):
             group=Group(p["customer_id"],p["customer"],p["intended_to"],p["invoices"])
@@ -346,9 +364,13 @@ accounts@menteso.com
             banner=f"TEST MODE — DO NOT FORWARD\nIntended real recipient: {p['intended_to']}\nCustomer: {p['customer']}\n\n"
             subject=f"[OVERDUE AGENT TEST] {p['subject']}"
             html=self.render_html(group, f"Intended real recipient: {p['intended_to']} | Customer: {p['customer']}")
-            sent.append(gmail.send_message(
-                sorted(normalized),subject,banner+p["body"],pdf_bytes,pdf_filename,html
-            ))
+            recipients_sorted = sorted(normalized)
+            message_id = sender.send_message(
+                recipients_sorted,subject,banner+p["body"],pdf_bytes,pdf_filename,html
+            )
+            self._record_sent(message_id, recipients_sorted, subject, "test", p["customer"],
+                              [str(i["invoiceNumber"]) for i in p["invoices"]])
+            sent.append(message_id)
         self.state["last_test_at"]=datetime.now(timezone.utc).isoformat(); self.state["last_test_count"]=len(sent); self.save()
         return sent
 
@@ -360,7 +382,7 @@ accounts@menteso.com
             raise RuntimeError("Reminder state mode must be single_live")
         groups = self.collect()
         self.sync_dashboard(groups)
-        gmail = GmailClient(reminder_gmail_config(self.cfg))
+        sender = ReminderSesSender()
         sent = []
         now = datetime.now(timezone.utc)
         for group in groups:
@@ -370,8 +392,10 @@ accounts@menteso.com
                 continue
             subject, body = self.render(group)
             pdf_bytes, pdf_filename = self.attachment(group)
-            message_id = gmail.send_message([group.email], subject, body, pdf_bytes,
-                                            pdf_filename, self.render_html(group))
+            message_id = sender.send_message([group.email], subject, body, pdf_bytes,
+                                             pdf_filename, self.render_html(group))
+            self._record_sent(message_id, [group.email], subject, "live_reminder", group.name,
+                              [str(i["invoiceNumber"]) for i in group.invoices])
             row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
             row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
                         "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
@@ -384,6 +408,7 @@ accounts@menteso.com
     def monitor_activity(self) -> list[dict]:
         """Notify the internal team once for client replies and confirmed Wave payments."""
         gmail = GmailClient(reminder_gmail_config(self.cfg))
+        sender = ReminderSesSender()
         events = []
         customers = self.state.setdefault("customers", {})
         processed = set(self.state.setdefault("processed_reply_ids", []))
@@ -398,7 +423,9 @@ accounts@menteso.com
             text = (f"Client: {row.get('customer')}\nEmail: {row.get('email')}\n"
                     f"Invoice(s): {', '.join(row.get('invoice_numbers') or [])}\n"
                     f"Detected: {detected.strftime('%d %b %Y, %I:%M %p IST')}\n\nReply:\n{body}")
-            gmail.send_message(ACTIVITY_RECIPIENTS, subject, text)
+            message_id = sender.send_message(ACTIVITY_RECIPIENTS, subject, text)
+            self._record_sent(message_id, ACTIVITY_RECIPIENTS, subject, "activity_notification",
+                              row.get("customer"), row.get("invoice_numbers"))
             processed.add(message.message_id)
             row.update({"last_activity": "client_replied", "last_activity_at": detected.isoformat(),
                         "last_activity_detail": body[:500]})
@@ -429,7 +456,9 @@ accounts@menteso.com
                             f"Invoice: {result['invoiceNumber']}\nPayment date: {payment.get('paymentDate')}\n"
                             f"Amount: {payment.get('amount')} {result['amountPaid']['currency']['code']}\n"
                             f"Method: {payment.get('paymentMethod') or 'Not specified'}\nWave status: {result.get('status')}")
-                    gmail.send_message(ACTIVITY_RECIPIENTS, subject, text)
+                    message_id = sender.send_message(ACTIVITY_RECIPIENTS, subject, text)
+                    self._record_sent(message_id, ACTIVITY_RECIPIENTS, subject, "activity_notification",
+                                      row.get("customer"), [str(result["invoiceNumber"])])
                     notified.add(payment["id"])
                     row.update({"last_activity": "paid", "last_activity_at": str(payment.get("paymentDate") or ""),
                                 "last_activity_detail": f"{payment.get('amount')} {result['amountPaid']['currency']['code']}"})

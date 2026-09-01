@@ -75,6 +75,7 @@ def get_dashboard_data():
             "eligibleInvoices": int(reminder.get("eligible_invoices", 0)),
             "singleInvoiceCustomers": int(reminder.get("single_invoice_customers", 0)),
             "multipleInvoiceCustomers": int(reminder.get("multiple_invoice_customers", 0)),
+            "sentEmails": reminder.get("sent_emails", [])[:100],
             "customers": reminder_customers,
         },
     }
