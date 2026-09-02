@@ -1793,7 +1793,7 @@ function renderReminderAgentSection(data) {
     const reminder = data.reminder || {};
     const customers = reminder.customers || [];
     const sentEmails = reminder.sentEmails || [];
-    const agentCollection = Object.entries(reminder.agentCollectionTotals || {})
+    const agentCollected = Object.entries(reminder.agentCollectedTotals || {})
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([currency, amount]) => `${Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${currency}`)
         .join(" + ") || "0.00";
@@ -1813,7 +1813,7 @@ function renderReminderAgentSection(data) {
                 <div><span>Wave reminders</span><strong>${esc(String(reminder.waveReminderInvoices || 0))}</strong></div>
                 <div><span>Agent reminders</span><strong>${esc(String(reminder.agentReminderInvoices || 0))}</strong></div>
                 <div><span>Missing email</span><strong>${esc(String(reminder.missingEmailInvoices || 0))}</strong></div>
-                <div><span>Agent-owned collection</span><strong>${esc(agentCollection)}</strong></div>
+                <div><span>Agent collected</span><strong>${esc(agentCollected)}</strong></div>
             </div>
             <div class="collection-summary-status">Delivery: <strong>${esc(String(reminder.mode || "test").toUpperCase())}</strong><span>Scheduler: <strong class="${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</strong></span></div>
         </div>

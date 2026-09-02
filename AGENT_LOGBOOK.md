@@ -131,3 +131,14 @@ For every future change, append:
 - Rollback: Restore the four production files from the backup directory, rebuild
   only the `menteso-os` container, and leave unrelated agents untouched.
 - External behavior approval: Requested directly by the user in the deployment conversation.
+
+### 2026-09-02 — Agent-attributed collections metric
+
+- Requested change: Replace agent-owned outstanding value with payments actually
+  received after an agent reminder.
+- Files/services modified: Invoice Reminder activity monitor, Accountant dashboard
+  adapter, and the consolidated `os.menteso.com` collections card.
+- Tests: 77 Accountant service tests passed; JavaScript syntax and Python compile checks passed.
+- Attribution rule: A Wave payment counts once when its creation timestamp is later
+  than that invoice's first recorded live agent reminder.
+- External behavior: No change to recipients, cadence, or delivery permissions.

@@ -470,6 +470,17 @@ accounts@menteso.com
             self.save()
 
         notified = set(self.state.setdefault("notified_wave_payment_ids", []))
+        first_agent_sent = {}
+        for sent in self.state.get("sent_emails", []):
+            if sent.get("kind") != "live_reminder" or not sent.get("sent_at"):
+                continue
+            stamp = datetime.fromisoformat(str(sent["sent_at"]).replace("Z", "+00:00"))
+            for number in sent.get("invoice_numbers", []):
+                key = str(number)
+                if key not in first_agent_sent or stamp < first_agent_sent[key]:
+                    first_agent_sent[key] = stamp
+        collected_totals = {}
+        counted_payments = set()
         for row in customers.values():
             if not row.get("last_live_sent_at"):
                 continue
@@ -492,9 +503,19 @@ accounts@menteso.com
                 if not result:
                     continue
                 for payment in result.get("payments") or []:
+                    payment_key = f"{result['id']}:{payment['id']}"
+                    created_at = datetime.fromisoformat(str(payment.get("createdAt") or "").replace("Z", "+00:00"))
+                    first_sent = first_agent_sent.get(str(result["invoiceNumber"]))
+                    if first_sent and created_at > first_sent and payment_key not in counted_payments:
+                        raw_amount = payment.get("amount")
+                        amount = raw_amount.get("value", 0) if isinstance(raw_amount, dict) else raw_amount
+                        currency = str(result["amountPaid"]["currency"]["code"])
+                        collected_totals[currency] = round(
+                            float(collected_totals.get(currency, 0)) + float(str(amount).replace(",", "")), 2
+                        )
+                        counted_payments.add(payment_key)
                     if payment["id"] in notified:
                         continue
-                    created_at = datetime.fromisoformat(str(payment.get("createdAt") or "").replace("Z", "+00:00"))
                     reminder_sent = datetime.fromisoformat(str(row["last_live_sent_at"]).replace("Z", "+00:00"))
                     if created_at <= reminder_sent:
                         notified.add(payment["id"])
@@ -517,6 +538,7 @@ accounts@menteso.com
                     self.state["notified_wave_payment_ids"] = sorted(notified)
                     self.save()
         self.state["last_activity_scan_at"] = datetime.now(timezone.utc).isoformat()
+        self.state["agent_collected_totals"] = collected_totals
         self.save()
         return events
 

@@ -78,6 +78,7 @@ def get_dashboard_data():
             "agentReminderInvoices": int(reminder.get("agent_reminder_invoices", reminder.get("eligible_invoices", 0))),
             "missingEmailInvoices": int(reminder.get("missing_email_invoices", 0)),
             "agentCollectionTotals": reminder.get("agent_collection_totals", {}),
+            "agentCollectedTotals": reminder.get("agent_collected_totals", {}),
             "singleInvoiceCustomers": int(reminder.get("single_invoice_customers", 0)),
             "multipleInvoiceCustomers": int(reminder.get("multiple_invoice_customers", 0)),
             "sentEmails": reminder.get("sent_emails", [])[:100],
