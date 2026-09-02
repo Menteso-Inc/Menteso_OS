@@ -222,6 +222,13 @@ AUTH_EXEMPT_PATHS = {
     "/api/login",
     "/favicon.ico",
     "/api/accountant/gmail-push",
+    # Customer payment links are protected by short-lived HMAC tokens, while
+    # Stripe protects its callback with the webhook signing secret. Requiring
+    # an OS dashboard login here makes emailed payment links unusable.
+    "/pay/invoices",
+    "/pay/success",
+    "/api/pay/invoices/checkout",
+    "/api/pay/stripe/webhook",
 }
 ACCOUNTANT_PUSH_AUDIENCE = os.getenv(
     "ACCOUNTANT_PUSH_AUDIENCE", "https://os.menteso.com/api/accountant/gmail-push"
