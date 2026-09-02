@@ -442,11 +442,14 @@ accounts@menteso.com
                          "message_id": message_id})
         return sent
 
-    def send_multi_payment_test(self, customer_id: str, recipient: str) -> dict:
+    def send_multi_payment_test(self, customer_id: str, recipient: str, cc=None) -> dict:
         """Send one real-checkout test only for a <= $1 internal Wave customer."""
         recipient = str(recipient or "").strip().lower()
         if recipient not in AUTHORIZED_APPROVERS:
             raise ValueError("Multi-invoice payment tests must go to an authorized Menteso approver")
+        cc_recipients = sorted({str(address).strip().lower() for address in (cc or []) if address})
+        if not set(cc_recipients).issubset(AUTHORIZED_APPROVERS):
+            raise ValueError("Multi-invoice payment-test CC recipients must be authorized Menteso approvers")
         groups = self.collect()
         self.sync_dashboard(groups)
         group = next((item for item in groups if item.customer_id == customer_id), None)
@@ -454,8 +457,8 @@ accounts@menteso.com
             raise ValueError("The requested Wave customer has no agent-owned overdue invoices")
         if len(group.invoices) < 2:
             raise ValueError("The payment test requires at least two overdue invoices")
-        if group.email.strip().lower() != recipient:
-            raise ValueError("The Wave test customer's email must match the approved recipient")
+        if group.email.strip().lower() not in {recipient, *cc_recipients}:
+            raise ValueError("The Wave test customer's email must be included as To or CC")
         currencies = {str(i["amountDue"]["currency"]["code"]).upper() for i in group.invoices}
         total = sum(float(str(i["amountDue"]["value"]).replace(",", "")) for i in group.invoices)
         if currencies != {"USD"} or total > 1.00:
@@ -472,15 +475,16 @@ accounts@menteso.com
             "LIVE PAYMENT TEST - Stripe is live; the maximum selected total is $1.00.",
         )
         message_id = ReminderSesSender().send_message(
-            [recipient], subject, banner + body, pdf_bytes, pdf_filename, html
+            [recipient], subject, banner + body, pdf_bytes, pdf_filename, html, cc=cc_recipients
         )
-        self._record_sent(message_id, [recipient], subject, "multi_payment_test", group.name,
+        self._record_sent(message_id, [recipient, *cc_recipients], subject, "multi_payment_test", group.name,
                           [str(i["invoiceNumber"]) for i in group.invoices])
         row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
         row.update({"last_payment_test_sent_at": datetime.now(timezone.utc).isoformat(),
                     "last_payment_test_message_id": message_id, "status": "multi_payment_test_sent"})
         self.save()
         return {"customer_id": group.customer_id, "customer": group.name, "email": recipient,
+                "cc": cc_recipients,
                 "invoice_numbers": [str(i["invoiceNumber"]) for i in group.invoices],
                 "total": round(total, 2), "currency": "USD", "message_id": message_id}
 

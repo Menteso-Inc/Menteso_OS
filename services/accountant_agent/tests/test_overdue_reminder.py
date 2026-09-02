@@ -20,6 +20,16 @@ def test_ses_sender_uses_accounts_from_reply_to_and_configuration_set():
     assert "Reply-To: accounts@menteso.com" in raw
     assert captured["ConfigurationSetName"] == "invoice-reminder-agent"
 
+def test_ses_sender_preserves_cc_recipients():
+    captured={}
+    class Ses:
+        def send_email(self,**kwargs): captured.update(kwargs); return {"MessageId":"ses-cc"}
+    sender=ReminderSesSender(client=Ses())
+    sender.send_message("azam@menteso.com","Test","Body",cc=["sajan@menteso.com","shweta@menteso.com"])
+    raw=captured["Content"]["Raw"]["Data"].decode("utf-8", "replace")
+    assert "Cc: sajan@menteso.com, shweta@menteso.com" in raw
+    assert captured["Destination"]["CcAddresses"]==["sajan@menteso.com","shweta@menteso.com"]
+
 def inv(number="1", status="OVERDUE", sent=True):
     return {"invoiceNumber":number,"status":status,"dueDate":"2025-01-01","viewUrl":"https://pay.test/1","amountDue":{"value":"100.00","currency":{"code":"USD"}},"invoiceReminders":[{"sent":sent}]}
 
@@ -170,7 +180,7 @@ def test_multi_payment_test_is_limited_to_internal_one_dollar_customer(monkeypat
     agent.collect=lambda:[group]; agent.sync_dashboard=lambda groups:None
     agent.attachment=lambda group:(b"pdf","statement.pdf")
     class Ses:
-        def send_message(self,to,*_args): assert to==["sajan@menteso.com"]; return "message-test"
+        def send_message(self,to,*_args,**_kwargs): assert to==["sajan@menteso.com"]; return "message-test"
     monkeypatch.setattr("overdue_reminder_agent.agent.ReminderSesSender",Ses)
     monkeypatch.setenv("INVOICE_REMINDER_PORTAL_SECRET","x"*32)
     result=agent.send_multi_payment_test("test-customer","sajan@menteso.com")

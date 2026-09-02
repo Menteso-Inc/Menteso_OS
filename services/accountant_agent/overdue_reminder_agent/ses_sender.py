@@ -26,10 +26,14 @@ class ReminderSesSender:
         pdf_bytes: Optional[bytes] = None,
         pdf_filename: str = "invoice.pdf",
         html_body: Optional[str] = None,
+        cc=None,
     ) -> str:
         recipients = [to] if isinstance(to, str) else list(to)
+        cc_recipients = [] if cc is None else ([cc] if isinstance(cc, str) else list(cc))
         mime = MIMEMultipart("mixed")
         mime["To"] = ", ".join(recipients)
+        if cc_recipients:
+            mime["Cc"] = ", ".join(cc_recipients)
         mime["From"] = formataddr(("Menteso Accounts Team", self.from_address))
         mime["Reply-To"] = self.from_address
         mime["Subject"] = subject
@@ -46,7 +50,7 @@ class ReminderSesSender:
             mime.attach(attachment)
         response = self.client.send_email(
             FromEmailAddress=self.from_address,
-            Destination={"ToAddresses": recipients},
+            Destination={"ToAddresses": recipients, "CcAddresses": cc_recipients},
             Content={"Raw": {"Data": mime.as_bytes()}},
             ConfigurationSetName=self.configuration_set,
             EmailTags=[{"Name": "agent", "Value": "invoice-reminder"}],
