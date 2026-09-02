@@ -438,9 +438,23 @@ accounts@menteso.com
             if not row.get("last_live_sent_at"):
                 continue
             for invoice in row.get("invoices", []):
-                result = self.wave._gql(INVOICE_ACTIVITY_QUERY, {
-                    "businessId": MENTESO.wave_business_id, "invoiceId": invoice["id"],
-                })["business"]["invoice"]
+                try:
+                    result = self.wave._gql(INVOICE_ACTIVITY_QUERY, {
+                        "businessId": MENTESO.wave_business_id, "invoiceId": invoice["id"],
+                    })["business"]["invoice"]
+                except RuntimeError as exc:
+                    errors = self.state.setdefault("activity_monitor_errors", [])
+                    errors.append({
+                        "invoice_id": str(invoice.get("id") or ""),
+                        "invoice_number": str(invoice.get("number") or ""),
+                        "detected_at": datetime.now(timezone.utc).isoformat(),
+                        "error": str(exc)[:500],
+                    })
+                    del errors[:-100]
+                    self.save()
+                    continue
+                if not result:
+                    continue
                 for payment in result.get("payments") or []:
                     if payment["id"] in notified:
                         continue
