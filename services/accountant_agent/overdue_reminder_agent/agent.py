@@ -433,6 +433,7 @@ accounts@menteso.com
             self._record_sent(message_id, [group.email], subject, "live_reminder", group.name,
                               [str(i["invoiceNumber"]) for i in group.invoices])
             row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
+            row.setdefault("first_live_sent_at", now.isoformat())
             row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
                         "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
             self.save()
@@ -506,6 +507,10 @@ accounts@menteso.com
                     payment_key = f"{result['id']}:{payment['id']}"
                     created_at = datetime.fromisoformat(str(payment.get("createdAt") or "").replace("Z", "+00:00"))
                     first_sent = first_agent_sent.get(str(result["invoiceNumber"]))
+                    if not first_sent:
+                        legacy_sent = row.get("first_live_sent_at") or row.get("last_live_sent_at")
+                        if legacy_sent:
+                            first_sent = datetime.fromisoformat(str(legacy_sent).replace("Z", "+00:00"))
                     if first_sent and created_at > first_sent and payment_key not in counted_payments:
                         raw_amount = payment.get("amount")
                         amount = raw_amount.get("value", 0) if isinstance(raw_amount, dict) else raw_amount

@@ -158,6 +158,8 @@ def test_live_sender_hard_blocks_multiple_invoice_groups(monkeypatch, tmp_path):
     agent.cfg=object()
     sent=agent.send_live_singles()
     assert [row["customer_id"] for row in sent]==["one"]
+    assert agent.state["customers"]["one"]["first_live_sent_at"]
+    assert agent.state["customers"]["one"]["last_live_sent_at"]
 
 def test_reminder_gmail_config_is_isolated_from_invoice_request(monkeypatch):
     @dataclass(frozen=True)

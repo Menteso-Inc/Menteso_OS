@@ -1882,7 +1882,10 @@ async function setReminderPause(customerId, paused) {
 }
 
 async function loadAccountantDashboardData(name = "accountant_agent") {
-    state.accountantDashboard.loading = true;
+    // Only show the full loading placeholder before the first snapshot. During
+    // the three-second background poll, keep the last valid dashboard visible.
+    const isInitialLoad = !state.accountantDashboard.snapshot;
+    if (isInitialLoad) state.accountantDashboard.loading = true;
     state.accountantDashboard.error = "";
     try {
         const response = await fetch(`/api/agents/${name}/dashboard-data`);
@@ -1898,7 +1901,7 @@ async function loadAccountantDashboardData(name = "accountant_agent") {
         state.accountantDashboard.error = error.message || "Failed to load AccountantAgent status";
         return true;
     } finally {
-        state.accountantDashboard.loading = false;
+        if (isInitialLoad) state.accountantDashboard.loading = false;
     }
 }
 
