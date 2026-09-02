@@ -1665,7 +1665,11 @@ function renderSidebar() {
                 state.pipeline = null;
                 resetCaptchaAlert();
                 state.browser.event = "idle";
-                await loadAgentRunStatus(agent.module_name);
+                if ((detail || agent).ui_type === "accountant_monitor") {
+                    void loadAgentRunStatus(agent.module_name);
+                } else {
+                    await loadAgentRunStatus(agent.module_name);
+                }
                 if ((detail || agent).ui_type === "seo_posting") {
                     state.seoDashboard.previewArticle = null;
                     state.seoDashboard.historyEntry = null;
@@ -1728,7 +1732,11 @@ function renderSidebarFlat() {
             state.pipeline = null;
             resetCaptchaAlert();
             state.browser.event = "idle";
-            await loadAgentRunStatus(agent.module_name);
+            if ((detail || agent).ui_type === "accountant_monitor") {
+                void loadAgentRunStatus(agent.module_name);
+            } else {
+                await loadAgentRunStatus(agent.module_name);
+            }
             if ((detail || agent).ui_type === "seo_posting") {
                 state.seo.activeWorkspaceId = "patent-drawing-experts";
                 state.seoDashboard.previewArticle = null;
