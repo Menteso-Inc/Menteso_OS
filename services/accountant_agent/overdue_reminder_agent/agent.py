@@ -121,18 +121,45 @@ class OverdueReminderAgent:
         reminders=invoice.get("invoiceReminders") or []
         return bool(reminders) and all(r.get("sent") for r in reminders)
 
+    @staticmethod
+    def reminder_owner(invoice):
+        """Wave owns pending flows; the agent owns absent or completed flows."""
+        reminders = invoice.get("invoiceReminders") or []
+        if reminders and not all(r.get("sent") for r in reminders):
+            return "wave"
+        return "agent"
+
     def collect(self):
         grouped={}; page=1
+        summary = {
+            "overdue_total": 0,
+            "wave_reminder_invoices": 0,
+            "agent_reminder_invoices": 0,
+            "missing_email_invoices": 0,
+            "agent_collection_totals": {},
+        }
         while True:
             conn=self.wave._gql(QUERY,{"id":MENTESO.wave_business_id,"page":page})["business"]["invoices"]
             for edge in conn["edges"]:
                 inv=edge["node"]
-                if inv["status"]!="OVERDUE" or not self.wave_finished(inv): continue
+                if inv["status"]!="OVERDUE": continue
+                summary["overdue_total"] += 1
                 customer=inv.get("customer") or {}; email=(customer.get("email") or "").strip()
-                if not email: continue
+                if not email:
+                    summary["missing_email_invoices"] += 1
+                    continue
+                if self.reminder_owner(inv) == "wave":
+                    summary["wave_reminder_invoices"] += 1
+                    continue
+                summary["agent_reminder_invoices"] += 1
+                amount = float(str(inv["amountDue"]["value"]).replace(",", ""))
+                currency = str(inv["amountDue"]["currency"]["code"])
+                totals = summary["agent_collection_totals"]
+                totals[currency] = round(float(totals.get(currency, 0)) + amount, 2)
                 key=customer["id"]; grouped.setdefault(key,Group(key,customer.get("name") or "Customer",email,[])).invoices.append(inv)
             if page>=conn["pageInfo"]["totalPages"]: break
             page+=1
+        self._scan_summary = summary
         return sorted(grouped.values(),key=lambda x:min(i["dueDate"] for i in x.invoices))
 
     @staticmethod
@@ -325,7 +352,8 @@ accounts@menteso.com
                 "total_due": sum(float(str(i["amountDue"]["value"]).replace(",", "")) for i in group.invoices),
                 "currency": group.invoices[0]["amountDue"]["currency"]["code"],
                 "oldest_due_date": min(i["dueDate"] for i in group.invoices),
-                "wave_reminders_finished": True,
+                "wave_reminders_finished": all(self.wave_finished(i) for i in group.invoices),
+                "reminder_owner": "agent",
                 "reminder_type": "multiple" if is_multiple else "single",
                 "status": ("multiple_invoice_paused" if is_multiple else
                            ("paused" if row.get("paused") else
@@ -340,6 +368,14 @@ accounts@menteso.com
         self.state["eligible_invoices"] = sum(len(g.invoices) for g in groups)
         self.state["single_invoice_customers"] = single_count
         self.state["multiple_invoice_customers"] = multiple_count
+        scan_summary = getattr(self, "_scan_summary", {})
+        self.state.update({
+            "overdue_total": int(scan_summary.get("overdue_total", self.state["eligible_invoices"])),
+            "wave_reminder_invoices": int(scan_summary.get("wave_reminder_invoices", 0)),
+            "agent_reminder_invoices": int(scan_summary.get("agent_reminder_invoices", self.state["eligible_invoices"])),
+            "missing_email_invoices": int(scan_summary.get("missing_email_invoices", 0)),
+            "agent_collection_totals": scan_summary.get("agent_collection_totals", {}),
+        })
         self.save()
         return self.state
 

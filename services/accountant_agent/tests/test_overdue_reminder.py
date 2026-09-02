@@ -28,6 +28,33 @@ def test_only_after_wave_reminders_finished():
     assert not OverdueReminderAgent.wave_finished(inv(sent=False))
     x=inv(); x["invoiceReminders"]=[]; assert not OverdueReminderAgent.wave_finished(x)
 
+def test_reminder_ownership_hands_off_between_agent_and_wave():
+    no_wave_flow=inv(); no_wave_flow["invoiceReminders"]=[]
+    assert OverdueReminderAgent.reminder_owner(no_wave_flow)=="agent"
+    assert OverdueReminderAgent.reminder_owner(inv(sent=False))=="wave"
+    assert OverdueReminderAgent.reminder_owner(inv(sent=True))=="agent"
+
+def test_collect_builds_disjoint_live_dashboard_summary():
+    no_flow=dict(inv("agent-1"), id="a", customer={"id":"c1","name":"A","email":"a@test"})
+    no_flow["invoiceReminders"]=[]
+    wave_pending=dict(inv("wave-1",sent=False), id="w", customer={"id":"c2","name":"W","email":"w@test"})
+    missing=dict(inv("missing-1"), id="m", customer={"id":"c3","name":"M","email":""})
+    paid=dict(inv("paid-1",status="PAID"), id="p", customer={"id":"c4","name":"P","email":"p@test"})
+    agent=object.__new__(OverdueReminderAgent)
+    class Wave:
+        def _gql(self,*_args,**_kwargs):
+            return {"business":{"invoices":{"pageInfo":{"totalPages":1},"edges":[{"node":x} for x in [no_flow,wave_pending,missing,paid]]}}}
+    agent.wave=Wave()
+    groups=agent.collect()
+    assert [g.customer_id for g in groups]==["c1"]
+    assert agent._scan_summary=={
+        "overdue_total":3,
+        "wave_reminder_invoices":1,
+        "agent_reminder_invoices":1,
+        "missing_email_invoices":1,
+        "agent_collection_totals":{"USD":100.0},
+    }
+
 def test_multiple_invoice_message_requests_payment_date():
     g=Group("c","Acme","billing@acme.test",[inv("1"),inv("2")])
     subject,body=OverdueReminderAgent.render(g)

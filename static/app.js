@@ -1793,6 +1793,10 @@ function renderReminderAgentSection(data) {
     const reminder = data.reminder || {};
     const customers = reminder.customers || [];
     const sentEmails = reminder.sentEmails || [];
+    const agentCollection = Object.entries(reminder.agentCollectionTotals || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([currency, amount]) => `${Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${currency}`)
+        .join(" + ") || "0.00";
     const selected = customers.find(row => row.customer_id === state.accountantDashboard.selectedReminderCustomer);
     const drawer = selected ? `<div onclick="closeReminderDrawer()" style="position:fixed;inset:0;background:#0f172a55;z-index:9998"></div>
         <aside style="position:fixed;right:0;top:0;height:100vh;width:min(480px,92vw);background:var(--card-bg,#fff);z-index:9999;box-shadow:-12px 0 35px #0003;padding:24px;overflow:auto">
@@ -1802,13 +1806,16 @@ function renderReminderAgentSection(data) {
         </aside>` : "";
     return `<div class="input-section"><div class="input-card">
         <div class="section-title">Invoice Reminder Agent</div>
-        <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleCustomers || 0))}</div><div class="stat-label">Clients</div></div>
-            <div class="stat-card"><div class="stat-value">${esc(String(reminder.eligibleInvoices || 0))}</div><div class="stat-label">Overdue invoices</div></div>
-            <div class="stat-card"><div class="stat-value success">${esc(String(reminder.singleInvoiceCustomers || 0))}</div><div class="stat-label">Single invoice · eligible</div></div>
-            <div class="stat-card"><div class="stat-value">${esc(String(reminder.multipleInvoiceCustomers || 0))}</div><div class="stat-label">Multiple invoices · stopped</div></div>
-            <div class="stat-card"><div class="stat-value">${esc(String(reminder.mode || "test").toUpperCase())}</div><div class="stat-label">Delivery mode</div></div>
-            <div class="stat-card"><div class="stat-value ${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</div><div class="stat-label">Scheduler</div></div>
+        <div class="collection-summary-card">
+            <div class="collection-summary-title"><strong>Overdue Collections</strong><span>Automatically refreshed from Wave</span></div>
+            <div class="collection-summary-metrics">
+                <div><span>Total overdue in Wave</span><strong>${esc(String(reminder.overdueTotal || 0))}</strong></div>
+                <div><span>Wave reminders</span><strong>${esc(String(reminder.waveReminderInvoices || 0))}</strong></div>
+                <div><span>Agent reminders</span><strong>${esc(String(reminder.agentReminderInvoices || 0))}</strong></div>
+                <div><span>Missing email</span><strong>${esc(String(reminder.missingEmailInvoices || 0))}</strong></div>
+                <div><span>Agent collection</span><strong>${esc(agentCollection)}</strong></div>
+            </div>
+            <div class="collection-summary-status">Delivery: <strong>${esc(String(reminder.mode || "test").toUpperCase())}</strong><span>Scheduler: <strong class="${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</strong></span></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">
             <div class="seo-note-text">Last Wave scan: ${esc(formatTimestamp(reminder.lastScanAt || ""))}</div>
