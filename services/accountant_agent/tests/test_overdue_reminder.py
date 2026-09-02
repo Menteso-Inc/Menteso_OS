@@ -161,6 +161,35 @@ def test_live_sender_hard_blocks_multiple_invoice_groups(monkeypatch, tmp_path):
     assert agent.state["customers"]["one"]["first_live_sent_at"]
     assert agent.state["customers"]["one"]["last_live_sent_at"]
 
+def test_multi_payment_test_is_limited_to_internal_one_dollar_customer(monkeypatch, tmp_path):
+    invoices=[dict(inv("T-1"),id="wave-1"),dict(inv("T-2"),id="wave-2")]
+    for invoice in invoices: invoice["amountDue"]["value"]="0.50"
+    group=Group("test-customer","Menteso Stripe Payment Test","sajan@menteso.com",invoices)
+    agent=object.__new__(OverdueReminderAgent); agent.state_path=tmp_path/"state.json"
+    agent.state={"mode":"single_live","paused":False,"customers":{}}
+    agent.collect=lambda:[group]; agent.sync_dashboard=lambda groups:None
+    agent.attachment=lambda group:(b"pdf","statement.pdf")
+    class Ses:
+        def send_message(self,to,*_args): assert to==["sajan@menteso.com"]; return "message-test"
+    monkeypatch.setattr("overdue_reminder_agent.agent.ReminderSesSender",Ses)
+    monkeypatch.setenv("INVOICE_REMINDER_PORTAL_SECRET","x"*32)
+    result=agent.send_multi_payment_test("test-customer","sajan@menteso.com")
+    assert result["total"]==1.0
+    assert agent.state["sent_emails"][0]["kind"]=="multi_payment_test"
+
+def test_multi_payment_test_rejects_external_or_expensive_group(monkeypatch, tmp_path):
+    invoices=[dict(inv("T-1"),id="wave-1"),dict(inv("T-2"),id="wave-2")]
+    group=Group("test-customer","Menteso Stripe Payment Test","sajan@menteso.com",invoices)
+    agent=object.__new__(OverdueReminderAgent); agent.state_path=tmp_path/"state.json"
+    agent.state={"mode":"single_live","paused":False,"customers":{}}
+    agent.collect=lambda:[group]; agent.sync_dashboard=lambda groups:None
+    try: agent.send_multi_payment_test("test-customer","client@example.com")
+    except ValueError as exc: assert "authorized" in str(exc)
+    else: raise AssertionError("External payment-test recipient was accepted")
+    try: agent.send_multi_payment_test("test-customer","sajan@menteso.com")
+    except ValueError as exc: assert "$1.00" in str(exc)
+    else: raise AssertionError("Payment test over $1 was accepted")
+
 def test_reminder_gmail_config_is_isolated_from_invoice_request(monkeypatch):
     @dataclass(frozen=True)
     class FakeConfig:

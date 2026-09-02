@@ -442,6 +442,48 @@ accounts@menteso.com
                          "message_id": message_id})
         return sent
 
+    def send_multi_payment_test(self, customer_id: str, recipient: str) -> dict:
+        """Send one real-checkout test only for a <= $1 internal Wave customer."""
+        recipient = str(recipient or "").strip().lower()
+        if recipient not in AUTHORIZED_APPROVERS:
+            raise ValueError("Multi-invoice payment tests must go to an authorized Menteso approver")
+        groups = self.collect()
+        self.sync_dashboard(groups)
+        group = next((item for item in groups if item.customer_id == customer_id), None)
+        if group is None:
+            raise ValueError("The requested Wave customer has no agent-owned overdue invoices")
+        if len(group.invoices) < 2:
+            raise ValueError("The payment test requires at least two overdue invoices")
+        if group.email.strip().lower() != recipient:
+            raise ValueError("The Wave test customer's email must match the approved recipient")
+        currencies = {str(i["amountDue"]["currency"]["code"]).upper() for i in group.invoices}
+        total = sum(float(str(i["amountDue"]["value"]).replace(",", "")) for i in group.invoices)
+        if currencies != {"USD"} or total > 1.00:
+            raise ValueError("The live payment test must be USD and no more than $1.00 total")
+        if "STRIPE PAYMENT TEST" not in group.name.upper():
+            raise ValueError("The Wave customer name must contain 'Stripe Payment Test'")
+
+        subject, body = self.render(group)
+        pdf_bytes, pdf_filename = self.attachment(group)
+        subject = f"[LIVE $1 PAYMENT TEST] {subject}"
+        banner = "LIVE PAYMENT TEST - the Stripe checkout is live, with a maximum total charge of $1.00.\n\n"
+        html = self.render_html(
+            group,
+            "LIVE PAYMENT TEST - Stripe is live; the maximum selected total is $1.00.",
+        )
+        message_id = ReminderSesSender().send_message(
+            [recipient], subject, banner + body, pdf_bytes, pdf_filename, html
+        )
+        self._record_sent(message_id, [recipient], subject, "multi_payment_test", group.name,
+                          [str(i["invoiceNumber"]) for i in group.invoices])
+        row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
+        row.update({"last_payment_test_sent_at": datetime.now(timezone.utc).isoformat(),
+                    "last_payment_test_message_id": message_id, "status": "multi_payment_test_sent"})
+        self.save()
+        return {"customer_id": group.customer_id, "customer": group.name, "email": recipient,
+                "invoice_numbers": [str(i["invoiceNumber"]) for i in group.invoices],
+                "total": round(total, 2), "currency": "USD", "message_id": message_id}
+
     def monitor_activity(self) -> list[dict]:
         """Notify the internal team once for client replies and confirmed Wave payments."""
         gmail = GmailClient(reminder_gmail_config(self.cfg))
