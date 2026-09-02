@@ -34,8 +34,9 @@ runtime, data directory, and deployment process.
 
 ### Invoice Reminder Agent
 
-- Purpose: Continue weekly collection follow-ups for overdue invoices after
-  Wave's configured reminders have finished.
+- Purpose: Continue weekly collection follow-ups for overdue invoices when no
+  Wave flow exists or after Wave's configured reminders have finished. While a
+  Wave reminder is pending, Wave owns the invoice and the agent waits.
 - Wave business: **Menteso, Inc. only**.
 - Mailbox: `accounts@menteso.com` only.
 - Audience: External clients after approval; internal test recipient is Shweta.
@@ -46,7 +47,7 @@ runtime, data directory, and deployment process.
 - OAuth client: `Invoice Reminder Agent AWS` (Desktop application).
 - Credential boundary: dedicated OAuth client and refresh token in a dedicated
   AWS secret; must not use Invoice Request credentials.
-- Delivery mode: **test**. Real-client bulk delivery is locked.
+- Delivery mode: **single_live** in production. Multiple-invoice delivery remains locked.
 - Approved design: personal Accounts Team wording; HTML `Pay now` buttons;
   original Wave PDF for one invoice; consolidated statement for multiple invoices;
   weekly cadence; per-customer and global pause controls.
@@ -113,3 +114,20 @@ For every future change, append:
 - Deployment result
 - Rollback instructions
 - Person approving external behavior
+
+### 2026-09-02 15:22 IST — Invoice Reminder ownership and dashboard
+
+- Requested change: Let the agent own overdue invoices when Wave has no reminder
+  flow, hand ownership back while Wave reminders are pending, resume after Wave
+  finishes, and stop when an invoice is no longer overdue.
+- Files/services modified: Invoice Reminder Agent, Accountant dashboard adapter,
+  and the `os.menteso.com` reminder dashboard UI.
+- Backup: `/home/menteso_os/backups/overdue-dashboard-20260902T095146Z`.
+- Tests: 77 Accountant service tests passed; JavaScript syntax and Python compile
+  checks passed; production read-only scan reconciled 70 overdue invoices.
+- Deployment: Commit `1641e0b`; `menteso-os` container rebuilt healthy; hourly
+  reminder timer remains active. Live scan showed 3 Wave-owned, 65 agent-owned,
+  2 missing-email invoices, and 20,083.03 USD agent-owned collection value.
+- Rollback: Restore the four production files from the backup directory, rebuild
+  only the `menteso-os` container, and leave unrelated agents untouched.
+- External behavior approval: Requested directly by the user in the deployment conversation.

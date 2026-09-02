@@ -1813,7 +1813,7 @@ function renderReminderAgentSection(data) {
                 <div><span>Wave reminders</span><strong>${esc(String(reminder.waveReminderInvoices || 0))}</strong></div>
                 <div><span>Agent reminders</span><strong>${esc(String(reminder.agentReminderInvoices || 0))}</strong></div>
                 <div><span>Missing email</span><strong>${esc(String(reminder.missingEmailInvoices || 0))}</strong></div>
-                <div><span>Agent collection</span><strong>${esc(agentCollection)}</strong></div>
+                <div><span>Agent-owned collection</span><strong>${esc(agentCollection)}</strong></div>
             </div>
             <div class="collection-summary-status">Delivery: <strong>${esc(String(reminder.mode || "test").toUpperCase())}</strong><span>Scheduler: <strong class="${reminder.paused ? "error" : "success"}">${reminder.paused ? "PAUSED" : "ACTIVE"}</strong></span></div>
         </div>
