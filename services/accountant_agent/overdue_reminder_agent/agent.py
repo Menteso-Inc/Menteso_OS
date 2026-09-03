@@ -442,6 +442,39 @@ accounts@menteso.com
                          "message_id": message_id})
         return sent
 
+    def send_live_multiples(self, max_count=10):
+        """Send consolidated reminders after the independent multi-live switch is enabled."""
+        if os.getenv("INVOICE_REMINDER_MULTI_LIVE_ENABLED", "").lower() != "true":
+            raise RuntimeError("INVOICE_REMINDER_MULTI_LIVE_ENABLED is not true")
+        if self.state.get("mode") != "single_live":
+            raise RuntimeError("Reminder state mode must be single_live")
+        groups = self.collect()
+        self.sync_dashboard(groups)
+        sender = ReminderSesSender()
+        sent = []
+        now = datetime.now(timezone.utc)
+        for group in groups:
+            if len(sent) >= max_count:
+                break
+            if len(group.invoices) < 2 or not self.due_for_follow_up(group.customer_id, now):
+                continue
+            subject, body = self.render(group)
+            pdf_bytes, pdf_filename = self.attachment(group)
+            message_id = sender.send_message([group.email], subject, body, pdf_bytes,
+                                             pdf_filename, self.render_html(group))
+            self._record_sent(message_id, [group.email], subject, "live_reminder", group.name,
+                              [str(i["invoiceNumber"]) for i in group.invoices])
+            row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
+            row.setdefault("first_live_sent_at", now.isoformat())
+            row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
+                        "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
+            self.save()
+            sent.append({"customer_id": group.customer_id, "customer": group.name,
+                         "email": group.email,
+                         "invoices": [str(i["invoiceNumber"]) for i in group.invoices],
+                         "message_id": message_id})
+        return sent
+
     def send_multi_payment_test(self, customer_id: str, recipient: str, cc=None) -> dict:
         """Send one real-checkout test only for a <= $1 internal Wave customer."""
         recipient = str(recipient or "").strip().lower()
@@ -510,8 +543,11 @@ accounts@menteso.com
             self._record_sent(message_id, ACTIVITY_RECIPIENTS, subject, "activity_notification",
                               row.get("customer"), row.get("invoice_numbers"))
             processed.add(message.message_id)
+            # Replies can contain disputes, payment claims, or requests for time.
+            # Stop automation until the accounts team reviews the conversation.
             row.update({"last_activity": "client_replied", "last_activity_at": detected.isoformat(),
-                        "last_activity_detail": body[:500]})
+                        "last_activity_detail": body[:500], "paused": True,
+                        "status": "client_reply_review"})
             events.append({"type": "client_replied", "customer": row.get("customer")})
             self.state["processed_reply_ids"] = sorted(processed)
             self.save()
@@ -610,10 +646,14 @@ accounts@menteso.com
                             str(event.get("stripe_payment_intent") or event["stripe_session_id"]),
                         )
                         self.save()
-                    if invoice.get("pid") and not allocation.get("zoho_updated"):
+                    pid = str(invoice.get("pid") or "")
+                    is_controlled_test = pid.startswith("STRIPE-LIVE-TEST-")
+                    if pid and not is_controlled_test and not allocation.get("zoho_updated"):
                         zoho.mark_invoice_paid(invoice["pid"], today, str(event.get("stripe_payment_intent") or ""))
                         allocation["zoho_updated"] = True
                         self.save()
+                    elif is_controlled_test:
+                        allocation["zoho_updated"] = "not_applicable_test_invoice"
                 event["status"] = "reconciled"
                 event["reconciled_at"] = datetime.now(timezone.utc).isoformat()
                 row = self.state.get("customers", {}).get(event.get("customer_id"), {})

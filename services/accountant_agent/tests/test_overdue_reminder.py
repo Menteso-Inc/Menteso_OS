@@ -171,6 +171,26 @@ def test_live_sender_hard_blocks_multiple_invoice_groups(monkeypatch, tmp_path):
     assert agent.state["customers"]["one"]["first_live_sent_at"]
     assert agent.state["customers"]["one"]["last_live_sent_at"]
 
+def test_multi_live_sender_requires_switch_and_only_sends_multiple(monkeypatch, tmp_path):
+    single=Group("one","One Client","one@example.com",[inv("1")])
+    multiple=Group("many","Many Client","many@example.com",[inv("2"),inv("3")])
+    agent=object.__new__(OverdueReminderAgent); agent.state_path=tmp_path/"state.json"
+    agent.state={"mode":"single_live","paused":False,"customers":{}}
+    agent.collect=lambda:[single,multiple]; agent.sync_dashboard=lambda groups:None
+    agent.attachment=lambda group:(b"pdf","statement.pdf")
+    try: agent.send_live_multiples()
+    except RuntimeError as exc: assert "MULTI_LIVE" in str(exc)
+    else: raise AssertionError("multi-live sender ran without its switch")
+    class Ses:
+        def __init__(self,*_): pass
+        def send_message(self,to,*_args,**_kwargs): assert to==["many@example.com"]; return "multi-1"
+    monkeypatch.setenv("INVOICE_REMINDER_MULTI_LIVE_ENABLED","true")
+    monkeypatch.setenv("INVOICE_REMINDER_PORTAL_SECRET","x"*32)
+    monkeypatch.setattr("overdue_reminder_agent.agent.ReminderSesSender",Ses)
+    sent=agent.send_live_multiples()
+    assert [row["customer_id"] for row in sent]==["many"]
+    assert agent.state["customers"]["many"]["next_follow_up"]
+
 def test_multi_payment_test_is_limited_to_internal_one_dollar_customer(monkeypatch, tmp_path):
     invoices=[dict(inv("T-1"),id="wave-1"),dict(inv("T-2"),id="wave-2")]
     for invoice in invoices: invoice["amountDue"]["value"]="0.50"
