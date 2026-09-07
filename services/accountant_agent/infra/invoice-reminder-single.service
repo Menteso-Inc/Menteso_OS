@@ -1,5 +1,5 @@
 [Unit]
-Description=Menteso single-invoice reminder run
+Description=Menteso weekly invoice reminders
 After=network-online.target
 
 [Service]
@@ -9,10 +9,11 @@ Group=menteso_os
 WorkingDirectory=/home/menteso_os/agents/accountant_agent
 EnvironmentFile=/home/menteso_os/secrets/accountant_agent.env
 Environment=INVOICE_REMINDER_SINGLE_LIVE_ENABLED=true
+Environment=INVOICE_REMINDER_MULTI_LIVE_ENABLED=true
 ExecStartPre=+/usr/bin/chown menteso_os:menteso_os /home/menteso_os/data/accountant_agent/overdue-reminder-status.json
 ExecStartPre=+/usr/bin/chmod 664 /home/menteso_os/data/accountant_agent/overdue-reminder-status.json
-ExecStart=/home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/run.py --send-live-singles --max-live 25
-ExecStartPost=/home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/run.py --monitor-activity
+ExecStart=/usr/bin/flock -w 600 /home/menteso_os/data/accountant_agent/reminder-schedule.lock /home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/scheduled_run.py --send-weekly
+TimeoutStartSec=3600
 
 [Install]
 WantedBy=multi-user.target

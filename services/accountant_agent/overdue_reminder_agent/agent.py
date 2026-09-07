@@ -17,11 +17,12 @@ from src.wave_client import WaveClient
 from src.zoho_client import ZohoClient
 from overdue_reminder_agent.checkout import CheckoutToken
 from overdue_reminder_agent.ses_sender import ReminderSesSender
+from overdue_reminder_agent.schedule import weekly_due, next_weekly_follow_up
 
 TEST_RECIPIENT = "shweta@menteso.com"
 AUTHORIZED_APPROVERS = {TEST_RECIPIENT, "sajan@menteso.com", "azam@menteso.com"}
 FOLLOW_UP_DAYS = 7
-ACTIVITY_RECIPIENTS = ["sajan@menteso.com", "shweta@menteso.com", "accounts@menteso.com", "azam@menteso.com"]
+ACTIVITY_RECIPIENTS = ["sajan@menteso.com", "shweta@menteso.com", "azam@menteso.com"]
 
 
 def reminder_gmail_config(base_cfg):
@@ -110,6 +111,10 @@ class OverdueReminderAgent:
     def due_for_follow_up(self, customer_id: str, now=None) -> bool:
         if self.state.get("paused") or self.customer_paused(customer_id):
             return False
+        if self.state.get("weekly_schedule"):
+            return weekly_due(self.state["weekly_schedule"],
+                              self.state.get("customers", {}).get(customer_id, {}),
+                              now or datetime.now(timezone.utc))
         last = self.state.get("customers", {}).get(customer_id, {}).get("last_live_sent_at")
         if not last:
             return True
@@ -355,10 +360,10 @@ accounts@menteso.com
                 "wave_reminders_finished": all(self.wave_finished(i) for i in group.invoices),
                 "reminder_owner": "agent",
                 "reminder_type": "multiple" if is_multiple else "single",
-                "status": ("multiple_invoice_paused" if is_multiple else
+                "status": ("multiple_invoice_paused" if is_multiple and not self.state.get("weekly_schedule") else
                            ("paused" if row.get("paused") else
                             ("test_ready" if self.state.get("mode") == "test" else "single_ready"))),
-                "next_follow_up": None if (row.get("paused") or is_multiple) else self._next_follow_up(row, now),
+                "next_follow_up": None if (self.state.get("paused") or row.get("paused") or (is_multiple and not self.state.get("weekly_schedule"))) else self._next_follow_up(row, now),
             })
         for customer_id, row in customers.items():
             if customer_id not in live_ids:
@@ -379,8 +384,9 @@ accounts@menteso.com
         self.save()
         return self.state
 
-    @staticmethod
-    def _next_follow_up(row, now):
+    def _next_follow_up(self, row, now):
+        if self.state.get("weekly_schedule"):
+            return next_weekly_follow_up(self.state["weekly_schedule"], row, now)
         last = row.get("last_live_sent_at")
         if not last:
             return now.isoformat()
@@ -435,7 +441,8 @@ accounts@menteso.com
             row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
             row.setdefault("first_live_sent_at", now.isoformat())
             row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
-                        "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
+                        "status": "reminder_sent"})
+            row["next_follow_up"] = self._next_follow_up(row, now)
             self.save()
             sent.append({"customer_id": group.customer_id, "customer": group.name,
                          "email": group.email, "invoice": str(group.invoices[0]["invoiceNumber"]),
@@ -467,7 +474,8 @@ accounts@menteso.com
             row = self.state.setdefault("customers", {}).setdefault(group.customer_id, {})
             row.setdefault("first_live_sent_at", now.isoformat())
             row.update({"last_live_sent_at": now.isoformat(), "last_message_id": message_id,
-                        "status": "reminder_sent", "next_follow_up": (now + timedelta(days=FOLLOW_UP_DAYS)).isoformat()})
+                        "status": "reminder_sent"})
+            row["next_follow_up"] = self._next_follow_up(row, now)
             self.save()
             sent.append({"customer_id": group.customer_id, "customer": group.name,
                          "email": group.email,

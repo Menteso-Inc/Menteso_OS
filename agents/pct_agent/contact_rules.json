@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "include_roles": [
+    "agent"
+  ],
+  "exclude_roles": [
+    "applicant",
+    "inventor",
+    "patent_office",
+    "other",
+    "unknown"
+  ],
+  "exclude_email_domains": [
+    "wipo.int"
+  ],
+  "instructions": [
+    "Preserve Applicant, Publication No, Title and Application No from the WIPO input. They are source data, never generated contact fields.",
+    "Enrich Phone No., Email and Agent Name from the explicitly labeled agent, attorney or representative section. Do not substitute applicant or inventor details when agent details are missing.",
+    "One output record must use one contact block and one owner. Do not fill missing phone/email/name from another person, applicant, agent, filing or example.",
+    "Agent Name is the printed agent person name, or the printed agency name when the form names only an agency. All fields for that owner must have the same block_id and entity.",
+    "Country comes from that agent contact block/address. Never use the application prefix, receiving office, inventor country or phone prefix as the contact country.",
+    "Classify the selected owner as law_firm, company, individual or unknown only from source evidence. Unknown must not be guessed.",
+    "Exclude fax numbers, application/publication/registration numbers, dates, form labels and patent-office contacts.",
+    "Read characters from original images, especially 1/l/I, 0/O and rn/m. Never repair an email just because a spelling looks plausible. Mark ambiguous fields illegible.",
+    "Missing fields stay blank. If there are multiple different agent blocks and no clear unique contact, retain them in audit evidence for review rather than merge them.",
+    "Training examples teach rules only. Never copy their names, emails or phone numbers into another filing."
+  ],
+  "examples": [
+    {
+      "observed": "WIPO Applicant: Example Manufacturing Ltd. Applicant block: Anne Applicant, applicant@example.com. Agent block: Peter Counsel, counsel@example.org.",
+      "expected": "Applicant remains Example Manufacturing Ltd. Agent Name = Peter Counsel; Email = counsel@example.org. Applicant email/name are excluded from agent contact fields.",
+      "explanation": "The input applicant identifies the patent owner. The contact enrichment must use a single agent block."
+    },
+    {
+      "observed": "Agent A has a name and phone, Agent B has an email but no phone.",
+      "expected": "Needs review. Do not combine Agent A phone/name with Agent B email.",
+      "explanation": "Fields in one output record must belong to the same contact block and owner."
+    },
+    {
+      "observed": "Application No. EP2024/000001. The selected agent address states Germany.",
+      "expected": "Country = DE, never EP.",
+      "explanation": "Use the selected contact country, not the filing authority."
+    },
+    {
+      "observed": "Only an applicant email is printed; the agent section has no contact details.",
+      "expected": "No Info for agent contacts. Do not copy the applicant email into the agent result.",
+      "explanation": "Missing information is not permission to substitute another role."
+    }
+  ]
+}

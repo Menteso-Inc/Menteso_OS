@@ -30,6 +30,7 @@ from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
 from .browser import PatentBrowser, BrowserStopRequested
 from .pdf_extractor import extract_contacts_from_pdf
+from .ai_verifier import validate_configuration, result_metadata, enabled as ai_enabled
 from .pipeline import ChunkedPipelineManager, ProgressFile, RESULT_STATUS_PRIORITY
 from .tests import tests
 
@@ -178,123 +179,65 @@ def read_input_excel(file_path, on_step=None):
         raise ValueError(f"Unsupported file format: {ext}")
 
 
-def _read_xls(file_path, on_step=None):
-    """Read .xls file using xlrd (WIPO resultList format)."""
-    wb = xlrd.open_workbook(file_path)
-    ws = wb.sheet_by_index(0)
-
-    if on_step:
-        on_step(f"[Excel Reader] Sheet: '{ws.name}' — {ws.nrows} rows x {ws.ncols} cols")
-
-    # Find header row — look for a row where first cell is "ID"
-    header_row = None
-    for r in range(min(10, ws.nrows)):
-        val = str(ws.cell_value(r, 0)).strip()
-        if val.upper() == "ID":
-            header_row = r
-            break
-
-    if header_row is None:
-        raise ValueError("Could not find header row with 'ID' column in the Excel file")
-
-    headers = [str(ws.cell_value(header_row, c)).strip() for c in range(ws.ncols)]
-    if on_step:
-        on_step(f"[Excel Reader] Headers found at row {header_row + 1}: {headers}")
-
-    col_map = _map_columns(headers)
-
-    rows = []
-    for r in range(header_row + 1, ws.nrows):
-        row_vals = [ws.cell_value(r, c) for c in range(ws.ncols)]
-        patent_id = str(row_vals[col_map.get("id", 0)]).strip()
-        if not patent_id:
-            continue
-
-        rows.append({
-            "id": patent_id,
-            "title": str(row_vals[col_map.get("title", 1)]).strip(),
-            "appl_no": str(row_vals[col_map.get("appl_no", 3)]).strip(),
-            "applicant": str(row_vals[col_map.get("applicant", 5)]).strip(),
-            "kind": str(row_vals[col_map.get("kind", 2)]).strip() if "kind" in col_map else "",
-            "ipc": str(row_vals[col_map.get("ipc", 4)]).strip() if "ipc" in col_map else "",
-        })
-
-    if on_step:
-        on_step(f"[Excel Reader] Parsed {len(rows)} patent entries")
-
-    return rows
-
-
-def _read_xlsx(file_path, on_step=None):
-    """Read .xlsx file using openpyxl."""
-    wb = openpyxl.load_workbook(file_path, data_only=True)
-    ws = wb.active
-
-    if on_step:
-        on_step(f"[Excel Reader] Sheet: '{ws.title}' — {ws.max_row} rows x {ws.max_column} cols")
-
-    # Find header row
-    header_row = None
-    for row in ws.iter_rows(min_row=1, max_row=10, values_only=False):
-        for cell in row:
-            if cell.value and str(cell.value).strip().upper() == "ID":
-                header_row = cell.row
-                break
-        if header_row:
-            break
-
-    if header_row is None:
-        raise ValueError("Could not find header row with 'ID' column in the Excel file")
-
-    header_cells = list(ws.iter_rows(min_row=header_row, max_row=header_row))[0]
-    headers = [str(cell.value or "").strip() for cell in header_cells]
-    if on_step:
-        on_step(f"[Excel Reader] Headers found at row {header_row}: {headers}")
-
-    col_map = _map_columns(headers)
-
-    rows = []
-    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
-        row_vals = list(row)
-        patent_id = str(row_vals[col_map.get("id", 0)] or "").strip()
-        if not patent_id:
-            continue
-
-        rows.append({
-            "id": patent_id,
-            "title": str(row_vals[col_map.get("title", 1)] or "").strip(),
-            "appl_no": str(row_vals[col_map.get("appl_no", 3)] or "").strip(),
-            "applicant": str(row_vals[col_map.get("applicant", 5)] or "").strip(),
-            "kind": str(row_vals[col_map.get("kind", 2)] or "").strip() if "kind" in col_map else "",
-            "ipc": str(row_vals[col_map.get("ipc", 4)] or "").strip() if "ipc" in col_map else "",
-        })
-
-    if on_step:
-        on_step(f"[Excel Reader] Parsed {len(rows)} patent entries")
-
-    wb.close()
-    return rows
+def _header_key(value):
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
 
 
 def _map_columns(headers):
-    """Map header names to column indices."""
+    """Match source columns by name; never use positional guesses for the applicant."""
+    aliases = {
+        "id": "id", "publicationno": "id", "publicationnumber": "id",
+        "title": "title", "applicant": "applicant", "applicantname": "applicant",
+        "applno": "appl_no", "applicationno": "appl_no", "applicationnumber": "appl_no",
+        "kind": "kind", "ipc": "ipc", "url": "url", "researcher": "researcher",
+        "priortydate": "priority_date", "prioritydate": "priority_date",
+    }
+    return {aliases[_header_key(h)]: i for i, h in enumerate(headers) if _header_key(h) in aliases}
+
+
+def _parse_source_rows(values, on_step=None):
+    header_index = None
     col_map = {}
-    for i, h in enumerate(headers):
-        h_upper = h.upper()
-        if h_upper == "ID":
-            col_map["id"] = i
-        elif h_upper == "TITLE":
-            col_map["title"] = i
-        elif h_upper == "APPLICANT":
-            col_map["applicant"] = i
-        elif "APPL" in h_upper:
-            # Must come AFTER "APPLICANT" check — "Appl.No" contains "APPL"
-            col_map["appl_no"] = i
-        elif h_upper == "IPC":
-            col_map["ipc"] = i
-        elif h_upper == "KIND":
-            col_map["kind"] = i
-    return col_map
+    for index, row in enumerate(values[:10]):
+        candidate = _map_columns(row)
+        if "id" in candidate and "title" in candidate:
+            header_index, col_map = index, candidate
+            break
+    required = {"id", "title", "appl_no", "applicant"}
+    if header_index is None or not required.issubset(col_map):
+        raise ValueError("Input must contain publication ID, Title, Application No and Applicant columns")
+    rows = []
+    for cells in values[header_index + 1:]:
+        def value(key):
+            index = col_map.get(key)
+            if index is None or index >= len(cells) or cells[index] is None:
+                return ""
+            return str(cells[index]).strip()
+        patent_id = value("id")
+        if not patent_id or not re.fullmatch(r"WO/?\d{4}/?\d+", patent_id, re.I):
+            continue
+        rows.append({key: value(key) for key in
+                     ("id", "title", "appl_no", "applicant", "kind", "ipc", "url", "researcher", "priority_date")})
+    if on_step:
+        on_step(f"[Excel Reader] Parsed {len(rows)} patent entries using named source columns")
+    return rows
+
+
+def _read_xls(file_path, on_step=None):
+    wb = xlrd.open_workbook(file_path)
+    try:
+        ws = wb.sheet_by_index(0)
+        return _parse_source_rows([ws.row_values(r) for r in range(ws.nrows)], on_step)
+    finally:
+        wb.release_resources()
+
+
+def _read_xlsx(file_path, on_step=None):
+    wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+    try:
+        return _parse_source_rows(list(wb.active.iter_rows(values_only=True)), on_step)
+    finally:
+        wb.close()
 
 
 def _stop_requested(input_data):
@@ -360,6 +303,11 @@ def run_agent(input_data=None, on_step=None):
     """
     start_time = time.time()
     agent_name = "pct_agent"
+    try:
+        validate_configuration(check_api=True)
+    except (ValueError, OSError) as exc:
+        detail = str(exc) if str(exc).startswith("openai_http_") else "Check the OpenAI key, connection and contact rules"
+        return _failure(f"PCT AI verification is unavailable: {detail}")
 
     def step(msg):
         if on_step:
@@ -511,7 +459,7 @@ def run_agent(input_data=None, on_step=None):
             patent_id = row_data["id"]
             title = row_data["title"]
             url = id_to_url(patent_id)
-            country = extract_country(row_data["appl_no"])
+            country = "" if ai_enabled() else extract_country(row_data["appl_no"])
             doc_id = patent_id.replace("/", "_")
 
             step(f"[Row {idx}/{total}] Processing: {patent_id}")
@@ -561,7 +509,7 @@ def run_agent(input_data=None, on_step=None):
                     "patent_id": patent_id,
                 })
                 step(f"[Row {idx}] [PDF Extractor] Extracting contacts...")
-                contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step)
+                contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step, context=row_data)
 
                 emails = contacts.get("emails", [])
                 phones = contacts.get("phones", [])
@@ -602,6 +550,7 @@ def run_agent(input_data=None, on_step=None):
                     idx, row_data, url, country, status,
                     emails=emails, phones=phones, name=name,
                 ))
+                results[-1].update(result_metadata(contacts))
             except BrowserStopRequested:
                 step(f"[Row {idx}] Stop requested - ending run immediately and saving partial output")
                 aborted_early = True
@@ -1134,7 +1083,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
                 patent_id = row_data["id"]
                 title = row_data["title"]
                 url = id_to_url(patent_id)
-                country = extract_country(row_data["appl_no"])
+                country = "" if ai_enabled() else extract_country(row_data["appl_no"])
                 doc_id = patent_id.replace("/", "_")
 
                 step(f"[Row {row_no}/{total}] Processing: {patent_id}")
@@ -1184,7 +1133,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
                         "patent_id": patent_id,
                     })
                     step(f"[Row {row_no}] [PDF Extractor] Extracting contacts...")
-                    contacts = extract_contacts_from_pdf(pdf_path, on_step=step)
+                    contacts = extract_contacts_from_pdf(pdf_path, on_step=step, context=row_data)
 
                     emails = contacts.get("emails", [])
                     phones = contacts.get("phones", [])
@@ -1225,6 +1174,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
                         row_no, row_data, url, country, status,
                         emails=emails, phones=phones, name=name,
                     ))
+                    results[-1].update(result_metadata(contacts))
                     processed_rows.add(row_no)
                     chunk_results += 1
                 except BrowserStopRequested:
@@ -1369,9 +1319,9 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
 
 
 WORK_REPORT_HEADERS = [
-    "Publication Number", "Title", "Application No", "Applicant",
-    "Url", "Cat", "Phone No", "Email", "Name", "Country",
-    "Date", "Researcher", "Deadline",
+    "Publication No", "Title", "Application No.", "Applicant",
+    "Url", "Cat", "Phone No.", "Email", "Agent Name", "Country",
+    "Researcher", "Priorty Date",
 ]
 
 
@@ -1415,22 +1365,19 @@ def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = Font(bold=True)
 
-    run_date = f"Shared - {datetime.now().strftime('%d-%m-%Y')}"
-
     for i, r in enumerate(results, start=2):
         ws.cell(row=i, column=1, value=r.get("patent_id", ""))
         ws.cell(row=i, column=2, value=r.get("title", ""))
         ws.cell(row=i, column=3, value=r.get("appl_no", ""))
         ws.cell(row=i, column=4, value=r.get("applicant", ""))
         ws.cell(row=i, column=5, value=r.get("url", ""))
-        ws.cell(row=i, column=6, value="")             # Cat — filled manually
+        ws.cell(row=i, column=6, value=r.get("category", ""))
         ws.cell(row=i, column=7, value="; ".join(r.get("phones", [])))
         ws.cell(row=i, column=8, value="; ".join(r.get("emails", [])))
-        ws.cell(row=i, column=9, value=r.get("name", ""))
+        ws.cell(row=i, column=9, value=r.get("agent_name", "") if r.get("contact_role") == "agent" else "")
         ws.cell(row=i, column=10, value=r.get("country", ""))
-        ws.cell(row=i, column=11, value=run_date)
-        ws.cell(row=i, column=12, value="")            # Researcher — filled manually
-        ws.cell(row=i, column=13, value="")            # Deadline — filled manually
+        ws.cell(row=i, column=11, value=r.get("researcher", ""))
+        ws.cell(row=i, column=12, value=r.get("priority_date", ""))
 
     # PCT output files are local-only. The database may store metadata and
     # a local path, but the report sheet itself stays in this folder.
@@ -1481,12 +1428,14 @@ def _row_result(idx, row_data, url, country, status,
         "appl_no": row_data["appl_no"],
         "applicant": row_data["applicant"],
         "url": url,
-        "country": country,
+        "country": "" if ai_enabled() else country,
         "status": status,
         "emails": emails or [],
         "phones": phones or [],
         "name": name,
         "reason": reason,
+        "researcher": row_data.get("researcher", ""),
+        "priority_date": row_data.get("priority_date", ""),
     }
 
 

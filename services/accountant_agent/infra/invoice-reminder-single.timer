@@ -1,10 +1,11 @@
 [Unit]
-Description=Run Menteso single-invoice reminder hourly
+Description=Run Menteso reminders Mondays at 20:00 IST
 
 [Timer]
-OnCalendar=hourly
-Persistent=true
-RandomizedDelaySec=5m
+OnCalendar=Mon *-*-* 14:30:00 UTC
+Persistent=false
+RandomizedDelaySec=0
+AccuracySec=1s
 Unit=invoice-reminder-single.service
 
 [Install]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Menteso invoice reply and payment monitoring
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/accountant_agent
+EnvironmentFile=/home/menteso_os/secrets/accountant_agent.env
+ExecStart=/usr/bin/flock -w 600 /home/menteso_os/data/accountant_agent/reminder-schedule.lock /home/menteso_os/agents/accountant_agent/.venv/bin/python overdue_reminder_agent/scheduled_run.py
+TimeoutStartSec=3600

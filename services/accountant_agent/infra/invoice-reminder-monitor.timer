@@ -1,0 +1,11 @@
+[Unit]
+Description=Check invoice replies and payments hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+Unit=invoice-reminder-monitor.service
+
+[Install]
+WantedBy=timers.target
