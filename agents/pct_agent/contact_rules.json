@@ -1,0 +1,49 @@
+{
+  "version": 4,
+  "include_roles": [
+    "applicant",
+    "agent"
+  ],
+  "exclude_roles": [
+    "inventor",
+    "patent_office",
+    "other",
+    "unknown"
+  ],
+  "exclude_email_domains": [
+    "wipo.int"
+  ],
+  "instructions": [
+    "Preserve WIPO source applicant and patent fields exactly. Extract applicant and agent blocks independently; never assume email or phone belongs to an agent.",
+    "Use the printed Name field in each labeled contact block. Ignore signing individuals in signature sections. Never substitute an applicant name into Agent Name.",
+    "Read email and phone characters exactly. Fax and registration numbers are excluded. Missing or unclear fields are not guessed.",
+    "Quote complete visible evidence per field; keep country in the printed language. A country or address problem must not invalidate a separately verified email or phone.",
+    "Return each visibly printed email as its own field, even when several emails share one printed line. Never combine addresses into one value or repair malformed text.",
+    "Retain multiple owners and shared contact details as separate blocks. Prefer a verified applicant email when contacts differ; if the applicant has no email, use the independently verified agent email block. When contacts are shared, applicant for same address and agent for different addresses. Ambiguous owner-dependent fields require review, but a single independently verified email may be retained.",
+    "Agent Name is independently sourced from an actual agent block; Sir/Ma'am is only a display fallback for missing name, never a real identity.",
+    "Category must describe source-supported business role; do not assume every incorporated agent is Corp. Unknown classification stays blank.",
+    "Examples teach rules only; never copy example contacts into a filing."
+  ],
+  "examples": [
+    {
+      "observed": "Applicant Example Manufacturing: applicant@example.com. Agent Example Counsel: counsel@example.org.",
+      "expected": "Preserve both owners in evidence; select applicant contact under different-information rule. Agent Name remains Example Counsel, not Example Manufacturing.",
+      "explanation": "Contact ownership and Agent Name are distinct."
+    },
+    {
+      "observed": "No agent block; applicant has email only.",
+      "expected": "Keep applicant email with applicant role. Agent Name display Sir/Ma'am.",
+      "explanation": "No agent is not the same as no contact."
+    },
+    {
+      "observed": "Telephone +1 212 555 0100, Telefax +1 212 555 0101.",
+      "expected": "Phone only +1 212 555 0100.",
+      "explanation": "Visible label overrides plausible digits."
+    },
+    {
+      "observed": "Primary firm and additional attorney each list the same phone/email/address.",
+      "expected": "Keep both in evidence; select the primary complete contact block.",
+      "explanation": "Do not mix owners or reject identical reachable contacts merely because both are printed."
+    }
+  ]
+}

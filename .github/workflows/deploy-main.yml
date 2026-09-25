@@ -1,0 +1,42 @@
+name: Deploy Main To Local Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_SSH_KEY"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/menteso_deploy_key
+          chmod 600 ~/.ssh/menteso_deploy_key
+          ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy on server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_FORCE_RESET: ${{ secrets.DEPLOY_FORCE_RESET }}
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh -i ~/.ssh/menteso_deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" "powershell -NoProfile -ExecutionPolicy Bypass -Command \"`$ErrorActionPreference='Stop'; Set-Location 'C:\sites\Menteso_OS'; git fetch origin main; if ('$DEPLOY_FORCE_RESET' -eq 'true') { git reset --hard origin/main } else { git checkout main; git pull --ff-only origin main }; .\scripts\deploy.ps1 -SkipPull\""

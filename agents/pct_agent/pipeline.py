@@ -19,6 +19,7 @@ from .browser import (
     scrape_pdf_url_only, download_pdf_standalone, DOWNLOADS_DIR,
 )
 from .pdf_extractor import extract_contacts_from_pdf
+from .ai_verifier import enabled as ai_enabled, result_metadata, verification_revision
 
 
 PROJECT_DIR = Path(__file__).parent.parent.parent
@@ -148,6 +149,8 @@ class ContactCache:
         self._cache = {}  # applicant_name -> {emails, phones, name, status}
 
     def get(self, applicant):
+        if ai_enabled():
+            return None  # A shared applicant name is not evidence for this filing.
         key = self._normalize(applicant)
         if not key:
             return None
@@ -155,6 +158,8 @@ class ContactCache:
             return self._cache.get(key)
 
     def put(self, applicant, contacts):
+        if ai_enabled():
+            return
         key = self._normalize(applicant)
         if not key or contacts.get("status") != "found":
             return
@@ -211,6 +216,8 @@ class ProgressFile:
                 for line in f:
                     obj = json.loads(line.strip())
                     if not obj.get("_meta") and obj.get("patent_id"):
+                        if ai_enabled() and obj.get("verification_revision") != verification_revision():
+                            continue
                         done.add(obj["patent_id"])
         except Exception:
             pass
@@ -280,11 +287,13 @@ def _make_result(row_data, url, country, status, emails=None, phones=None, name=
         "appl_no": row_data["appl_no"],
         "applicant": row_data["applicant"],
         "url": url,
-        "country": country,
+        "country": "" if ai_enabled() else country,
         "status": status,
         "emails": emails or [],
         "phones": phones or [],
         "name": name,
+        "researcher": row_data.get("researcher", ""),
+        "priority_date": row_data.get("priority_date", ""),
     }
 
 
@@ -386,7 +395,7 @@ class PipelinePCT:
             cached = self.cache.get(row.get("applicant", ""))
             if cached:
                 url = _id_to_url(row["id"])
-                country = _extract_country(row["appl_no"])
+                country = "" if ai_enabled() else _extract_country(row["appl_no"])
                 result = _make_result(
                     row, url, country, cached["status"],
                     emails=cached["emails"], phones=cached["phones"],
@@ -595,7 +604,7 @@ class PipelinePCT:
             patent_id = row_data["id"]
             url = _id_to_url(patent_id)
             doc_id = patent_id.replace("/", "_")
-            country = _extract_country(row_data["appl_no"])
+            country = "" if ai_enabled() else _extract_country(row_data["appl_no"])
 
             # Fire a "navigate" browser event so the Scraping Browser
             # preview panel shows what this pool worker is currently
@@ -751,7 +760,7 @@ class PipelinePCT:
 
             ocr_exception = None
             try:
-                contacts = extract_contacts_from_pdf(pdf_path)
+                contacts = extract_contacts_from_pdf(pdf_path, context=row_data)
             except Exception as e:
                 ocr_exception = str(e)
                 contacts = {"status": "error", "emails": [], "phones": [], "name": ""}
@@ -779,6 +788,7 @@ class PipelinePCT:
                     f"ocr_exception: {ocr_exception[:200]}"
                     if ocr_exception else "ocr_error"
                 )
+            result.update(result_metadata(contacts))
             self._collect_result(result)
 
             # Fire "contacts" browser event so the dashboard's Scraping
@@ -854,6 +864,8 @@ class PipelinePCT:
                 for line in f:
                     obj = json.loads(line.strip())
                     if not obj.get("_meta"):
+                        if ai_enabled() and obj.get("verification_revision") != verification_revision():
+                            continue
                         results.append(obj)
         except Exception:
             pass

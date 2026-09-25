@@ -8,9 +8,32 @@ Usage:
 """
 import sys
 import os
+from pathlib import Path
 
 # Ensure project root is on path
-sys.path.insert(0, os.path.dirname(__file__))
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def configure_runtime_temp():
+    """Use project-local runtime dirs so Playwright avoids Windows profile ACL/path issues."""
+    runtime_tmp = PROJECT_ROOT / ".runtime-tmp"
+    browsers_dir = PROJECT_ROOT / ".playwright-browsers"
+    runtime_tmp.mkdir(exist_ok=True)
+    browsers_dir.mkdir(exist_ok=True)
+
+    for key in ("TEMP", "TMP", "TMPDIR"):
+        os.environ[key] = str(runtime_tmp)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(browsers_dir))
+
+
+configure_runtime_temp()
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
+except Exception:
+    pass
 
 from shared.agent_registry import discover_agents, get_agent_runner
 
@@ -63,9 +86,13 @@ def run_agent_cli(agent_name):
 
 def launch_dashboard():
     import uvicorn
+    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    port = int(os.getenv("DASHBOARD_PORT", "8000"))
+    reload = os.getenv("DASHBOARD_RELOAD", "false").strip().lower() in ("1", "true", "yes")
     print("\n  Menteso Virtual Office — Dashboard")
-    print("  http://127.0.0.1:8000\n")
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    print(f"  Local:   http://127.0.0.1:{port}")
+    print(f"  Network: http://<server-ip>:{port}\n")
+    uvicorn.run("server:app", host=host, port=port, reload=reload)
 
 
 def main():

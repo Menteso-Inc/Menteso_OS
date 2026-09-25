@@ -3,6 +3,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from shared import db_storage
+
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 
 
@@ -79,6 +81,31 @@ def save_learning(agent_name, task, outcome, insight, strategy, execution_time=0
 
     path = _memory_path(agent_name)
     _write_memory_file(path, memory)
+
+    try:
+        db_storage.upsert_agent_snapshot(
+            agent_name,
+            memory=memory,
+            stats=memory.get("stats", {}),
+            dashboard={"source": "memory", "updatedAt": datetime.now(timezone.utc).isoformat()},
+        )
+        db_storage.insert_agent_run(
+            agent_name,
+            run_id=f"memory-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+            task=task,
+            status=outcome,
+            result={
+                "task": task,
+                "outcome": outcome,
+                "insight": insight,
+                "strategy": strategy,
+                "execution_time": execution_time,
+            },
+            summary={"insight": insight, "strategy": strategy},
+            execution_time=execution_time,
+        )
+    except Exception:
+        pass
 
     return memory
 

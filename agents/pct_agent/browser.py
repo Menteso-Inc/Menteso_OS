@@ -190,6 +190,23 @@ def _route_handler(route):
         route.continue_()
 
 
+def _reachable_local_proxy(proxy):
+    """A stopped local Tor listener must not make every patent look missing."""
+    if not proxy:
+        return proxy
+    from urllib.parse import urlparse
+    import socket
+    parsed = urlparse(proxy.get('server', ''))
+    if parsed.hostname not in {'127.0.0.1', 'localhost', '::1'} or not parsed.port:
+        return proxy
+    try:
+        with socket.create_connection((parsed.hostname, parsed.port), timeout=1.5):
+            return proxy
+    except OSError:
+        print('[Browser] Local proxy listener unavailable; using direct connection for this browser', flush=True)
+        return None
+
+
 def _launch_browser(playwright, headless=True, per_context=False):
     """
     Launch a browser that WIPO is more likely to accept.
@@ -210,7 +227,7 @@ def _launch_browser(playwright, headless=True, per_context=False):
             # each context supplies its own".
             proxy = {"server": "per-context"}
         else:
-            proxy = proxy_pool.get_proxy()
+            proxy = _reachable_local_proxy(proxy_pool.get_proxy())
     except Exception:
         proxy = None
 

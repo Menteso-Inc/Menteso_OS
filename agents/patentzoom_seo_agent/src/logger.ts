@@ -7,6 +7,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function parseJsonFile<T>(filePath: string): T {
+  return JSON.parse(readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "")) as T;
+}
+
 export class RunLogger {
   private readonly config: AppConfig;
   readonly runId: string;
@@ -50,7 +54,7 @@ export class RunLogger {
     const day = new Date().toISOString().slice(0, 10);
     const filePath = join(this.config.paths.logsDir, `${day}.json`);
     const prior = existsSync(filePath)
-      ? JSON.parse(readFileSync(filePath, "utf-8"))
+      ? parseJsonFile<unknown[]>(filePath)
       : [];
     prior.push({
       runId: this.runId,

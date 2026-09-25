@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menteso Admin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-2: #1f2630;
+            --line: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --good: #3fb950;
+            --warn: #d29922;
+            --bad: #f85149;
+            --info: #58a6ff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, system-ui, sans-serif;
+        }
+        .shell {
+            width: min(1440px, calc(100% - 40px));
+            margin: 0 auto;
+            padding: 24px 0 40px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--line);
+        }
+        h1, h2, h3, p { margin: 0; }
+        h1 { font-size: 24px; font-weight: 700; }
+        h2 { font-size: 16px; margin-bottom: 12px; }
+        h3 { font-size: 14px; }
+        .subtle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+        .actions { display: flex; align-items: center; gap: 10px; }
+        button, a.button {
+            border: 1px solid var(--line);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 6px;
+            padding: 9px 12px;
+            font: inherit;
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        button:hover, a.button:hover { border-color: var(--info); }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 0;
+        }
+        .span-4 { grid-column: span 4; }
+        .span-6 { grid-column: span 6; }
+        .span-8 { grid-column: span 8; }
+        .span-12 { grid-column: span 12; }
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 0;
+            border-top: 1px solid var(--line);
+        }
+        .status-row:first-of-type { border-top: 0; padding-top: 0; }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            padding: 4px 8px;
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .pill.good { color: var(--good); border-color: rgba(63, 185, 80, .5); }
+        .pill.warn { color: var(--warn); border-color: rgba(210, 153, 34, .5); }
+        .pill.bad { color: var(--bad); border-color: rgba(248, 81, 73, .5); }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: currentColor;
+        }
+        .kpi {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .metric {
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 12px;
+        }
+        .metric .value { font-size: 22px; font-weight: 700; }
+        .metric .label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .table th, .table td {
+            text-align: left;
+            padding: 10px;
+            border-top: 1px solid var(--line);
+            vertical-align: top;
+        }
+        .table th { color: var(--muted); font-weight: 600; }
+        .mono {
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+        .note {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .empty {
+            color: var(--muted);
+            border: 1px dashed var(--line);
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 13px;
+        }
+        @media (max-width: 900px) {
+            .shell { width: min(100% - 24px, 1440px); }
+            header { align-items: flex-start; flex-direction: column; }
+            .span-4, .span-6, .span-8 { grid-column: span 12; }
+            .kpi { grid-template-columns: 1fr; }
+            .table { display: block; overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header>
+            <div>
+                <h1>Menteso Admin Dashboard</h1>
+                <p class="subtle" id="last-refresh">Loading server status...</p>
+            </div>
+            <div class="actions">
+                <a class="button" href="/">Agent Dashboard</a>
+                <button type="button" id="refresh-btn">Refresh</button>
+            </div>
+        </header>
+
+        <section class="grid">
+            <div class="panel span-4">
+                <h2>Server</h2>
+                <div id="server-summary" class="kpi"></div>
+            </div>
+            <div class="panel span-4">
+                <h2>Database</h2>
+                <div id="database-summary"></div>
+            </div>
+            <div class="panel span-4">
+                <h2>Git</h2>
+                <div id="git-summary"></div>
+            </div>
+            <div class="panel span-12">
+                <h2>Callback URLs</h2>
+                <div id="callback-summary"></div>
+            </div>
+            <div class="panel span-8">
+                <h2>Agents Live Status</h2>
+                <div id="agent-table"></div>
+            </div>
+            <div class="panel span-4">
+                <h2>PM2 Processes</h2>
+                <div id="pm2-list"></div>
+            </div>
+            <div class="panel span-12">
+                <h2>Deployment Process</h2>
+                <div id="deploy-summary"></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const refreshLabel = document.getElementById("last-refresh");
+        const refreshBtn = document.getElementById("refresh-btn");
+
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;",
+            }[char]));
+        }
+
+        function pill(text, state = "") {
+            return `<span class="pill ${state}"><span class="dot"></span>${escapeHtml(text)}</span>`;
+        }
+
+        function formatMs(ms) {
+            if (!ms) return "n/a";
+            const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            if (hours) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
+        }
+
+        function renderServer(data) {
+            const agents = data.agents || [];
+            const liveAgents = agents.filter((agent) => agent.status === "active").length;
+            const runningAgents = agents.filter((agent) => agent.activity?.runStatus === "running").length;
+            document.getElementById("server-summary").innerHTML = `
+                <div class="metric"><div class="value">${liveAgents}</div><div class="label">Active agents</div></div>
+                <div class="metric"><div class="value">${runningAgents}</div><div class="label">Running now</div></div>
+                <div class="metric"><div class="value">${escapeHtml(data.server?.port || "")}</div><div class="label">Dashboard port</div></div>
+            `;
+        }
+
+        function renderDatabase(database) {
+            const db = database || {};
+            const state = db.connected ? "good" : db.configured ? "warn" : "bad";
+            const label = db.connected ? "Connection OK" : db.configured ? "URL configured" : "Not configured";
+            const check = db.connectionCheck || {};
+            const rows = Object.entries(db.urls || {}).map(([key, value]) => `
+                <div class="status-row">
+                    <div>
+                        <h3>${escapeHtml(key)}</h3>
+                        <p class="subtle">${escapeHtml(value.scheme || "no scheme")}://${escapeHtml(value.host || "not set")}</p>
+                    </div>
+                    ${pill(value.configured ? "set" : "missing", value.configured ? "good" : "bad")}
+                </div>
+            `).join("");
+            document.getElementById("database-summary").innerHTML = `
+                <div class="status-row">
+                    <div>
+                        <h3>${escapeHtml(label)}</h3>
+                        <p class="subtle">Driver: ${escapeHtml(db.driver || "missing")} · check ${escapeHtml(check.attempted ? (check.ok ? "passed" : "failed") : "not run")}</p>
+                    </div>
+                    ${pill(label, state)}
+                </div>
+                ${rows}
+                ${check.message ? `<p class="note">${escapeHtml(check.message)}</p>` : ""}
+                ${db.note ? `<p class="note">${escapeHtml(db.note)}</p>` : ""}
+            `;
+        }
+
+        function renderGit(git) {
+            const changes = (git.changes || []).map((line) => `<div class="mono">${escapeHtml(line)}</div>`).join("");
+            document.getElementById("git-summary").innerHTML = `
+                <div class="status-row"><h3>Branch</h3><span class="mono">${escapeHtml(git.branch || "")}</span></div>
+                <div class="status-row"><h3>HEAD</h3><span class="mono">${escapeHtml(git.head || "")}</span></div>
+                <div class="status-row"><h3>Working tree</h3>${pill(git.dirty ? "local changes" : "clean", git.dirty ? "warn" : "good")}</div>
+                <p class="note mono">${escapeHtml(git.latestCommit || "")}</p>
+                ${changes ? `<div style="margin-top:10px">${changes}</div>` : ""}
+            `;
+        }
+
+        function renderCallbacks(callbacks) {
+            const rows = [
+                ["Public Base", callbacks.publicBaseUrl],
+                ["Google Search Console", callbacks.googleSearchConsole],
+                ["Meta", callbacks.meta],
+                ["LinkedIn", callbacks.linkedin],
+            ].map(([label, url]) => `
+                <tr>
+                    <td>${escapeHtml(label)}</td>
+                    <td class="mono">${escapeHtml(url || "")}</td>
+                </tr>
+            `).join("");
+            document.getElementById("callback-summary").innerHTML = `
+                <table class="table">
+                    <thead><tr><th>Provider</th><th>URL</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        function renderAgents(agents) {
+            if (!agents?.length) {
+                document.getElementById("agent-table").innerHTML = `<div class="empty">No agents registered.</div>`;
+                return;
+            }
+            const rows = agents.map((agent) => {
+                const activity = agent.activity || {};
+                const last = activity.lastLearning;
+                const lastText = last
+                    ? `${last.outcome || "unknown"}: ${last.task || ""}`
+                    : activity.lastArtifact?.file
+                        ? `Artifact updated: ${activity.lastArtifact.file}`
+                        : "No recorded action yet";
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(agent.name || agent.module_name)}</strong><div class="subtle">${escapeHtml(agent.role || "")}</div></td>
+                        <td>${pill(agent.status || "unknown", agent.status === "active" ? "good" : "warn")}</td>
+                        <td>${pill(activity.runStatus || "idle", activity.runStatus === "running" ? "good" : "")}</td>
+                        <td>${escapeHtml(lastText)}<div class="subtle">${escapeHtml(last?.timestamp || activity.lastArtifact?.updatedAt || "")}</div></td>
+                        <td class="mono">${escapeHtml(JSON.stringify(activity.stats || {}))}</td>
+                    </tr>
+                `;
+            }).join("");
+            document.getElementById("agent-table").innerHTML = `
+                <table class="table">
+                    <thead><tr><th>Agent</th><th>Registered</th><th>Run State</th><th>Last Main Action</th><th>Stats</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        function renderPm2(pm2) {
+            const processes = pm2?.processes || [];
+            if (!processes.length) {
+                document.getElementById("pm2-list").innerHTML = `<div class="empty">${escapeHtml(pm2?.error || "No PM2 process data available.")}</div>`;
+                return;
+            }
+            document.getElementById("pm2-list").innerHTML = processes.map((proc) => `
+                <div class="status-row">
+                    <div>
+                        <h3>${escapeHtml(proc.name)}</h3>
+                        <p class="subtle">PID ${escapeHtml(proc.pid)} · uptime ${escapeHtml(formatMs(proc.uptimeMs))}</p>
+                    </div>
+                    ${pill(proc.status || "unknown", proc.status === "online" ? "good" : "bad")}
+                </div>
+            `).join("");
+        }
+
+        function renderDeploy(deployment) {
+            const history = deployment.history || [];
+            const rows = history.length
+                ? history.slice().reverse().map((item) => `
+                    <tr>
+                        <td class="mono">${escapeHtml(item.timestamp || "")}</td>
+                        <td>${pill(item.status || item.event || "event", item.status === "success" ? "good" : item.status === "failure" ? "bad" : "")}</td>
+                        <td>${escapeHtml(item.message || item.step || "")}</td>
+                        <td class="mono">${escapeHtml(item.commit || "")}</td>
+                    </tr>
+                `).join("")
+                : `<tr><td colspan="4"><div class="empty">No deployment log entries yet. The next deploy will write to logs/deployments.jsonl.</div></td></tr>`;
+            document.getElementById("deploy-summary").innerHTML = `
+                <div class="status-row">
+                    <div>
+                        <h3>Automatic deployment</h3>
+                        <p class="subtle">${escapeHtml(deployment.trigger || "")}</p>
+                    </div>
+                    ${pill(deployment.workflowPresent && deployment.deployScriptPresent ? "configured" : "incomplete", deployment.workflowPresent && deployment.deployScriptPresent ? "good" : "warn")}
+                </div>
+                <p class="note">${escapeHtml(deployment.serverAction || "")}</p>
+                <table class="table" style="margin-top:12px">
+                    <thead><tr><th>Time</th><th>Status</th><th>Step</th><th>Commit</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        async function loadStatus() {
+            refreshBtn.disabled = true;
+            try {
+                const response = await fetch("/api/admin/status", { cache: "no-store" });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                renderServer(data);
+                renderDatabase(data.database);
+                renderGit(data.git || {});
+                renderCallbacks(data.callbacks || {});
+                renderAgents(data.agents || []);
+                renderPm2(data.pm2 || {});
+                renderDeploy(data.deployment || {});
+                refreshLabel.textContent = `Last refreshed ${new Date().toLocaleString()} · generated ${data.generatedAt || ""}`;
+            } catch (error) {
+                refreshLabel.textContent = `Admin status failed: ${error.message}`;
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+
+        refreshBtn.addEventListener("click", loadStatus);
+        loadStatus();
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+</html>

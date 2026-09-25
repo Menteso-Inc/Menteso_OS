@@ -329,7 +329,15 @@ def find_names(text):
 # ---------------------------------------------------------------------------
 # Main extraction — multi-pass with OCR retry
 # ---------------------------------------------------------------------------
-def extract_contacts_from_pdf(pdf_path, on_step=None):
+def extract_contacts_from_pdf(pdf_path, on_step=None, context=None):
+    from .ai_verifier import enabled, verify_contacts
+    candidates = _extract_ocr_contacts(pdf_path, on_step)
+    if enabled():
+        return verify_contacts(pdf_path, candidates, on_step, context)
+    return candidates
+
+
+def _extract_ocr_contacts(pdf_path, on_step=None):
     """Main extraction function.
     Smart extraction already handles text + targeted OCR with early exit.
     No redundant full-OCR retry needed.

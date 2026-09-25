@@ -1,5 +1,6 @@
 # Environment
 .env
+.env.backup*
 node_modules/
 .next/
 
@@ -41,6 +42,15 @@ logs/
 agents/*/memory.json
 .menteso/session.secret
 .menteso/users.json
+.menteso/logs/
+
+# Runtime databases and per-workspace state
+shared/agent_data.json*
+data/status.json
+data/accountant_agent/status.json
+agents/patentzoom_seo_agent/state/workspaces/
+agents/patentzoom_seo_agent/state/social-posting-status.json
+agents/patentzoom_seo_agent/workspaces/*/memory.json
 
 # Uploads and outputs
 uploads/
@@ -55,3 +65,6 @@ services/seo-control-api/*.db
 .tools/
 .runtime-tmp/
 .playwright-browsers/
+
+# Downloaded platform binaries
+tools/*.exe

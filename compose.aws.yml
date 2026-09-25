@@ -1,0 +1,38 @@
+services:
+  menteso-os:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: menteso-os:aws
+    container_name: menteso-os
+    restart: unless-stopped
+    env_file:
+      - .env.aws
+    environment:
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: 8010
+      MENTESO_EXECUTION_TARGET: aws
+      MENTESO_DISABLED_AGENTS: pct_agent
+      MENTESO_DISABLE_EMBEDDED_SEO_SCHEDULER: "false"
+      SEO_RUNTIME_DIR: /app/agents/patentzoom_seo_agent/runtime
+      MENTESO_AGENT_DATA_FILE: /app/runtime-data/agent_data.json
+    ports:
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - ../data/menteso:/app/.menteso
+      - ../data/logs:/app/logs
+      - ../data/outputs:/app/outputs
+      - ../data/uploads:/app/uploads
+      - ../data/seo-state:/app/agents/patentzoom_seo_agent/state
+      - ../data/seo-runtime:/app/agents/patentzoom_seo_agent/runtime
+      - ../data/seo-workspaces:/app/agents/patentzoom_seo_agent/workspaces
+      - ../data/seo-memory.json:/app/agents/patentzoom_seo_agent/memory.json
+      - ../data/shared:/app/runtime-data
+      - ../data/accountant_agent:/app/accountant-status
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

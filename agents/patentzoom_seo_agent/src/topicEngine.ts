@@ -254,13 +254,17 @@ function getTimeZoneIsoDate(date: Date, timeZone: string): string {
   return `${lookup.year}-${lookup.month}-${lookup.day}`;
 }
 
+function parseJsonFile<T>(filePath: string): T {
+  return JSON.parse(readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "")) as T;
+}
+
 export function loadGeneratedPosts(filePath: string): GeneratedPostsLedger {
   if (!existsSync(filePath)) {
     const initial: GeneratedPostsLedger = { generatedPosts: [] };
     writeFileSync(filePath, JSON.stringify(initial, null, 2), "utf-8");
     return initial;
   }
-  return JSON.parse(readFileSync(filePath, "utf-8")) as GeneratedPostsLedger;
+  return parseJsonFile<GeneratedPostsLedger>(filePath);
 }
 
 export function saveGeneratedPosts(filePath: string, ledger: GeneratedPostsLedger): void {
@@ -269,7 +273,7 @@ export function saveGeneratedPosts(filePath: string, ledger: GeneratedPostsLedge
 
 export function loadTopicDiscoverySnapshot(filePath: string): TopicDiscoverySnapshot | null {
   if (!existsSync(filePath)) return null;
-  return JSON.parse(readFileSync(filePath, "utf-8")) as TopicDiscoverySnapshot;
+  return parseJsonFile<TopicDiscoverySnapshot>(filePath);
 }
 
 function saveTopicDiscoverySnapshot(filePath: string, snapshot: TopicDiscoverySnapshot): void {

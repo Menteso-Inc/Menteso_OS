@@ -17,13 +17,17 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function parseJsonFile<T>(filePath: string): T {
+  return JSON.parse(readFileSync(filePath, "utf-8").replace(/^\uFEFF/, "")) as T;
+}
+
 function loadIndexingStatusFile(config: AppConfig): IndexingStatusFile {
   const filePath = config.paths.indexingStatusFile;
   if (!existsSync(filePath)) {
     return { urls: {} };
   }
   try {
-    const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+    const parsed = parseJsonFile<IndexingStatusFile>(filePath);
     return parsed && typeof parsed === "object" && parsed.urls ? parsed : { urls: {} };
   } catch {
     return { urls: {} };

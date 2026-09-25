@@ -1,0 +1,13 @@
+﻿{
+    "run":  ".\\.venv\\Scripts\\python.exe main.py dashboard",
+    "url":  "https://os.menteso.com",
+    "urls":  [
+                 "http://127.0.0.1:8010",
+                 "http://MENT-SVR:8010",
+                 "https://os.menteso.com"
+             ],
+    "domain":  "os.menteso.com",
+    "local_port":  8010,
+    "aws_remote_port":  28998,
+    "public_via":  "aws-reverse-ssh"
+}
