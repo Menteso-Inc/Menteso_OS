@@ -1334,6 +1334,8 @@ def write_pct_reports(results, on_step=None, gazette=None):
     Both files are always produced (headers only when a bucket is empty) so the
     completion email can reliably attach both.
     """
+    from .contact_policy import mark_repeated
+    mark_repeated(results)
     found_rows = [r for r in results if r.get("status") == "found"]
     miss_rows = [r for r in results if r.get("status") != "found"]
     worked_path = generate_work_report(found_rows, on_step=on_step, gazette=gazette, kind="worked")
@@ -1374,7 +1376,7 @@ def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
         ws.cell(row=i, column=6, value=r.get("category", ""))
         ws.cell(row=i, column=7, value="; ".join(r.get("phones", [])))
         ws.cell(row=i, column=8, value="; ".join(r.get("emails", [])))
-        ws.cell(row=i, column=9, value=r.get("agent_name", "") if r.get("contact_role") == "agent" else "")
+        ws.cell(row=i, column=9, value=r.get("display_name", r.get("agent_name", "")))
         ws.cell(row=i, column=10, value=r.get("country", ""))
         ws.cell(row=i, column=11, value=r.get("researcher", ""))
         ws.cell(row=i, column=12, value=r.get("priority_date", ""))

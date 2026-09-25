@@ -6,10 +6,13 @@ openpyxl>=3.1.0
 xlrd>=2.0.1
 PyMuPDF>=1.24.0
 playwright>=1.40.0
-winocr>=0.0.1
+winocr>=0.0.1; sys_platform == "win32"
 Pillow>=10.0.0
 requests>=2.31.0
+google-auth>=2.40.0
 PySocks>=1.7.1
 psycopg[binary]>=3.2.0
 pycountry>=24.6.1
 pydantic>=2.0.0
+
+dnspython>=2.6.1

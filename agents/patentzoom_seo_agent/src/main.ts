@@ -41,7 +41,7 @@ function extractBypassDailyLimitCommand(rawTopicOverride?: string): {
 function parseInput(): WorkflowInput {
   const argIndex = process.argv.indexOf("--input-json");
   if (argIndex >= 0 && process.argv[argIndex + 1]) {
-    const payload = JSON.parse(readFileSync(process.argv[argIndex + 1], "utf-8")) as Record<string, unknown>;
+    const payload = JSON.parse(readFileSync(process.argv[argIndex + 1], "utf-8").replace(/^\uFEFF/, "")) as Record<string, unknown>;
     const parsedTopicOverride = extractBypassDailyLimitCommand(
       String(payload.topicOverride ?? payload.topic_override ?? "").trim() || undefined,
     );
@@ -413,7 +413,7 @@ async function main(): Promise<void> {
         ? findPublishedEntryForDate(ledger.generatedPosts, topic.runDate)
         : undefined;
     const effectivePublishStatus =
-      requestedPublishStatus === "publish" && (seoReadiness.blockers.length || unsafeManualOverride)
+      requestedPublishStatus === "publish" && unsafeManualOverride
         ? "draft"
         : requestedPublishStatus;
 
@@ -494,6 +494,12 @@ async function main(): Promise<void> {
         logger.saveDailyRun(result);
         logger.result(result);
         return;
+      }
+
+      if (requestedPublishStatus === "publish" && seoReadiness.blockers.length && effectivePublishStatus === "publish") {
+        logger.warn(
+          `SEO validation score ${seoReadiness.score}/100 still has blockers after rewrite. Auto-publish is enabled, so publishing live with warnings instead of silently saving a draft.`,
+        );
       }
 
       if (requestedPublishStatus === "publish" && effectivePublishStatus === "draft") {

@@ -56,6 +56,19 @@ services/seo-control-api/*.db
 .runtime-tmp/
 .playwright-browsers/
 
+# Local deployment metadata, runtime data, and downloaded binaries
+.env.backup*
+.menteso/session.secret
+.menteso/users.json
+.menteso/logs/
+shared/agent_data.json*
+data/status.json
+data/accountant_agent/status.json
+agents/patentzoom_seo_agent/state/workspaces/
+agents/patentzoom_seo_agent/state/social-posting-status.json
+agents/patentzoom_seo_agent/workspaces/*/memory.json
+tools/*.exe
+
 # Credentials and agent runtime state (public repository)
 client_secret*.json
 credentials*.json

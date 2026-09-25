@@ -345,6 +345,26 @@ def _post_facebook(config: dict[str, Any], message: str, article_url: str) -> di
     return {"ok": True, "platform": "facebook", "postId": data.get("id", ""), "response": data}
 
 
+def _raise_graph_error(response: requests.Response, platform: str):
+    if response.ok:
+        return
+    detail = response.text[:1000]
+    try:
+        payload = response.json()
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if isinstance(error, dict):
+            parts = [
+                str(error.get("message") or "").strip(),
+                f"type={error.get('type')}" if error.get("type") else "",
+                f"code={error.get('code')}" if error.get("code") else "",
+                f"subcode={error.get('error_subcode')}" if error.get("error_subcode") else "",
+            ]
+            detail = " | ".join(part for part in parts if part)
+    except Exception:
+        pass
+    raise RuntimeError(f"{platform} Graph API {response.status_code}: {detail}")
+
+
 def _post_instagram(config: dict[str, Any], caption: str, image_url: str) -> dict[str, Any]:
     create_endpoint = (
         f"https://graph.facebook.com/{config['metaGraphVersion']}/"
@@ -359,7 +379,7 @@ def _post_instagram(config: dict[str, Any], caption: str, image_url: str) -> dic
         },
         timeout=30,
     )
-    create_response.raise_for_status()
+    _raise_graph_error(create_response, "Instagram media create")
     creation_data = create_response.json()
     creation_id = _clean_text(creation_data.get("id"))
     if not creation_id:
@@ -377,7 +397,7 @@ def _post_instagram(config: dict[str, Any], caption: str, image_url: str) -> dic
         },
         timeout=30,
     )
-    publish_response.raise_for_status()
+    _raise_graph_error(publish_response, "Instagram media publish")
     publish_data = publish_response.json()
     return {
         "ok": True,

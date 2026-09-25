@@ -33,16 +33,17 @@ def test_applicant_and_inventor_details_never_fill_agent_columns():
                             section="II Applicant", block_id="applicant1"),
                     contact("phone", "+1 212 555 0199", role="inventor", block_id="inventor1"))
     assert result["agent_name"] == "Peter Counsel"
-    assert result["emails"] == ["peterl01@example.org"]
-    assert result["phones"] == ["+49 30 555 0101"]
-    assert result["category"] == "Slf"
-    assert result["country"] == "DE"
+    assert result["emails"] == ["anne@example.com"]
+    assert result["phones"] == []
+    assert result["contact_role"] == "applicant"
+    assert result["country"] == ""
 
 
-def test_no_agent_means_no_applicant_substitution():
-    result = select(contact("email", "applicant@example.com", role="applicant"))
-    assert result["emails"] == [] and result["agent_name"] == ""
-    assert result["category"] == "No Info"
+def test_applicant_contact_preserved_without_relabeling_as_agent():
+    result = select(contact("email", "applicant@example.com", role="applicant", section="II Applicant"))
+    assert result["emails"] == ["applicant@example.com"] and result["agent_name"] == ""
+    assert result["display_name"] == "Sir/Ma'am"
+    assert result["contact_role"] == "applicant"
 
 
 def test_mislabeled_applicant_section_is_rejected():
@@ -58,16 +59,18 @@ def test_name_cannot_be_borrowed_from_another_block():
     assert result["agent_name"] == ""
 
 
-def test_same_company_with_two_contact_blocks_does_not_merge():
+def test_same_company_with_two_contact_blocks_keeps_unique_email_without_merging_phone():
     result = select(contact("email", "peter@example.org"),
                     contact("phone", "+49 30 555 0100", block_id="page3-agent2"))
-    assert result["ai_status"] == "needs_review"
-    assert result["emails"] == [] and result["phones"] == []
+    assert result["ai_status"] == "verified"
+    assert result["emails"] == ["peter@example.org"] and result["phones"] == []
+    assert result["contact_owner"] == ""
 
 
 def test_different_name_inside_same_owner_block_is_not_exported():
     result = select(contact("email", "peter@example.org"), contact("name", "Anne Applicant"))
-    assert result["ai_status"] == "needs_review"
+    assert result["emails"] == ["peter@example.org"]
+    assert "mismatch" in result["reason"]
     assert result["agent_name"] == ""
 
 

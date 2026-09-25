@@ -20,6 +20,7 @@ from urllib import request as urllib_request
 
 from dotenv import dotenv_values
 
+from shared import db_storage
 from shared.memory import get_best_strategy, load_memory, save_learning
 from shared.social_publishing import social_status_snapshot
 from .tests import tests
@@ -38,15 +39,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
 
 SEO_WORKSPACES = {
-    "patentzoom": {
-        "id": "patentzoom",
-        "name": "PatentZoom SEO Agent",
-        "site_name": "PatentZoom",
-        "env_prefix": "",
-        "state_mode": "legacy",
-        "default_category": "Article",
-        "brand_tone": "Professional, authoritative, practical, helpful",
-    },
     "patent-drawing-experts": {
         "id": "patent-drawing-experts",
         "name": "Patent Drawing Experts SEO Agent",
@@ -104,8 +96,9 @@ AGENT_CONFIG = {
     "version": "1.0.0",
     "requires_llm": True,
     "accepts_upload": False,
-    "group": "Agents",
+    "group": "AWS Agents",
     "ui_type": "seo_posting",
+    "hosted_on": "aws",
     "input_fields": [
         {"name": "topic_override", "type": "text", "label": "Topic Override"},
         {
@@ -126,8 +119,9 @@ AGENT_CONFIG = {
 
 
 def _get_workspace(workspace_id=None):
-    workspace_key = str(workspace_id or "patentzoom").strip().lower() or "patentzoom"
-    return SEO_WORKSPACES.get(workspace_key, SEO_WORKSPACES["patentzoom"])
+    default_workspace = "patent-drawing-experts"
+    workspace_key = str(workspace_id or default_workspace).strip().lower() or default_workspace
+    return SEO_WORKSPACES.get(workspace_key, SEO_WORKSPACES[default_workspace])
 
 
 def _workspace_memory_key(workspace_id=None):
@@ -578,6 +572,118 @@ def _fetch_recent_patentzoom_posts(limit=8, env=None):
     return posts
 
 
+def _fetch_wordpress_posts(limit=100, env=None, extra_params=None):
+    env = dict(env or _load_env_values())
+    base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
+    if not base_url:
+        return []
+
+    params = {
+        "per_page": limit,
+        "orderby": "date",
+        "order": "desc",
+        "_fields": "id,slug,link,title,excerpt,date,status,author",
+    }
+    params.update(extra_params or {})
+    url = f"{base_url}/wp-json/wp/v2/posts?" + urllib_parse.urlencode(params)
+    try:
+        with urllib_request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    posts = []
+    for item in payload if isinstance(payload, list) else []:
+        title = _strip_html((item.get("title") or {}).get("rendered", ""))
+        excerpt = _strip_html((item.get("excerpt") or {}).get("rendered", ""))
+        posts.append(
+            {
+                "id": item.get("id"),
+                "slug": item.get("slug", ""),
+                "url": item.get("link", ""),
+                "date": item.get("date", ""),
+                "status": item.get("status", ""),
+                "author": item.get("author"),
+                "title": title,
+                "excerpt": excerpt,
+            }
+        )
+    return posts
+
+
+def _fetch_wordpress_categories(env=None):
+    env = dict(env or _load_env_values())
+    base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
+    if not base_url:
+        return []
+
+    url = (
+        f"{base_url}/wp-json/wp/v2/categories?"
+        + urllib_parse.urlencode({"per_page": 100, "_fields": "id,name,slug,count"})
+    )
+    try:
+        with urllib_request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def _fetch_category_posts(category_name, env=None, limit=100):
+    target = str(category_name or "").strip().lower()
+    if not target:
+        return []
+    categories = _fetch_wordpress_categories(env)
+    category = next(
+        (
+            item
+            for item in categories
+            if str(item.get("name") or "").strip().lower() == target
+            or str(item.get("slug") or "").strip().lower() == target.replace(" ", "-")
+        ),
+        None,
+    )
+    if not category:
+        return []
+    return _fetch_wordpress_posts(limit=limit, env=env, extra_params={"categories": category.get("id"), "status": "publish"})
+
+
+def _fetch_wordpress_authors(env=None):
+    env = dict(env or _load_env_values())
+    base_url = str(env.get("WP_BASE_URL") or "").rstrip("/")
+    if not base_url:
+        return []
+
+    url = (
+        f"{base_url}/wp-json/wp/v2/users?"
+        + urllib_parse.urlencode({"per_page": 100, "_fields": "id,name,slug"})
+    )
+    try:
+        with urllib_request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def _fetch_author_posts(author_name, env=None, limit=100):
+    target = str(author_name or "").strip().lower()
+    if not target:
+        return []
+    author = next(
+        (
+            item
+            for item in _fetch_wordpress_authors(env)
+            if str(item.get("name") or "").strip().lower() == target
+            or str(item.get("slug") or "").strip().lower() == target.replace(" ", "")
+        ),
+        None,
+    )
+    if not author:
+        return []
+    return _fetch_wordpress_posts(limit=limit, env=env, extra_params={"author": author.get("id"), "status": "publish"})
+
+
 def _extract_wp_post_id(value):
     try:
         return int(value)
@@ -600,7 +706,7 @@ def _normalize_permalink(url):
     return value.lower()
 
 
-def _compute_article_publication_stats(posts, all_runs, site_posts, today_iso):
+def _compute_article_publication_stats(posts, all_runs, site_posts, today_iso, site_count_candidates=None):
     candidates = {}
 
     def ensure_candidate(key):
@@ -639,6 +745,10 @@ def _compute_article_publication_stats(posts, all_runs, site_posts, today_iso):
     for item in all_runs:
         if item.get("wordpressUrl") or item.get("wordpressPostId") or item.get("slug"):
             register_candidate(item, source_status=str(item.get("postStatus") or item.get("status") or "").lower())
+
+    for item in (site_count_candidates if site_count_candidates is not None else []):
+        if item.get("url") or item.get("id") or item.get("slug"):
+            register_candidate(item, source_status=str(item.get("status") or "").lower())
 
     site_by_id = {}
     site_by_slug = {}
@@ -1095,7 +1205,7 @@ def _infer_failed_step(error_message, status):
     return "Workflow"
 
 
-def get_dashboard_data(workspace_id="patentzoom"):
+def get_dashboard_data(workspace_id="patent-drawing-experts"):
     workspace = _get_workspace(workspace_id)
     paths = _workspace_paths(workspace["id"])
     env = _load_workspace_env(workspace["id"])
@@ -1110,6 +1220,19 @@ def get_dashboard_data(workspace_id="patentzoom"):
     all_runs = _load_recent_runs(limit=None, logs_dir=paths["logs_dir"])
     recent_site_posts = _fetch_recent_patentzoom_posts(env=env)
     recent_site_posts_for_stats = _fetch_recent_patentzoom_posts(limit=100, env=env)
+    site_count_candidates = []
+    if workspace["id"] == "patentzoom":
+        site_count_candidates = _fetch_author_posts("Editorial Team", env=env, limit=100)
+        agent_start_date = min(
+            [str(item.get("date") or "")[:10] for item in posts if str(item.get("date") or "").strip()] or ["2026-05-11"]
+        )
+        if agent_start_date >= "2026-05-11":
+            agent_start_date = "2026-05-01"
+        site_count_candidates = [
+            item for item in site_count_candidates if str(item.get("date") or "")[:10] >= agent_start_date
+        ]
+    if workspace["id"] == "patentzoom" and not site_count_candidates:
+        site_count_candidates = _fetch_category_posts(env.get("DEFAULT_CATEGORY") or workspace["default_category"], env=env, limit=100)
 
     publish_statuses = {str(item.get("status", "")).lower() for item in posts}
     draft_count = sum(1 for item in posts if str(item.get("status", "")).lower() == "draft")
@@ -1147,7 +1270,13 @@ def get_dashboard_data(workspace_id="patentzoom"):
     organic_traffic = None
     tz = timezone(timedelta(hours=5, minutes=30))
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
-    publication_stats = _compute_article_publication_stats(posts, all_runs, recent_site_posts_for_stats, today_iso)
+    publication_stats = _compute_article_publication_stats(
+        posts,
+        all_runs,
+        recent_site_posts_for_stats,
+        today_iso,
+        site_count_candidates=site_count_candidates,
+    )
     published_count = publication_stats["publishedCount"]
     published_today = publication_stats["publishedToday"]
     monthly_articles = publication_stats["monthlyArticles"]
@@ -1255,7 +1384,7 @@ def get_dashboard_data(workspace_id="patentzoom"):
     last_run = recent_runs[0] if recent_runs else None
     last_topic = posts[-1] if posts else None
 
-    return {
+    dashboard = {
         "workspace": {
             "id": workspace["id"],
             "name": workspace["name"],
@@ -1306,7 +1435,13 @@ def get_dashboard_data(workspace_id="patentzoom"):
                 and str(env.get("GOOGLE_OAUTH_REFRESH_TOKEN") or "").strip()
             ),
             "property": str(env.get("GOOGLE_SEARCH_CONSOLE_PROPERTY") or "").strip(),
-            "redirectUri": "http://127.0.0.1:8000/api/google/search-console/callback",
+            "redirectUri": str(env.get("GOOGLE_OAUTH_REDIRECT_URI") or "").strip()
+            or (
+                str(env.get("PUBLIC_BASE_URL") or env.get("APP_BASE_URL") or env.get("CLOUDFLARE_TUNNEL_URL") or "").strip().rstrip("/")
+                + "/api/google/search-console/callback"
+                if str(env.get("PUBLIC_BASE_URL") or env.get("APP_BASE_URL") or env.get("CLOUDFLARE_TUNNEL_URL") or "").strip()
+                else "http://127.0.0.1:8000/api/google/search-console/callback"
+            ),
         },
         "wordpressMonitor": wp_monitor,
         "socialStatus": social_status,
@@ -1342,6 +1477,50 @@ def get_dashboard_data(workspace_id="patentzoom"):
         "lastTopic": last_topic or {},
         "nextActions": next_actions,
     }
+    try:
+        db_storage.upsert_agent_snapshot(
+            AGENT_NAME,
+            workspace_id=workspace["id"],
+            agent_name=workspace["name"],
+            dashboard=dashboard,
+            memory=workspace_memory,
+            stats=workspace_memory.get("stats", {}) if isinstance(workspace_memory, dict) else {},
+        )
+        subagent_payloads = {
+            "Topic Engine": {
+                "selectedTopic": topic_discovery.get("selectedTopic"),
+                "queueSize": len(_build_dynamic_queue(topic_discovery)),
+                "sourceHealth": topic_discovery.get("sourceHealth", []),
+            },
+            "Content Writer": {
+                "contentProvider": content_provider,
+                "lastPrimaryKeyword": dashboard["summary"]["lastPrimaryKeyword"],
+                "recentRunCount": len(recent_runs),
+            },
+            "SEO Validator": {
+                "averageSeoScore": average_seo_score,
+                "checklist": seo_checklist,
+                "indexedUrls": indexed_urls,
+            },
+            "WordPress Publisher": {
+                "wordpressStatus": wp_monitor.get("connectionStatus", "Not Connected"),
+                "publishedCount": published_count,
+                "publishedToday": published_today,
+                "lastPublishedDate": last_published_date,
+            },
+        }
+        for subagent_name, subagent_payload in subagent_payloads.items():
+            db_storage.upsert_subagent_snapshot(
+                AGENT_NAME,
+                subagent_name,
+                workspace_id=workspace["id"],
+                status="active",
+                stats=subagent_payload,
+                payload=subagent_payload,
+            )
+    except Exception:
+        pass
+    return dashboard
 
 
 def _npm_command():
@@ -1392,6 +1571,7 @@ def _build_payload(input_data):
     payload = dict(input_data or {})
     payload.pop("register_stop_handler", None)
     payload.pop("stop_requested", None)
+    payload.pop("get_live_fast_level", None)
     payload.setdefault(
         "source",
         "github_actions" if os.getenv("GITHUB_ACTIONS", "").lower() == "true" else "dashboard",
@@ -1402,7 +1582,8 @@ def _build_payload(input_data):
     )
     payload["dry_run"] = _normalize_bool(payload.get("dry_run"), default=False)
     payload["bypass_daily_limit"] = _normalize_bool(payload.get("bypass_daily_limit"), default=False)
-    publish_override = str(payload.get("publish_override") or "draft").strip().lower()
+    default_publish_override = "publish" if str(os.getenv("AUTO_PUBLISH", "")).strip().lower() in {"1", "true", "yes", "on"} else "draft"
+    publish_override = str(payload.get("publish_override") or default_publish_override).strip().lower()
     payload["publish_override"] = "publish" if publish_override == "publish" else "draft"
     topic_override, command_bypass = _extract_bypass_daily_limit(payload.get("topic_override"))
     if command_bypass:
@@ -1481,12 +1662,27 @@ def _default_failure(error_message, output_logs, warnings, execution_time):
     }
 
 
+def _json_safe_payload(value):
+    if callable(value):
+        return None
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            if callable(item):
+                continue
+            cleaned[key] = _json_safe_payload(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_json_safe_payload(item) for item in value if not callable(item)]
+    return value
+
+
 def run_agent(input_data=None, on_step=None):
     """
     Run the PatentZoom SEO agent by delegating execution to the TypeScript workflow.
     """
     start_time = time.time()
-    requested_workspace_id = str((input_data or {}).get("workspace_id") or (input_data or {}).get("workspaceId") or "patentzoom").strip() or "patentzoom"
+    requested_workspace_id = str((input_data or {}).get("workspace_id") or (input_data or {}).get("workspaceId") or "patent-drawing-experts").strip() or "patent-drawing-experts"
     workspace = _get_workspace(requested_workspace_id)
     memory_key = _workspace_memory_key(workspace["id"])
     workspace_paths = _workspace_paths(workspace["id"])
@@ -1505,7 +1701,7 @@ def run_agent(input_data=None, on_step=None):
         )
         on_step(f"Selected strategy: {strategy}")
 
-    payload = _build_payload(input_data)
+    payload = _json_safe_payload(_build_payload(input_data))
     payload["workspace_id"] = workspace["id"]
     payload["config_overrides"] = _build_workspace_config_overrides(workspace["id"])
     payload["strategy"] = strategy

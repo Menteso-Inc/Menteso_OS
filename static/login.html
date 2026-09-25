@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menteso OS Login</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --border: #d8e0ec;
+            --accent: #1d4ed8;
+            --accent-dark: #123f9f;
+            --danger: #b91c1c;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Inter, "Segoe UI", Arial, sans-serif;
+            color: var(--text);
+            background:
+                linear-gradient(120deg, rgba(15, 23, 42, 0.84), rgba(15, 23, 42, 0.68)),
+                url("https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1800&q=80") center/cover;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+        .login-shell {
+            width: min(100%, 420px);
+            background: var(--panel);
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 8px;
+            box-shadow: 0 24px 80px rgba(2, 6, 23, 0.32);
+            overflow: hidden;
+        }
+        .login-head {
+            padding: 28px 28px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 0;
+        }
+        .subtitle {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        form {
+            display: grid;
+            gap: 16px;
+            padding: 24px 28px 28px;
+        }
+        label {
+            display: grid;
+            gap: 7px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        input {
+            width: 100%;
+            min-height: 44px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 0 12px;
+            font: inherit;
+            background: #f8fafc;
+        }
+        input:focus {
+            outline: 2px solid rgba(29, 78, 216, 0.18);
+            border-color: var(--accent);
+            background: #fff;
+        }
+        button {
+            height: 44px;
+            border: 0;
+            border-radius: 7px;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        button:hover { background: var(--accent-dark); }
+        button:disabled { opacity: 0.65; cursor: wait; }
+        .error {
+            min-height: 18px;
+            color: var(--danger);
+            font-size: 13px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <section class="login-shell" aria-label="Menteso OS login">
+        <div class="login-head">
+            <h1>Menteso OS</h1>
+            <div class="subtitle">Authorized users only</div>
+        </div>
+        <form id="login-form">
+            <label>
+                Username
+                <input id="username" name="username" autocomplete="username" required autofocus>
+            </label>
+            <label>
+                Password
+                <input id="password" name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <div class="error" id="error"></div>
+            <button id="login-button" type="submit">Sign in</button>
+        </form>
+    </section>
+    <script>
+        const form = document.getElementById("login-form");
+        const button = document.getElementById("login-button");
+        const error = document.getElementById("error");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            error.textContent = "";
+            button.disabled = true;
+            try {
+                const response = await fetch("/api/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: document.getElementById("username").value,
+                        password: document.getElementById("password").value
+                    })
+                });
+                if (!response.ok) {
+                    error.textContent = "Invalid username or password.";
+                    return;
+                }
+                window.location.href = "/";
+            } catch (err) {
+                error.textContent = "Login service is not reachable.";
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
