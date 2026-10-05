@@ -1,4 +1,4 @@
-"""Server-side OpenAI organization usage and cost reporting.
+"""Server-side OpenAI organization usage and cost reporting for the gateway console.
 
 The admin key is read only from the process environment.  This module never
 returns it (or a hash of it) to API callers.

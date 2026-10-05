@@ -41,7 +41,6 @@ from shared import db_storage
 from shared.email_notifications import send_pct_completion_email
 from shared.memory import load_memory
 from shared.social_publishing import publish_article_to_social, social_status_snapshot
-from shared.openai_usage import OpenAIUsageError, get_openai_usage_dashboard
 from agents.pct_agent.scraper import fetch_wipo_gazettes_async
 from agents.patentzoom_seo_agent import get_dashboard_data as get_seo_dashboard_data
 from agents.accountant_agent import get_dashboard_data as get_accountant_dashboard_data
@@ -1903,32 +1902,6 @@ async def admin_dashboard_alias():
 @app.get("/api/admin/status")
 async def admin_status():
     return _admin_status_payload()
-
-
-@app.get("/openai-dashboard", response_class=HTMLResponse)
-async def openai_dashboard(request: Request):
-    if str(request.state.user.get("role") or "") != "admin":
-        return HTMLResponse("Admin access is required.", status_code=403)
-    html_path = STATIC_DIR / "openai-dashboard.html"
-    with open(html_path, encoding="utf-8") as f:
-        return f.read()
-
-
-@app.get("/api/openai/usage")
-async def openai_usage(request: Request, days: int = 7, refresh: bool = False):
-    if str(request.state.user.get("role") or "") != "admin":
-        return _json_response(403, {"error": "admin_access_required"})
-    try:
-        return await asyncio.to_thread(
-            get_openai_usage_dashboard,
-            days,
-            refresh,
-        )
-    except OpenAIUsageError as exc:
-        return _json_response(exc.status_code, {"error": str(exc)})
-    except Exception:
-        traceback.print_exc()
-        return _json_response(502, {"error": "OpenAI usage metrics could not be loaded."})
 
 
 @app.post("/api/accountant/gmail-push")
