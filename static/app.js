@@ -1817,6 +1817,25 @@ function renderMain() {
     }
 
     const agent = state.selectedAgent;
+    if (agent.ui_type === "pending_setup") {
+        main.innerHTML = `
+            <div class="agent-header">
+                <h2>${esc(agent.name || agent.module_name)}</h2>
+                <p class="agent-desc">${esc(agent.description || "")}</p>
+                <div class="agent-badges">
+                    <span class="badge badge-role">${esc(agent.role || "Agent")}</span>
+                    <span class="badge badge-warning">Awaiting instructions</span>
+                </div>
+            </div>
+            <div class="input-section">
+                <div class="input-card">
+                    <div class="seo-note-title">Work will be defined later</div>
+                    <div class="seo-note-text">${esc(agent.setup_message || "Awaiting instructions.")}</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
     const memory = agent.memory || {};
     const stats = memory.stats || agent.stats || {};
     const learnings = memory.learnings || [];

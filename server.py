@@ -1078,6 +1078,17 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
     agent = next((a for a in agents if a["module_name"] == name), None)
     if not agent:
         return {"ok": False, "response": JSONResponse({"error": "Agent not found"}, status_code=404)}
+    if agent.get("execution_enabled") is False:
+        return {
+            "ok": False,
+            "response": JSONResponse(
+                {
+                    "error": agent.get("setup_message") or "Agent is awaiting setup.",
+                    "status": agent.get("status", "pending_setup"),
+                },
+                status_code=409,
+            ),
+        }
     if (
         name == "patentzoom_seo_agent"
         and os.getenv("MENTESO_EXECUTION_TARGET", "local").lower() == "local"
