@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Usage | Menteso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #080b10;
+            --panel: #10151d;
+            --panel-2: #161d27;
+            --line: #283241;
+            --line-soft: rgba(255, 255, 255, .07);
+            --text: #eef2f7;
+            --muted: #8d99aa;
+            --green: #2fe6a6;
+            --green-soft: rgba(47, 230, 166, .12);
+            --blue: #6ea8fe;
+            --amber: #f2bd5a;
+            --amber-soft: rgba(242, 189, 90, .12);
+            --red: #ff7373;
+            --shadow: 0 18px 50px rgba(0, 0, 0, .22);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 10% -10%, rgba(47, 230, 166, .10), transparent 32%),
+                radial-gradient(circle at 90% 0%, rgba(110, 168, 254, .08), transparent 28%),
+                var(--bg);
+            color: var(--text);
+            font-family: Inter, system-ui, sans-serif;
+        }
+        button, select, a { font: inherit; }
+        .shell { width: min(1500px, calc(100% - 40px)); margin: 0 auto; padding: 26px 0 48px; }
+        .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+        .eyebrow { color: var(--green); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+        h1 { margin: 7px 0 0; font-size: clamp(25px, 3vw, 36px); line-height: 1.15; letter-spacing: -.035em; }
+        h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+        p { margin: 0; }
+        .subtle { margin-top: 7px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+        .actions, .filter-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+        .button, button {
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+            min-height: 38px; border: 1px solid var(--line); border-radius: 9px;
+            padding: 0 13px; color: var(--text); background: var(--panel-2);
+            font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;
+        }
+        .button:hover, button:hover { border-color: #536277; }
+        button:disabled { opacity: .55; cursor: wait; }
+        .refresh { background: var(--green); border-color: var(--green); color: #04110d; }
+        .toolbar {
+            display: flex; justify-content: space-between; align-items: center; gap: 16px;
+            margin-top: 24px; padding: 13px 14px; border: 1px solid var(--line);
+            border-radius: 12px; background: rgba(16, 21, 29, .78); backdrop-filter: blur(12px);
+        }
+        .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 4px rgba(141,153,170,.08); }
+        .status.live .status-dot { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+        .status.error .status-dot { background: var(--red); }
+        .range-button { min-height: 31px; padding: 0 11px; border-radius: 7px; background: transparent; color: var(--muted); }
+        .range-button.active { color: var(--text); background: #222b37; border-color: #46566b; }
+        .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 15px; margin-top: 15px; }
+        .panel {
+            grid-column: span 12; min-width: 0; padding: 18px;
+            border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(145deg, rgba(18,24,33,.97), rgba(13,18,25,.98));
+            box-shadow: var(--shadow);
+        }
+        .span-4 { grid-column: span 4; }
+        .span-5 { grid-column: span 5; }
+        .span-6 { grid-column: span 6; }
+        .span-7 { grid-column: span 7; }
+        .span-8 { grid-column: span 8; }
+        .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; margin-top: 15px; }
+        .kpi { padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(145deg, #121821, #0e131a); box-shadow: var(--shadow); }
+        .kpi-label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+        .kpi-value { margin-top: 10px; font-size: clamp(24px, 3vw, 34px); font-weight: 700; letter-spacing: -.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .kpi-note { margin-top: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+        .panel-meta { color: var(--muted); font-size: 11px; }
+        .chart { min-height: 235px; display: flex; align-items: center; justify-content: center; }
+        .chart svg { width: 100%; height: 235px; overflow: visible; }
+        .axis-line { stroke: var(--line-soft); stroke-width: 1; }
+        .chart-label { fill: var(--muted); font: 10px Inter, sans-serif; }
+        .area { fill: url(#areaGradient); }
+        .trend-line { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+        .trend-dot { fill: var(--green); stroke: #092019; stroke-width: 2; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 11px 9px; text-align: left; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+        th { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+        thead th { border-top: 0; padding-top: 0; }
+        td.numeric, th.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+        .name { font-weight: 600; color: var(--text); }
+        .mono { font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; color: var(--muted); }
+        .project-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+        .tag { padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 9px; }
+        .bar-cell { min-width: 155px; }
+        .bar-track { height: 6px; margin-top: 5px; overflow: hidden; border-radius: 999px; background: #202834; }
+        .bar-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), #55bbfa); }
+        .share { color: var(--muted); font-size: 10px; }
+        .list { display: grid; gap: 10px; }
+        .list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line-soft); }
+        .list-row:first-child { border-top: 0; padding-top: 0; }
+        .list-value { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; }
+        .alert { padding: 13px; border: 1px solid rgba(242,189,90,.32); border-radius: 10px; background: var(--amber-soft); }
+        .alert + .alert { margin-top: 9px; }
+        .alert.ok { border-color: rgba(47,230,166,.25); background: var(--green-soft); }
+        .alert-title { font-size: 12px; font-weight: 700; }
+        .alert-message { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .warning { margin-top: 9px; color: var(--amber); font-size: 11px; line-height: 1.5; }
+        .empty { padding: 28px 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 12px; text-align: center; }
+        .setup { max-width: 680px; margin: 90px auto 0; padding: 28px; text-align: center; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+        .setup-code { display: inline-block; margin: 18px 0; padding: 10px 13px; border: 1px solid var(--line); border-radius: 8px; background: #090d12; color: var(--green); font-family: "JetBrains Mono", monospace; font-size: 12px; }
+        .hidden { display: none !important; }
+        @media (max-width: 1000px) {
+            .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+        }
+        @media (max-width: 650px) {
+            .shell { width: min(100% - 22px, 1500px); padding-top: 18px; }
+            .topbar, .toolbar { align-items: stretch; flex-direction: column; }
+            .actions { width: 100%; }
+            .actions .button, .actions button { flex: 1; }
+            .kpis { grid-template-columns: 1fr; }
+            .kpi-value { font-size: 28px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <header class="topbar">
+            <div>
+                <div class="eyebrow">Menteso operations</div>
+                <h1>OpenAI usage intelligence</h1>
+                <p class="subtle">See where organization spend is going, which keys are busiest, and what is driving API activity.</p>
+            </div>
+            <div class="actions">
+                <a class="button" href="/admin-dashboard">Server Admin</a>
+                <a class="button" href="/">Agents</a>
+                <button class="refresh" id="refresh-button" type="button">Refresh data</button>
+            </div>
+        </header>
+
+        <section class="toolbar">
+            <div class="status" id="connection-status"><span class="status-dot"></span><span>Checking OpenAI connection...</span></div>
+            <div class="filter-row" aria-label="Reporting period">
+                <span class="panel-meta">Period</span>
+                <button class="range-button" data-days="1" type="button">24H</button>
+                <button class="range-button active" data-days="7" type="button">7D</button>
+                <button class="range-button" data-days="30" type="button">30D</button>
+                <button class="range-button" data-days="90" type="button">90D</button>
+            </div>
+        </section>
+
+        <section id="setup-state" class="setup hidden">
+            <div class="eyebrow">One-time setup</div>
+            <h1>Connect organization usage</h1>
+            <p class="subtle" id="setup-message"></p>
+            <div class="setup-code">OPENAI_ADMIN_KEY=••••••••</div>
+            <p class="subtle">Keep this value in the server <code>.env</code> file only. It is never sent to the browser.</p>
+        </section>
+
+        <section id="dashboard-content" class="hidden">
+            <div class="kpis">
+                <article class="kpi"><div class="kpi-label">Total spend</div><div class="kpi-value" id="kpi-cost">$0.00</div><div class="kpi-note" id="kpi-cost-note">Selected period</div></article>
+                <article class="kpi"><div class="kpi-label">API requests</div><div class="kpi-value" id="kpi-requests">0</div><div class="kpi-note">Measured across supported APIs</div></article>
+                <article class="kpi"><div class="kpi-label">Tokens processed</div><div class="kpi-value" id="kpi-tokens">0</div><div class="kpi-note" id="kpi-token-note">0 input · 0 output</div></article>
+                <article class="kpi"><div class="kpi-label">Top consumer</div><div class="kpi-value" id="kpi-consumer">—</div><div class="kpi-note" id="kpi-consumer-note">No usage</div></article>
+            </div>
+
+            <div class="grid">
+                <article class="panel span-8">
+                    <div class="panel-head"><div><h2>Spend trend</h2><p class="subtle">Daily organization cost in USD</p></div><div class="panel-meta" id="trend-total"></div></div>
+                    <div class="chart" id="spend-chart"></div>
+                </article>
+                <article class="panel span-4">
+                    <div class="panel-head"><div><h2>Consumption signals</h2><p class="subtle">Automatic concentration checks</p></div></div>
+                    <div id="alerts"></div>
+                    <div id="warnings"></div>
+                </article>
+
+                <article class="panel span-12">
+                    <div class="panel-head"><div><h2>API key consumption</h2><p class="subtle">Ranked by exact billed spend, then activity</p></div><div class="panel-meta" id="key-count"></div></div>
+                    <div class="table-wrap" id="keys-table"></div>
+                </article>
+
+                <article class="panel span-7">
+                    <div class="panel-head"><div><h2>Model activity</h2><p class="subtle">Token and request volume by model</p></div></div>
+                    <div class="table-wrap" id="models-table"></div>
+                </article>
+                <article class="panel span-5">
+                    <div class="panel-head"><div><h2>Project spend</h2><p class="subtle">Exact cost allocation from OpenAI billing</p></div></div>
+                    <div class="list" id="projects-list"></div>
+                </article>
+
+                <article class="panel span-6">
+                    <div class="panel-head"><div><h2>API activity</h2><p class="subtle">Which OpenAI API families are busiest</p></div></div>
+                    <div class="table-wrap" id="families-table"></div>
+                </article>
+                <article class="panel span-6">
+                    <div class="panel-head"><div><h2>Cost drivers</h2><p class="subtle">Invoice line items contributing to spend</p></div></div>
+                    <div class="list" id="drivers-list"></div>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const state = { days: 7, loading: false };
+        const statusEl = document.getElementById("connection-status");
+        const refreshButton = document.getElementById("refresh-button");
+
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+        }
+        function formatMoney(value) {
+            const number = Number(value || 0);
+            const digits = number > 0 && number < 0.01 ? 4 : 2;
+            return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(number);
+        }
+        function formatNumber(value) {
+            return new Intl.NumberFormat("en-US", { notation: Math.abs(Number(value || 0)) >= 100000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(Number(value || 0));
+        }
+        function formatBytes(value) {
+            let number = Number(value || 0);
+            const units = ["B", "KB", "MB", "GB", "TB"];
+            let index = 0;
+            while (number >= 1024 && index < units.length - 1) { number /= 1024; index += 1; }
+            return `${number.toFixed(index ? 1 : 0)} ${units[index]}`;
+        }
+        function empty(message) { return `<div class="empty">${escapeHtml(message)}</div>`; }
+        function setStatus(text, type = "") {
+            statusEl.className = `status ${type}`;
+            statusEl.innerHTML = `<span class="status-dot"></span><span>${escapeHtml(text)}</span>`;
+        }
+        function renderChart(points) {
+            const host = document.getElementById("spend-chart");
+            if (!points?.length) { host.innerHTML = empty("No cost data for this period."); return; }
+            const width = 820, height = 235, left = 44, right = 12, top = 13, bottom = 30;
+            const plotWidth = width - left - right, plotHeight = height - top - bottom;
+            const maxValue = Math.max(...points.map((point) => Number(point.cost || 0)), .01);
+            const xy = points.map((point, index) => ({
+                ...point,
+                x: left + (points.length === 1 ? plotWidth / 2 : index * plotWidth / (points.length - 1)),
+                y: top + plotHeight - (Number(point.cost || 0) / maxValue * plotHeight),
+            }));
+            const line = xy.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+            const area = `${line} L${xy.at(-1).x.toFixed(1)},${(top + plotHeight).toFixed(1)} L${xy[0].x.toFixed(1)},${(top + plotHeight).toFixed(1)} Z`;
+            const tickIndexes = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
+            host.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily OpenAI spend trend">
+                <defs><linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fe6a6" stop-opacity=".24"/><stop offset="1" stop-color="#2fe6a6" stop-opacity="0"/></linearGradient></defs>
+                ${[0, .5, 1].map((ratio) => { const y = top + plotHeight * ratio; const amount = maxValue * (1 - ratio); return `<line class="axis-line" x1="${left}" x2="${width-right}" y1="${y}" y2="${y}"/><text class="chart-label" x="0" y="${y+3}">${escapeHtml(formatMoney(amount))}</text>`; }).join("")}
+                <path class="area" d="${area}"/><path class="trend-line" d="${line}"/>
+                ${xy.map((point) => `<circle class="trend-dot" cx="${point.x}" cy="${point.y}" r="3"><title>${escapeHtml(point.date)}: ${escapeHtml(formatMoney(point.cost))}</title></circle>`).join("")}
+                ${tickIndexes.map((index) => `<text class="chart-label" text-anchor="${index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}" x="${xy[index].x}" y="${height-5}">${escapeHtml(new Date(`${points[index].date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}</text>`).join("")}
+            </svg>`;
+        }
+        function renderKeys(rows) {
+            document.getElementById("key-count").textContent = `${rows.length} key${rows.length === 1 ? "" : "s"} with measured activity`;
+            if (!rows.length) { document.getElementById("keys-table").innerHTML = empty("No API-key activity was reported."); return; }
+            document.getElementById("keys-table").innerHTML = `<table><thead><tr><th>API key</th><th>Project</th><th class="numeric">Spend</th><th>Spend share</th><th class="numeric">Requests</th><th class="numeric">Tokens</th></tr></thead><tbody>${rows.map((row) => `<tr>
+                <td><div class="name">${escapeHtml(row.name)}</div><div class="mono">${escapeHtml(row.redactedValue || row.id)}</div></td>
+                <td><div class="project-tags">${(row.projects || []).map((project) => `<span class="tag">${escapeHtml(project.name)}</span>`).join("")}</div></td>
+                <td class="numeric name">${escapeHtml(formatMoney(row.cost))}</td>
+                <td class="bar-cell"><span class="share">${(Number(row.share || 0) * 100).toFixed(1)}%</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, Number(row.share || 0) * 100)}%"></div></div></td>
+                <td class="numeric">${escapeHtml(formatNumber(row.requests))}</td><td class="numeric">${escapeHtml(formatNumber(row.totalTokens))}</td>
+            </tr>`).join("")}</tbody></table>`;
+        }
+        function renderModels(rows) {
+            if (!rows.length) { document.getElementById("models-table").innerHTML = empty("No model-level activity was reported."); return; }
+            document.getElementById("models-table").innerHTML = `<table><thead><tr><th>Model</th><th class="numeric">Requests</th><th class="numeric">Input</th><th class="numeric">Output</th><th class="numeric">Total tokens</th></tr></thead><tbody>${rows.slice(0, 15).map((row) => `<tr><td class="name">${escapeHtml(row.name)}</td><td class="numeric">${escapeHtml(formatNumber(row.requests))}</td><td class="numeric">${escapeHtml(formatNumber(row.inputTokens))}</td><td class="numeric">${escapeHtml(formatNumber(row.outputTokens))}</td><td class="numeric name">${escapeHtml(formatNumber(row.totalTokens))}</td></tr>`).join("")}</tbody></table>`;
+        }
+        function renderProjects(rows) {
+            const host = document.getElementById("projects-list");
+            host.innerHTML = rows.length ? rows.slice(0, 12).map((row) => `<div class="list-row"><div><div class="name">${escapeHtml(row.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, Number(row.share || 0) * 100)}%"></div></div></div><div class="list-value">${escapeHtml(formatMoney(row.cost))}</div></div>`).join("") : empty("No project cost allocation was reported.");
+        }
+        function renderDrivers(rows) {
+            const host = document.getElementById("drivers-list");
+            host.innerHTML = rows.length ? rows.slice(0, 12).map((row) => `<div class="list-row"><div><div class="name">${escapeHtml(row.name)}</div><div class="subtle">${(Number(row.share || 0) * 100).toFixed(1)}% of spend</div></div><div class="list-value">${escapeHtml(formatMoney(row.cost))}</div></div>`).join("") : empty("No invoice line items were reported.");
+        }
+        function renderFamilies(rows) {
+            const active = rows.filter((row) => row.requests || row.totalTokens || row.images || row.seconds || row.characters || row.storageBytes || row.sessions);
+            if (!active.length) { document.getElementById("families-table").innerHTML = empty("No supported API activity was reported."); return; }
+            document.getElementById("families-table").innerHTML = `<table><thead><tr><th>API family</th><th class="numeric">Requests</th><th class="numeric">Tokens / units</th></tr></thead><tbody>${active.map((row) => {
+                const units = row.totalTokens ? `${formatNumber(row.totalTokens)} tokens` : row.images ? `${formatNumber(row.images)} images` : row.seconds ? `${formatNumber(row.seconds)} sec` : row.characters ? `${formatNumber(row.characters)} chars` : row.storageBytes ? formatBytes(row.storageBytes) : row.sessions ? `${formatNumber(row.sessions)} sessions` : "—";
+                return `<tr><td class="name">${escapeHtml(row.name)}</td><td class="numeric">${escapeHtml(formatNumber(row.requests))}</td><td class="numeric">${escapeHtml(units)}</td></tr>`;
+            }).join("")}</tbody></table>`;
+        }
+        function renderAlerts(alerts, warnings) {
+            document.getElementById("alerts").innerHTML = (alerts || []).map((alert) => `<div class="alert ${alert.level === "ok" ? "ok" : ""}"><div class="alert-title">${escapeHtml(alert.title)}</div><div class="alert-message">${escapeHtml(alert.message)}</div></div>`).join("");
+            document.getElementById("warnings").innerHTML = (warnings || []).map((warning) => `<div class="warning">${escapeHtml(warning)}</div>`).join("");
+        }
+        function render(data) {
+            const summary = data.summary || {};
+            document.getElementById("kpi-cost").textContent = formatMoney(summary.cost);
+            document.getElementById("kpi-cost-note").textContent = `${state.days === 1 ? "Last 24 hours" : `Last ${state.days} days`} · exact billed cost`;
+            document.getElementById("kpi-requests").textContent = formatNumber(summary.requests);
+            document.getElementById("kpi-tokens").textContent = formatNumber(summary.totalTokens);
+            document.getElementById("kpi-token-note").textContent = `${formatNumber(summary.inputTokens)} input · ${formatNumber(summary.outputTokens)} output`;
+            document.getElementById("kpi-consumer").textContent = summary.topConsumer || "No usage";
+            document.getElementById("kpi-consumer-note").textContent = `${(Number(summary.topConsumerShare || 0) * 100).toFixed(1)}% of spend`;
+            document.getElementById("trend-total").textContent = `${formatMoney(summary.cost)} total`;
+            renderChart(data.trend || []); renderKeys(data.apiKeys || []); renderModels(data.models || []);
+            renderProjects(data.projects || []); renderDrivers(data.costDrivers || []); renderFamilies(data.apiFamilies || []);
+            renderAlerts(data.alerts || [], data.warnings || []);
+        }
+        async function loadUsage(force = false) {
+            if (state.loading) return;
+            state.loading = true; refreshButton.disabled = true; setStatus("Loading organization usage...");
+            try {
+                const response = await fetch(`/api/openai/usage?days=${state.days}&refresh=${force ? "true" : "false"}`, { cache: "no-store" });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+                if (!data.configured) {
+                    document.getElementById("dashboard-content").classList.add("hidden");
+                    document.getElementById("setup-state").classList.remove("hidden");
+                    document.getElementById("setup-message").textContent = data.setup?.message || "OpenAI Admin API key is not configured.";
+                    setStatus("OpenAI Admin API key required", "error"); return;
+                }
+                document.getElementById("setup-state").classList.add("hidden");
+                document.getElementById("dashboard-content").classList.remove("hidden");
+                render(data);
+                const generated = new Date(data.generatedAt).toLocaleString();
+                setStatus(`Connected · ${data.cached ? "cached snapshot" : "live refresh"} · ${generated}`, "live");
+            } catch (error) {
+                setStatus(error.message || "Usage data failed to load", "error");
+                if (document.getElementById("dashboard-content").classList.contains("hidden")) {
+                    document.getElementById("setup-state").classList.remove("hidden");
+                    document.getElementById("setup-message").textContent = error.message || "Usage data failed to load.";
+                }
+            } finally { state.loading = false; refreshButton.disabled = false; }
+        }
+        document.querySelectorAll(".range-button").forEach((button) => button.addEventListener("click", () => {
+            state.days = Number(button.dataset.days);
+            document.querySelectorAll(".range-button").forEach((item) => item.classList.toggle("active", item === button));
+            loadUsage(false);
+        }));
+        refreshButton.addEventListener("click", () => loadUsage(true));
+        loadUsage(false);
+    </script>
+</body>
+</html>
