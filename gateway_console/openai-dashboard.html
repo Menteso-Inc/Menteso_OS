@@ -151,8 +151,8 @@
             <div class="filter-row" aria-label="Reporting period">
                 <span class="panel-meta">Period</span>
                 <button class="range-button" data-days="1" type="button">24H</button>
-                <button class="range-button active" data-days="7" type="button">7D</button>
-                <button class="range-button" data-days="30" type="button">30D</button>
+                <button class="range-button" data-days="7" type="button">7D</button>
+                <button class="range-button active" data-days="30" type="button">30D</button>
                 <button class="range-button" data-days="90" type="button">90D</button>
             </div>
         </section>
@@ -168,7 +168,7 @@
         <section id="dashboard-content" class="hidden">
             <div class="kpis">
                 <article class="kpi"><div class="kpi-label">Total spend</div><div class="kpi-value" id="kpi-cost">$0.00</div><div class="kpi-note" id="kpi-cost-note">Selected period</div></article>
-                <article class="kpi"><div class="kpi-label">API requests</div><div class="kpi-value" id="kpi-requests">0</div><div class="kpi-note">Measured across supported APIs</div></article>
+                <article class="kpi"><div class="kpi-label">API activity</div><div class="kpi-value" id="kpi-requests">0</div><div class="kpi-note">Reported requests and tool operations</div></article>
                 <article class="kpi"><div class="kpi-label">Tokens processed</div><div class="kpi-value" id="kpi-tokens">0</div><div class="kpi-note" id="kpi-token-note">0 input · 0 output</div></article>
                 <article class="kpi"><div class="kpi-label">Top consumer</div><div class="kpi-value" id="kpi-consumer">—</div><div class="kpi-note" id="kpi-consumer-note">No usage</div></article>
             </div>
@@ -185,8 +185,14 @@
                 </article>
 
                 <article class="panel span-12">
-                    <div class="panel-head"><div><h2>API key consumption</h2><p class="subtle">Ranked by exact billed spend, then activity</p></div><div class="panel-meta" id="key-count"></div></div>
+                    <div class="panel-head"><div><h2>All API keys &amp; consumption</h2><p class="subtle">Workload and service-account keys, including keys with no recent activity. Ranked by billed spend.</p></div><div class="panel-meta" id="key-count"></div></div>
+                    <div class="filter-row" style="margin-bottom:16px">
+                        <input id="key-search" type="search" placeholder="Search key, owner, project or model" aria-label="Search API keys" style="width:min(460px,100%);padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text)">
+                        <button id="export-keys" type="button">Export CSV</button>
+                    </div>
                     <div class="table-wrap" id="keys-table"></div>
+                    <p class="subtle" id="scope-note" style="margin-top:14px"></p>
+                    <p class="subtle" id="reporting-note" style="margin-top:7px"></p>
                 </article>
 
                 <article class="panel span-7">
@@ -211,7 +217,7 @@
     </main>
 
     <script>
-        const state = { days: 7, loading: false };
+        const state = { days: 30, loading: false, data: null, search: "" };
         const statusEl = document.getElementById("connection-status");
         const refreshButton = document.getElementById("refresh-button");
 
@@ -261,15 +267,54 @@
             </svg>`;
         }
         function renderKeys(rows) {
-            document.getElementById("key-count").textContent = `${rows.length} key${rows.length === 1 ? "" : "s"} with measured activity`;
-            if (!rows.length) { document.getElementById("keys-table").innerHTML = empty("No API-key activity was reported."); return; }
-            document.getElementById("keys-table").innerHTML = `<table><thead><tr><th>API key</th><th>Project</th><th class="numeric">Spend</th><th>Spend share</th><th class="numeric">Requests</th><th class="numeric">Tokens</th></tr></thead><tbody>${rows.map((row) => `<tr>
-                <td><div class="name">${escapeHtml(row.name)}</div><div class="mono">${escapeHtml(row.redactedValue || row.id)}</div></td>
-                <td><div class="project-tags">${(row.projects || []).map((project) => `<span class="tag">${escapeHtml(project.name)}</span>`).join("")}</div></td>
+            const allRows = rows;
+            rows = filteredKeys(rows);
+            const listed = allRows.filter((row) => row.inventoryStatus === "listed").length;
+            document.getElementById("key-count").textContent = `${listed} listed · ${allRows.filter((row) => row.hasActivity).length} active in period · ${rows.length} shown`;
+            if (!rows.length) { document.getElementById("keys-table").innerHTML = empty("No API keys match this selection."); return; }
+            document.getElementById("keys-table").innerHTML = `<table><thead><tr><th>API key / owner</th><th>Project &amp; usage</th><th class="numeric">Billed spend</th><th>Spend share</th><th class="numeric">Requests</th><th class="numeric">Tokens</th></tr></thead><tbody>${rows.map((row) => `<tr>
+                <td><div class="name">${escapeHtml(row.name)}</div><div class="mono">${escapeHtml(row.redactedValue || row.id)}</div>
+                    <div class="subtle">${escapeHtml(row.ownerName || "Owner unavailable")}${row.ownerType ? ` · ${escapeHtml(row.ownerType.replaceAll("_", " "))}` : ""}</div>
+                    <div class="project-tags"><span class="tag">${row.inventoryStatus === "listed" ? row.hasActivity ? "Activity in period" : "No activity in period" : "Historical / unavailable key"}</span>${row.ownerAccess === "inactive" ? '<span class="tag">Owner access inactive</span>' : ""}</div>
+                    ${row.lastUsedAt ? `<div class="subtle">Last used: ${escapeHtml(new Date(Number(row.lastUsedAt) * 1000).toLocaleString())}</div>` : ""}
+                </td>
+                <td><div class="project-tags">${(row.projects || []).map((project) => `<span class="tag">${escapeHtml(project.name)}</span>`).join("")}</div>
+                    <div class="subtle">${escapeHtml((row.apiFamilies || []).join(" · "))}</div>
+                    <details style="margin-top:7px"><summary class="subtle" style="cursor:pointer">Models &amp; cost breakdown</summary>
+                        ${(row.models || []).map((model) => `<div class="subtle">${escapeHtml(model.name)} · ${escapeHtml(formatNumber(model.requests))} requests · ${escapeHtml(formatNumber(model.totalTokens))} tokens</div>`).join("")}
+                        ${(row.costDrivers || []).map((driver) => `<div class="subtle">${escapeHtml(driver.name)}: ${escapeHtml(formatMoney(driver.cost))}</div>`).join("") || '<div class="subtle">No billed line items in this period.</div>'}
+                    </details>
+                </td>
                 <td class="numeric name">${escapeHtml(formatMoney(row.cost))}</td>
                 <td class="bar-cell"><span class="share">${(Number(row.share || 0) * 100).toFixed(1)}%</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, Number(row.share || 0) * 100)}%"></div></div></td>
                 <td class="numeric">${escapeHtml(formatNumber(row.requests))}</td><td class="numeric">${escapeHtml(formatNumber(row.totalTokens))}</td>
             </tr>`).join("")}</tbody></table>`;
+        }
+        function filteredKeys(rows) {
+            const query = state.search.trim().toLowerCase();
+            return query ? rows.filter((row) => [row.name, row.id, row.redactedValue, row.ownerName,
+                ...(row.projects || []).map((project) => project.name),
+                ...(row.models || []).map((model) => model.name), ...(row.apiFamilies || []),
+            ].join(" ").toLowerCase().includes(query)) : rows;
+        }
+        function exportKeys() {
+            if (!state.data) return;
+            const header = ["Key name", "Key ID", "Masked key", "Owner", "Owner type", "Projects", "Inventory status", "Activity in period", "Billed USD", "Spend share", "Requests", "Tokens", "Models", "API families"];
+            const rows = filteredKeys(state.data.apiKeys || []).map((row) => [row.name, row.id, row.redactedValue,
+                row.ownerName, row.ownerType, (row.projects || []).map((project) => project.name).join("; "),
+                row.inventoryStatus, row.hasActivity, row.cost, row.share, row.requests, row.totalTokens,
+                (row.models || []).map((model) => model.name).join("; "), (row.apiFamilies || []).join("; ")]);
+            const cell = (value) => {
+                let text = String(value ?? "");
+                // Neutralize spreadsheet formulas in names supplied by upstream.
+                if (/^[\s]*[=+\-@]/.test(text)) text = "'" + text;
+                return '"' + text.replaceAll('"', '""') + '"';
+            };
+            const csv = [header, ...rows].map((row) => row.map(cell).join(",")).join("\r\n");
+            const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
+            const link = document.createElement("a");
+            link.href = url; link.download = `openai-key-spend-${state.days}d.csv`; link.click();
+            URL.revokeObjectURL(url);
         }
         function renderModels(rows) {
             if (!rows.length) { document.getElementById("models-table").innerHTML = empty("No model-level activity was reported."); return; }
@@ -296,6 +341,7 @@
             document.getElementById("warnings").innerHTML = (warnings || []).map((warning) => `<div class="warning">${escapeHtml(warning)}</div>`).join("");
         }
         function render(data) {
+            state.data = data;
             const summary = data.summary || {};
             document.getElementById("kpi-cost").textContent = formatMoney(summary.cost);
             document.getElementById("kpi-cost-note").textContent = `${state.days === 1 ? "Last 24 hours" : `Last ${state.days} days`} · exact billed cost`;
@@ -308,6 +354,8 @@
             renderChart(data.trend || []); renderKeys(data.apiKeys || []); renderModels(data.models || []);
             renderProjects(data.projects || []); renderDrivers(data.costDrivers || []); renderFamilies(data.apiFamilies || []);
             renderAlerts(data.alerts || [], data.warnings || []);
+            document.getElementById("scope-note").textContent = data.scope?.locationNote || "";
+            document.getElementById("reporting-note").textContent = data.scope?.reportingNote || "";
         }
         async function loadUsage(force = false) {
             if (state.loading) return;
@@ -341,6 +389,11 @@
             loadUsage(false);
         }));
         refreshButton.addEventListener("click", () => loadUsage(true));
+        document.getElementById("key-search").addEventListener("input", (event) => {
+            state.search = event.target.value;
+            if (state.data) renderKeys(state.data.apiKeys || []);
+        });
+        document.getElementById("export-keys").addEventListener("click", exportKeys);
         loadUsage(false);
     </script>
 </body>

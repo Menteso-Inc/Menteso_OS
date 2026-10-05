@@ -136,12 +136,14 @@ class OpenAIAdminClient:
                 break
             next_page = str(payload.get("next_page") or payload.get("last_id") or "").strip()
             if not next_page or next_page in seen_pages:
-                break
+                raise OpenAIUsageError("OpenAI reporting pagination is incomplete; please retry.")
             seen_pages.add(next_page)
             query["page"] = next_page
             if "next_page" not in payload and payload.get("last_id"):
                 query.pop("page", None)
                 query["after"] = next_page
+        else:
+            raise OpenAIUsageError("OpenAI reporting exceeded the pagination safety limit.")
         return records
 
 
@@ -219,6 +221,16 @@ def _project_name(project_id: str, project_metadata: dict[str, dict[str, Any]]) 
     return project_id
 
 
+def _masked_value(value: Any) -> str:
+    """Only publish a masked identifier, even if upstream returns a raw value."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    if ("..." in value or "…" in value or "*" in value) and len(value) <= 40:
+        return value
+    return f"…{value[-4:]}"
+
+
 def build_dashboard_payload(
     *,
     days: int,
@@ -238,6 +250,7 @@ def build_dashboard_payload(
     cost_by_key: dict[str, float] = defaultdict(float)
     cost_by_project: dict[str, float] = defaultdict(float)
     cost_by_line: dict[str, float] = defaultdict(float)
+    key_cost_drivers: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     key_projects: dict[str, set[str]] = defaultdict(set)
     currency = "usd"
 
@@ -256,6 +269,7 @@ def build_dashboard_payload(
             cost_by_key[key_id] += value
             cost_by_project[project_id] += value
             cost_by_line[line_item] += value
+            key_cost_drivers[key_id][line_item] += value
             key_projects[key_id].add(project_id)
 
     totals = {
@@ -266,6 +280,8 @@ def build_dashboard_payload(
     }
     usage_by_key: dict[str, dict[str, Any]] = defaultdict(dict)
     usage_by_model: dict[str, dict[str, Any]] = defaultdict(dict)
+    key_models: dict[str, dict[str, dict[str, Any]]] = defaultdict(lambda: defaultdict(dict))
+    key_families: dict[str, set[str]] = defaultdict(set)
     family_rows: list[dict[str, Any]] = []
     usage_projects: set[str] = set()
 
@@ -281,8 +297,11 @@ def build_dashboard_payload(
                 project_id = _display_id(result.get("project_id"), "unattributed")
                 model = str(result.get("model") or "").strip()
                 _add_metrics(usage_by_key[key_id], metrics)
+                if any(metrics.values()):
+                    key_families[key_id].add(config["label"])
                 if model:
                     _add_metrics(usage_by_model[model], metrics)
+                    _add_metrics(key_models[key_id][model], metrics)
                 key_projects[key_id].add(project_id)
                 usage_projects.add(project_id)
         for field in totals:
@@ -296,25 +315,52 @@ def build_dashboard_payload(
             )},
         })
 
-    all_key_ids = set(cost_by_key) | set(usage_by_key)
+    all_key_ids = set(cost_by_key) | set(usage_by_key) | set(key_metadata)
     total_cost = sum(cost_by_key.values())
     api_keys = []
     for key_id in all_key_ids:
         metrics = usage_by_key.get(key_id, {})
-        project_ids = sorted(key_projects.get(key_id) or {"unattributed"})
         metadata = key_metadata.get(key_id, {})
+        project_ids = set(key_projects.get(key_id) or [])
+        if metadata.get("project_id"):
+            project_ids.add(str(metadata["project_id"]))
+        project_ids = sorted(project_ids or {"unattributed"})
         owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+        owner_details = owner.get(owner.get("type")) or {}
+        owner_details = owner_details if isinstance(owner_details, dict) else {}
+        measured = bool(cost_by_key.get(key_id) or any(metrics.values()))
         api_keys.append({
             "id": key_id,
             "name": _key_name(key_id, key_metadata),
-            "redactedValue": str(metadata.get("redacted_value") or ""),
+            "redactedValue": _masked_value(metadata.get("redacted_value")),
             "ownerType": str(owner.get("type") or ""),
+            "ownerName": str(owner_details.get("name") or owner_details.get("email") or ""),
+            "ownerAccess": str(metadata.get("owner_project_access") or ""),
+            "createdAt": metadata.get("created_at"),
+            "lastUsedAt": metadata.get("last_used_at"),
+            "inventoryStatus": "listed" if metadata else "historical_or_unavailable",
+            "hasActivity": measured,
             "projects": [
                 {"id": project_id, "name": _project_name(project_id, project_metadata)}
                 for project_id in project_ids
             ],
             "cost": round(cost_by_key.get(key_id, 0.0), 6),
             "share": round((cost_by_key.get(key_id, 0.0) / total_cost), 6) if total_cost else 0,
+            "apiFamilies": sorted(key_families.get(key_id) or []),
+            "models": [
+                {"name": name, "requests": _integer(model_metrics.get("requests")),
+                 "totalTokens": _integer(model_metrics.get("totalTokens"))}
+                for name, model_metrics in sorted(
+                    key_models.get(key_id, {}).items(),
+                    key=lambda pair: _integer(pair[1].get("totalTokens")), reverse=True,
+                )
+                if any(model_metrics.values())
+            ],
+            "costDrivers": [
+                {"name": name, "cost": round(value, 6)}
+                for name, value in sorted(key_cost_drivers.get(key_id, {}).items(),
+                                          key=lambda pair: pair[1], reverse=True)
+            ],
             **{field: _integer(metrics.get(field)) for field in (
                 "requests", "inputTokens", "outputTokens", "totalTokens",
             )},
@@ -337,7 +383,8 @@ def build_dashboard_payload(
             "cost": round(value, 6),
             "share": round(value / total_cost, 6) if total_cost else 0,
         }
-        for project_id, value in cost_by_project.items()
+        for project_id in (set(cost_by_project) | usage_projects | set(project_metadata))
+        for value in [cost_by_project.get(project_id, 0.0)]
     ]
     projects.sort(key=lambda row: row["cost"], reverse=True)
 
@@ -391,10 +438,12 @@ def build_dashboard_payload(
         "summary": {
             "cost": round(total_cost, 6),
             **totals,
-            "activeKeys": len([row for row in api_keys if row["cost"] or row["requests"] or row["totalTokens"]]),
+            "activeKeys": sum(row["hasActivity"] for row in api_keys),
+            "totalKeys": len(key_metadata),
+            "totalProjects": len(project_metadata),
             "activeProjects": len((set(cost_by_project) | usage_projects) - {"unattributed"}),
-            "topConsumer": api_keys[0]["name"] if api_keys else "No usage",
-            "topConsumerShare": api_keys[0]["share"] if api_keys else 0,
+            "topConsumer": api_keys[0]["name"] if api_keys and api_keys[0]["hasActivity"] else "No usage",
+            "topConsumerShare": api_keys[0]["share"] if api_keys and api_keys[0]["hasActivity"] else 0,
         },
         "trend": trend,
         "apiKeys": api_keys,
@@ -404,6 +453,11 @@ def build_dashboard_payload(
         "apiFamilies": family_rows,
         "alerts": alerts,
         "warnings": warning_list,
+        "scope": {
+            "description": "All projects and enabled workload/service-account keys visible to this organization Admin key, plus historical usage IDs.",
+            "locationNote": "OpenAI identifies the owning project, key owner, models and API families. A shared key's individual websites or applications cannot be identified without application-side telemetry.",
+            "reportingNote": "OpenAI usage and billed costs can arrive at different times. This is reported spend, not the remaining prepaid credit balance.",
+        },
     }
 
 
@@ -412,19 +466,36 @@ def _metadata_maps(client: OpenAIAdminClient) -> tuple[dict[str, dict[str, Any]]
     keys: dict[str, dict[str, Any]] = {}
     projects: dict[str, dict[str, Any]] = {}
     try:
-        for item in client.get_all("/organization/admin_api_keys", {"limit": 100}):
-            item_id = str(item.get("id") or "").strip()
-            if item_id:
-                keys[item_id] = item
-    except OpenAIUsageError:
-        warnings.append("API key names could not be loaded; usage IDs are shown instead.")
-    try:
-        for item in client.get_all("/organization/projects", {"limit": 100}):
+        for item in client.get_all("/organization/projects", {"limit": 100, "include_archived": "true"}):
             item_id = str(item.get("id") or "").strip()
             if item_id:
                 projects[item_id] = item
     except OpenAIUsageError:
         warnings.append("Project names could not be loaded; project IDs are shown instead.")
+
+    def project_keys(project_id: str) -> list[dict[str, Any]]:
+        return client.get_all(f"/organization/projects/{project_id}/api_keys",
+                              {"limit": 100, "owner_project_access": "any"})
+
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="openai-key-inventory") as executor:
+        pending = {executor.submit(project_keys, project_id): project_id for project_id in projects}
+        for future in as_completed(pending):
+            project_id = pending[future]
+            try:
+                for item in future.result():
+                    item_id = str(item.get("id") or "").strip()
+                    if item_id:
+                        # Do not retain raw credentials or arbitrary API fields.
+                        keys[item_id] = {
+                            field: item.get(field) for field in (
+                                "id", "name", "owner", "owner_project_access",
+                                "created_at", "last_used_at",
+                            )
+                        }
+                        keys[item_id]["redacted_value"] = _masked_value(item.get("redacted_value"))
+                        keys[item_id]["project_id"] = project_id
+            except OpenAIUsageError:
+                warnings.append(f"Key inventory unavailable for {_project_name(project_id, projects)}; historical usage is still included.")
     return keys, projects, warnings
 
 
