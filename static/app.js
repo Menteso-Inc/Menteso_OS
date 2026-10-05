@@ -1824,13 +1824,13 @@ function renderMain() {
                 <p class="agent-desc">${esc(agent.description || "")}</p>
                 <div class="agent-badges">
                     <span class="badge badge-role">${esc(agent.role || "Agent")}</span>
-                    <span class="badge badge-warning">Awaiting instructions</span>
+                    <span class="badge badge-warning">Not configured</span>
                 </div>
             </div>
             <div class="input-section">
                 <div class="input-card">
-                    <div class="seo-note-title">Work will be defined later</div>
-                    <div class="seo-note-text">${esc(agent.setup_message || "Awaiting instructions.")}</div>
+                    <div class="seo-note-title">Not configured</div>
+                    <div class="seo-note-text">${esc(agent.setup_message || "Not configured.")}</div>
                 </div>
             </div>
         `;

@@ -5,7 +5,7 @@ from .tests import tests
 
 AGENT_CONFIG = {
     "name": "Lexmom Marketing Agent",
-    "description": "Reserved for Lexmom marketing. Work will be defined later.",
+    "description": "Lexmom marketing agent. Not configured.",
     "role": "Marketing",
     "version": "0.1.0",
     "status": "pending_setup",
