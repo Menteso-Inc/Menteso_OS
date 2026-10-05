@@ -8,7 +8,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from shared.openai_usage import build_dashboard_payload, get_openai_usage_dashboard
+from openai_usage import build_dashboard_payload, get_openai_usage_dashboard
 
 
 class OpenAIUsageDashboardTests(unittest.TestCase):
