@@ -79,10 +79,12 @@ vm.runInContext(fs.readFileSync('static/app.js', 'utf8'), context);
 vm.runInContext(`state.selectedAgent = {
     name: 'Lexmom Marketing Agent', ui_type: 'pending_setup',
     description: 'Reserved for Lexmom marketing.', role: 'Marketing',
-    setup_message: 'Awaiting instructions.'
+    setup_message: 'Not configured.'
 }; renderMain();`, context);
 assert(main.innerHTML.includes('Lexmom Marketing Agent'));
-assert(main.innerHTML.includes('Awaiting instructions'));
+assert(main.innerHTML.includes('Not configured'));
+assert(!main.innerHTML.includes('Awaiting instructions'));
+assert(!main.innerHTML.includes('Work will be defined later'));
 assert(!main.innerHTML.includes('run-btn'));
 assert(!main.innerHTML.includes('Run Agent'));
 """

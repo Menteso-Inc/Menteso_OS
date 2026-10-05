@@ -1,9 +1,9 @@
 # Lexmom Marketing Agent
 
-Dashboard placeholder on os.menteso.com. The user's marketing work will be
-defined later; this is not an operational marketing workflow yet.
+Dashboard placeholder on os.menteso.com. This agent is not configured and is
+not an operational marketing workflow.
 
-- Status: awaiting instructions (`pending_setup`).
+- Display status: Not configured (`pending_setup`).
 - Execution is disabled. Direct runner calls only return the setup message.
 - No publishing, outreach, schedule, credentials, or external tools are enabled.
 - Tasks, integrations, self-learning, and retry behavior will be defined when
