@@ -50,6 +50,14 @@ function Test-Pm2App {
 }
 
 Set-Location $ProjectRoot
+
+# This legacy deployer resets the checkout and controls PM2. The local PCT
+# keeper owns a different runtime and must use a targeted, validated handoff.
+# Refuse before Git, dependency installation, log writes or service changes.
+if (Get-ScheduledTask -ErrorAction Stop | Where-Object TaskName -eq "Menteso PCT Dashboard Keeper") {
+    throw "Legacy deployment refused: this server uses the PCT Dashboard Keeper. Follow CODEX_HANDOFF.md for a targeted deployment; preserve active runs and collected data."
+}
+
 Write-DeployEvent -Status "running" -Step "start" -Message "Deployment started"
 
 try {

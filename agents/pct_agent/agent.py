@@ -386,278 +386,26 @@ def run_agent(input_data=None, on_step=None):
         step("Stop requested before processing started")
         return _build_partial_result("stopped", [], len(patent_rows), 0, 0, 0)
 
-    # --- Step 5: Choose mode — pipeline (large) or sequential (small) ---
-    # fast_level (1-5) controls the runtime profile. Level 1 is the safe
-    # chunked-sequential path (one browser). Levels 2-5 go through the
-    # parallel ChunkedPipelineManager with progressively more workers.
-    fast_level, fast_profile = resolve_fast_level(input_data)
-    step(
-        f"[Mode] fast_level={fast_level} {fast_profile['marker']} {fast_profile['label']} "
-        f"→ pipelines={fast_profile['pipelines']}, browsers={fast_profile['browsers']}, "
-        f"downloads={fast_profile['downloads']}, ocr={fast_profile['ocr']}"
-    )
-    # Make the live level reader available to dispatcher inner loops so they
-    # can react to mid-run changes at chunk boundaries.
-    live_level_getter = (input_data or {}).get("get_live_fast_level")
-    if len(patent_rows) >= PIPELINE_THRESHOLD:
-        if fast_profile["fast"]:
-            return _run_pipeline_mode(
-                patent_rows, file_path, agent_name, strategy,
-                start_time, step, browser_event, stop_requested,
-                (input_data or {}).get("register_stop_handler"),
-                fast_profile=fast_profile,
-                live_level_getter=live_level_getter,
-                archived_input_path=archived_input_path,
-                mode=mode,
-                gazette=gazette,
-            )
-        return _run_chunked_sequential_mode(
-            patent_rows, file_path, agent_name, strategy,
-            start_time, step, browser_event, stop_requested,
-            (input_data or {}).get("register_stop_handler"),
-            fast_profile=fast_profile,
-            live_level_getter=live_level_getter,
-            archived_input_path=archived_input_path,
-            mode=mode,
-            gazette=gazette,
-        )
-
-    # --- Sequential mode (< PIPELINE_THRESHOLD rows) ---
-    step("Launching browser for WIPO scraping (headless)...")
-    step("A Chromium popup will only appear if DIY OCR + GPT-4o Vision both fail to solve a captcha.")
-    time.sleep(STEP_DELAY)
-
-    results = []
-    found_count = 0
-    not_found_count = 0
-    error_count = 0
-    total = len(patent_rows)
-
-    # All levels run headless by default. Only the manual_fallback tier
-    # opens a separate visible Chromium popup when needed.
-    headless_mode = _resolve_headless(fast_profile)
-    patent_browser = PatentBrowser(
-        headless=headless_mode,
-        on_step=on_step,
-        stop_requested=stop_requested,
-    )
-    _register_stop_handler(input_data, patent_browser.force_stop)
-    try:
-        patent_browser.start()
-    except Exception as e:
-        step(f"ERROR: Could not launch browser: {e}")
-        return _failure(f"Browser launch failed: {e}")
-
-    aborted_early = False
-    try:
-        for idx, row_data in enumerate(patent_rows, start=1):
-            if stop_requested():
-                step(f"Stop requested - finishing with {len(results)} processed row(s)")
-                aborted_early = True
-                break
-
-            patent_id = row_data["id"]
-            title = row_data["title"]
-            url = id_to_url(patent_id)
-            country = "" if ai_enabled() else extract_country(row_data["appl_no"])
-            doc_id = patent_id.replace("/", "_")
-
-            step(f"[Row {idx}/{total}] Processing: {patent_id}")
-
-            # Dashboard browser preview: navigate
-            browser_event({
-                "event": "navigate",
-                "url": url,
-                "row": idx,
-                "total": total,
-                "patent_id": patent_id,
-                "title": title,
-                "applicant": row_data["applicant"],
-                "country": country,
-            })
-
-            # Per-row try/except: any unexpected exception is captured as an
-            # error result and the loop continues — one bad row never kills
-            # the whole run. BrowserStopRequested is the one exception we
-            # honor by breaking out cleanly.
-            try:
-                step(f"[Row {idx}] [Browser] Opening patent page & searching for RO/101 PDF...")
-                pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=on_step)
-
-                if not pdf_path:
-                    browser_event({
-                        "event": "no_pdf",
-                        "url": url,
-                        "row": idx,
-                        "total": total,
-                        "patent_id": patent_id,
-                    })
-                    step(f"[Row {idx}] No RO/101 PDF found")
-                    results.append(_row_result(
-                        idx, row_data, url, country, "not_found",
-                        reason="No RO/101 PDF found on patent page",
-                    ))
-                    not_found_count += 1
-                    continue
-
-                # PDF downloaded — extract contacts
-                browser_event({
-                    "event": "extracting",
-                    "url": url,
-                    "row": idx,
-                    "total": total,
-                    "patent_id": patent_id,
-                })
-                step(f"[Row {idx}] [PDF Extractor] Extracting contacts...")
-                contacts = extract_contacts_from_pdf(pdf_path, on_step=on_step, context=row_data)
-
-                emails = contacts.get("emails", [])
-                phones = contacts.get("phones", [])
-                name = contacts.get("name", "")
-                status = contacts["status"]
-
-                browser_event({
-                    "event": "contacts",
-                    "url": url,
-                    "row": idx,
-                    "total": total,
-                    "patent_id": patent_id,
-                    "title": title,
-                    "emails": emails,
-                    "phones": phones,
-                    "name": name,
-                    "status": status,
-                    "found_count": found_count + (1 if status == "found" else 0),
-                    "not_found_count": not_found_count + (1 if status == "not_found" else 0),
-                    "error_count": error_count,
-                })
-
-                if status == "found":
-                    found_count += 1
-                    step(
-                        f"[Row {idx}] FOUND: "
-                        f"{', '.join(emails[:2]) if emails else 'no email'} | "
-                        f"{', '.join(phones[:2]) if phones else 'no phone'}"
-                    )
-                elif status == "not_found":
-                    not_found_count += 1
-                    step(f"[Row {idx}] No contact info found in PDF")
-                else:
-                    error_count += 1
-                    step(f"[Row {idx}] Error: {contacts.get('error', 'Unknown')}")
-
-                results.append(_row_result(
-                    idx, row_data, url, country, status,
-                    emails=emails, phones=phones, name=name,
-                ))
-                results[-1].update(result_metadata(contacts))
-            except BrowserStopRequested:
-                step(f"[Row {idx}] Stop requested - ending run immediately and saving partial output")
-                aborted_early = True
-                break
-            except Exception as row_exc:
-                step(f"[Row {idx}] UNEXPECTED error: {row_exc} — recording and moving on")
-                error_count += 1
-                results.append(_row_result(
-                    idx, row_data, url, country, "error",
-                    reason=f"row_exception: {str(row_exc)[:300]}",
-                ))
-
-            # No per-row sleep — pacing is enforced upstream by RequestPacer
-            # at every page.goto, and the captcha solver absorbs any burst.
-
-    finally:
-        step("[Browser] Closing browser...")
+    # One WIPO browser for every sheet size. Downloading overlaps verification;
+    # the legacy multi-browser fast mode is never selected or upgraded live.
+    _, profile = resolve_fast_level(input_data)
+    resumed_results = []
+    if input_data.get("resume_path"):
+        from .resume import load_handoff
         try:
-            patent_browser.close()
-        except Exception as e:
-            step(f"[Browser] Close raised (ignored): {e}")
-
-    # --- Step 6: Generate Work Report Excel ---
-    step("Generating Work Report Excel...")
-    time.sleep(STEP_DELAY)
-
-    run_status = "stopped" if (stop_requested() or aborted_early) else "success"
-    output_path = ""
-    not_found_path = ""
-    if results:
-        try:
-            output_path, not_found_path = write_pct_reports(results, on_step=step, gazette=gazette)
-            step(f"Output saved: {Path(output_path).name} + {Path(not_found_path).name}")
-        except Exception as e:
-            step(f"[Output] FAILED to write reports: {e} — "
-                 f"{len(results)} rows are still in memory but the .xlsx was not produced")
-    else:
-        step("No processed rows available to write into Work Report")
-    time.sleep(STEP_DELAY)
-
-    # --- Step 7: Self-test ---
-    step("Running self-tests...")
-    time.sleep(STEP_DELAY)
-
-    agent_result = _build_partial_result(
-        run_status, results, total, found_count, not_found_count,
-        error_count, output_path=output_path, not_found_path=not_found_path,
-    )
-    agent_result["summary"]["skipped"] = len([r for r in results if r["status"] == "skipped"])
-
-    test_result = tests.run(agent_result)
-    agent_result["tests"] = test_result
-
-    if test_result["passed"]:
-        step(f"All {test_result['total']} self-tests passed!")
-    else:
-        step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
-
-    # --- Step 8: Save learning ---
-    execution_time = time.time() - start_time
-    insight = (
-        f"Processed {total} rows: {found_count} contacts found, "
-        f"{not_found_count} not found, {error_count} errors"
-    )
-    save_learning(
-        agent_name, "process_excel",
-        run_status if run_status == "stopped" else ("success" if found_count > 0 or not_found_count > 0 else "partial"),
-        insight, strategy, execution_time,
+            resumed_results = load_handoff(input_data["resume_path"], file_path, patent_rows)
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            return _failure(f"Cannot resume safely: {exc}")
+    return _run_chunked_sequential_mode(
+        patent_rows, file_path, agent_name, strategy, start_time, step,
+        browser_event, stop_requested,
+        (input_data or {}).get("register_stop_handler"), fast_profile=profile,
+        archived_input_path=archived_input_path, mode=mode, gazette=gazette,
+        resumed_results=resumed_results,
     )
 
-    step(f"Learning saved. Total time: {execution_time:.1f}s")
-    time.sleep(STEP_DELAY)
-
-    if run_status == "stopped":
-        step(
-            f"STOPPED - partial output created with {len(results)} processed rows "
-            f"({found_count} found, {not_found_count} not found, {error_count} errors)"
-        )
-    else:
-        step(
-            f"DONE - {found_count} contacts found, {not_found_count} not found, "
-            f"{error_count} errors out of {total} rows"
-        )
-
-    agent_result["execution_time"] = round(execution_time, 2)
-    agent_result["attempts"] = 1
-    agent_result["input_file"] = archived_input_path or str(file_path)
-    agent_result["input_file_name"] = Path(archived_input_path or file_path).name
-    agent_result["mode"] = mode
-    agent_result["gazette"] = gazette or ""
-    return agent_result
-
-    step(
-        f"DONE — {found_count} contacts found, {not_found_count} not found, "
-        f"{error_count} errors out of {total} rows"
-    )
-
-    agent_result["execution_time"] = round(execution_time, 2)
-    agent_result["attempts"] = 1
-    agent_result["input_file"] = str(file_path)
-    agent_result["input_file_name"] = Path(file_path).name
-    return agent_result
 
 
-# ---------------------------------------------------------------------------
-# Pipeline mode — parallel processing for large datasets
-# ---------------------------------------------------------------------------
 def _run_pipeline_mode(patent_rows, file_path, agent_name, strategy,
                        start_time, step, browser_event, stop_requested=lambda: False,
                        register_stop_handler=None, fast_profile=None,
@@ -955,367 +703,140 @@ def _retry_system_failures(results, patent_rows, file_path, on_step,
 def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
                                  start_time, step, browser_event, stop_requested=lambda: False,
                                  register_stop_handler=None, fast_profile=None,
-                                 live_level_getter=None, archived_input_path="", mode="", gazette=""):
-    """Run large datasets in stable sequential chunks.
+                                 live_level_getter=None, archived_input_path="", mode="", gazette="",
+                                 resumed_results=None):
+    """One browser, bounded PDF queue, concurrent independent AI readings.
 
-    Single browser, one row at a time, but split into chunks for stability.
-    Slower than _run_pipeline_mode but uses only one connection to WIPO so
-    captcha rate is minimal. Used as the safe fallback when fast_level <= 1.
-
-    `live_level_getter`, if provided, is consulted at chunk boundaries so a
-    user dragging the slider up to fast-mode causes future chunks to be
-    handed off to _run_pipeline_mode instead of being processed here.
+    Retain the callable name for compatibility, but ignore legacy speed changes:
+    they must not introduce extra WIPO browsers during this workflow.
     """
-    profile = fast_profile or FAST_MODE_LEVELS[1]
+    from uuid import uuid4
+    from .overlap import process_rows, RowJournal, bounded_setting
+
     total = len(patent_rows)
-    total_chunks = max(1, (total + DEFAULT_CHUNK_SIZE - 1) // DEFAULT_CHUNK_SIZE)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + "_" + uuid4().hex[:8]
+    journal = RowJournal(PCT_OUTPUT_DIR / f"pct_progress_{run_id}.jsonl", file_path, total)
+    results = list(resumed_results or [])
+    completed_rows = {result["row"] for result in results}
+    resumed_count = len(results)
+    timing_started = time.time() * 1000
+    completed_at = []
+    for result in results:
+        journal.append(result)
+    report_paths = None
+    report_error = ""
+    fatal_error = ""
+    interval = bounded_setting("PCT_PIPELINE_MIN_ROW_INTERVAL_SECONDS", 10.0, 1.0, 60.0)
+    verification_workers = bounded_setting("PCT_PDF_VERIFICATION_WORKERS", 1, 1, 4, int)
+    api_concurrency = bounded_setting("PCT_PDF_API_CONCURRENCY", 8, 2, 8, int)
+    pending_limit = max(verification_workers,
+                        bounded_setting("PCT_PIPELINE_PENDING_PDFS", 2, 1, 8, int))
 
-    step(f"[Pipeline] Large dataset ({total} rows) - sequential chunk mode")
-    step(f"[Pipeline] Splitting into {total_chunks} chunk(s) of up to {DEFAULT_CHUNK_SIZE} rows")
-    step("[Pipeline] Processing chunks strictly one by one for stability")
+    def save_reports():
+        nonlocal report_paths, report_error
+        if not results:
+            return
+        try:
+            report_paths = write_pct_reports(
+                sorted(results, key=lambda result: result["row"]), on_step=step,
+                gazette=gazette, output_paths=report_paths,
+            )
+            report_error = ""
+        except Exception as exc:
+            report_error = type(exc).__name__
+            step(f"[Output] Sheet update failed ({report_error}); every result is saved in {journal.path.name}")
 
-    for idx, row in enumerate(patent_rows, start=1):
-        row["_row_idx"] = idx
+    def record(result):
+        journal.append(result)
+        results.append(result)
+        completed_at.append(time.time() * 1000)
+        del completed_at[:-20]
+        if len(results) % 25 == 0:
+            save_reports()
 
-    results = []
-    processed_rows = set()
-    found_count = 0
-    not_found_count = 0
-    error_count = 0
-
-    step("Launching browser for chunked WIPO scraping...")
-    # All levels run headless. A visible Chromium popup only opens if BOTH
-    # DIY OCR and GPT-4o Vision fail to solve a captcha (manual_fallback).
-    headless_mode = _resolve_headless(profile)
-    if headless_mode:
-        step(
-            f"[Mode {profile['marker']} {profile['label']}] Running headless - "
-            f"only opens a Chromium popup if DIY OCR + GPT-4o Vision both fail."
+    def make_result(row, url, contacts):
+        country = "" if ai_enabled() else extract_country(row["appl_no"])
+        result = _row_result(
+            row["_row_idx"], row, url, country, contacts.get("status", "error"),
+            emails=contacts.get("emails", []), phones=contacts.get("phones", []),
+            name=contacts.get("name", ""),
+            reason=contacts.get("error") or contacts.get("reason", ""),
         )
-    else:
-        step(f"[Mode {profile['marker']} {profile['label']}] Headed mode (PCT_HEADLESS_MODE=false) - visible Chromium window will open.")
+        result.update(result_metadata(contacts))
+        return result
 
-    patent_browser = PatentBrowser(
-        headless=headless_mode,
-        on_step=step,
-        stop_requested=stop_requested,
-    )
+    def timed_browser_event(event):
+        browser_event({**event, "timing": {"startedAt": timing_started,
+                       "resumedRows": resumed_count, "rowTimestamps": list(completed_at)}})
+
+    if resumed_count:
+        next_row = next((index for index in range(1, total + 1) if index not in completed_rows), total + 1)
+        step(f"[Resume] Retained {resumed_count} completed rows; next unfinished row {next_row}/{total}")
+        found = sum(result["status"] == "found" for result in results)
+        missing = sum(result["status"] == "not_found" for result in results)
+        step({"type": "pipeline_stats", "total": total, "found": found,
+              "not_found": missing, "errors": resumed_count - found - missing})
+        save_reports()
+    timed_browser_event({"event": "pipeline", "total": total})
+
+    step(f"[Pipeline] {total} rows: one WIPO browser, {verification_workers} PDF verification worker(s), up to {pending_limit} pending PDFs, two independent AI readings per PDF")
+    if verification_workers > 1:
+        step(f"[Pipeline] Isolated PDF processes; at most {api_concurrency} concurrent AI requests; all accuracy checks retained")
+    step(f"[Pipeline] Minimum {interval:g}s between patent lookups; automatic backoff on failed lookups")
+    browser = PatentBrowser(headless=_resolve_headless(fast_profile), on_step=step,
+                            stop_requested=stop_requested)
     if callable(register_stop_handler):
-        register_stop_handler(patent_browser.force_stop)
+        register_stop_handler(browser.force_stop)
     try:
-        patent_browser.start()
-    except Exception as e:
-        step(f"ERROR: Could not launch browser: {e}")
-        return _failure(f"Browser launch failed: {e}")
-
-    upgrade_remaining_rows = None
-
-    def _check_live_upgrade(current_row_index):
-        """If the user dragged the slider to a fast level, return the
-        slice of rows we should hand off to the parallel pipeline. Called
-        between rows so switching takes effect within seconds, not chunks.
-        """
-        if not callable(live_level_getter):
-            return None
-        try:
-            live = live_level_getter()
-        except Exception:
-            return None
-        if not live or live not in FAST_MODE_LEVELS:
-            return None
-        if not FAST_MODE_LEVELS[live]["fast"]:
-            return None
-        # Bail with everything from current row onwards.
-        remaining = patent_rows[current_row_index:]
-        new_profile = FAST_MODE_LEVELS[live]
-        step(
-            f"[Mode] Live upgrade to L{live} {new_profile['marker']} {new_profile['label']} "
-            f"- handing off {len(remaining)} remaining row(s) to the parallel pipeline"
+        browser.start()
+        process_rows(
+            patent_rows, browser, extract_contacts_from_pdf, make_result, record,
+            step, timed_browser_event, stop_requested, run_id,
+            max_pending=pending_limit, min_interval=interval,
+            completed_rows=completed_rows,
+            verification_workers=verification_workers, api_concurrency=api_concurrency,
         )
-        return remaining
-
-    try:
-        for chunk_index in range(total_chunks):
-            if stop_requested():
-                step(f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested before next chunk")
-                break
-
-            chunk_start = chunk_index * DEFAULT_CHUNK_SIZE
-
-            # Pre-chunk live-level check — catches the case where the user
-            # upgraded between chunks (including before the very first one).
-            upgrade_remaining_rows = _check_live_upgrade(chunk_start)
-            if upgrade_remaining_rows:
-                break
-
-            chunk_rows = patent_rows[chunk_start:chunk_start + DEFAULT_CHUNK_SIZE]
-            if not chunk_rows:
-                continue
-
-            first_row = chunk_rows[0]["_row_idx"]
-            last_row = chunk_rows[-1]["_row_idx"]
-            step(
-                f"[Chunk {chunk_index + 1}/{total_chunks}] Starting rows "
-                f"{first_row}-{last_row} ({len(chunk_rows)} rows)"
-            )
-
-            chunk_results = 0
-            for row_pos, row_data in enumerate(chunk_rows):
-                if stop_requested():
-                    step(
-                        f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
-                        f"finishing with {len(results)} processed row(s)"
-                    )
-                    break
-
-                # Per-row live-level check — this is what makes the slider
-                # feel instant. If user upgraded mid-chunk, bail right now
-                # with whatever rows are still unprocessed.
-                upgrade_remaining_rows = _check_live_upgrade(chunk_start + row_pos)
-                if upgrade_remaining_rows:
-                    break
-
-                row_no = row_data["_row_idx"]
-                if row_no in processed_rows:
-                    step(f"[Chunk {chunk_index + 1}/{total_chunks}] Skipping duplicate row {row_no}")
-                    continue
-
-                patent_id = row_data["id"]
-                title = row_data["title"]
-                url = id_to_url(patent_id)
-                country = "" if ai_enabled() else extract_country(row_data["appl_no"])
-                doc_id = patent_id.replace("/", "_")
-
-                step(f"[Row {row_no}/{total}] Processing: {patent_id}")
-
-                browser_event({
-                    "event": "navigate",
-                    "url": url,
-                    "row": row_no,
-                    "total": total,
-                    "patent_id": patent_id,
-                    "title": title,
-                    "applicant": row_data["applicant"],
-                    "country": country,
-                })
-
-                # Per-row try/except: an unexpected exception becomes an
-                # error row, not a crash. Stop requests still break out
-                # cleanly. This is what keeps the PCT agent running through
-                # any single-row failure.
-                try:
-                    step(f"[Row {row_no}] [Browser] Opening patent page & searching for RO/101 PDF...")
-                    pdf_path = patent_browser.scrape_patent(url, doc_id, on_step=step)
-
-                    if not pdf_path:
-                        browser_event({
-                            "event": "no_pdf",
-                            "url": url,
-                            "row": row_no,
-                            "total": total,
-                            "patent_id": patent_id,
-                        })
-                        step(f"[Row {row_no}] No RO/101 PDF found")
-                        results.append(_row_result(
-                            row_no, row_data, url, country, "not_found",
-                            reason="No RO/101 PDF found on patent page",
-                        ))
-                        processed_rows.add(row_no)
-                        not_found_count += 1
-                        chunk_results += 1
-                        continue
-
-                    browser_event({
-                        "event": "extracting",
-                        "url": url,
-                        "row": row_no,
-                        "total": total,
-                        "patent_id": patent_id,
-                    })
-                    step(f"[Row {row_no}] [PDF Extractor] Extracting contacts...")
-                    contacts = extract_contacts_from_pdf(pdf_path, on_step=step, context=row_data)
-
-                    emails = contacts.get("emails", [])
-                    phones = contacts.get("phones", [])
-                    name = contacts.get("name", "")
-                    status = contacts["status"]
-
-                    if status == "found":
-                        found_count += 1
-                        step(
-                            f"[Row {row_no}] FOUND: "
-                            f"{', '.join(emails[:2]) if emails else 'no email'} | "
-                            f"{', '.join(phones[:2]) if phones else 'no phone'}"
-                        )
-                    elif status == "not_found":
-                        not_found_count += 1
-                        step(f"[Row {row_no}] No contact info found in PDF")
-                    else:
-                        error_count += 1
-                        step(f"[Row {row_no}] Error: {contacts.get('error', 'Unknown')}")
-
-                    browser_event({
-                        "event": "contacts",
-                        "url": url,
-                        "row": row_no,
-                        "total": total,
-                        "patent_id": patent_id,
-                        "title": title,
-                        "emails": emails,
-                        "phones": phones,
-                        "name": name,
-                        "status": status,
-                        "found_count": found_count,
-                        "not_found_count": not_found_count,
-                        "error_count": error_count,
-                    })
-
-                    results.append(_row_result(
-                        row_no, row_data, url, country, status,
-                        emails=emails, phones=phones, name=name,
-                    ))
-                    results[-1].update(result_metadata(contacts))
-                    processed_rows.add(row_no)
-                    chunk_results += 1
-                except BrowserStopRequested:
-                    step(
-                        f"[Chunk {chunk_index + 1}/{total_chunks}] Stop requested - "
-                        "ending run immediately and saving partial output"
-                    )
-                    break
-                except Exception as row_exc:
-                    step(f"[Row {row_no}] UNEXPECTED error: {row_exc} — recording and moving on")
-                    error_count += 1
-                    results.append(_row_result(
-                        row_no, row_data, url, country, "error",
-                        reason=f"row_exception: {str(row_exc)[:300]}",
-                    ))
-                    processed_rows.add(row_no)
-                    chunk_results += 1
-
-                # No per-row sleep — RequestPacer handles backoff naturally.
-
-            step(
-                f"[Chunk {chunk_index + 1}/{total_chunks}] Finished rows "
-                f"{first_row}-{last_row} - appended {chunk_results} result row(s); "
-                f"combined dataset now has {len(results)} row(s)"
-            )
-
-            if stop_requested():
-                break
-
-            # If the inner row-loop broke due to a live upgrade, propagate.
-            if upgrade_remaining_rows:
-                break
-
-            if chunk_index < total_chunks - 1:
-                step(
-                    f"[Chunk {chunk_index + 1}/{total_chunks}] Cooling down "
-                    f"{CHUNK_COOLDOWN_SECONDS:.1f}s before next chunk"
-                )
-                time.sleep(CHUNK_COOLDOWN_SECONDS)
+    except BrowserStopRequested:
+        step("[Pipeline] Stopped; saving completed rows")
+    except Exception as exc:
+        fatal_error = type(exc).__name__
+        step(f"[Pipeline] Interrupted by {fatal_error}; saving completed rows")
     finally:
-        step("[Browser] Closing browser...")
-        try:
-            patent_browser.close()
-        except Exception as e:
-            step(f"[Browser] Close raised (ignored): {e}")
+        browser.close()
 
-    # If the user upgraded to fast mode mid-run, hand the remaining rows
-    # off to the parallel pipeline now. Its results merge with what we
-    # already produced sequentially.
-    if upgrade_remaining_rows and not stop_requested():
-        try:
-            live = live_level_getter() if callable(live_level_getter) else None
-            new_profile = FAST_MODE_LEVELS.get(live or 3, FAST_MODE_LEVELS[3])
-            pipeline_result = _run_pipeline_mode(
-                upgrade_remaining_rows, file_path, agent_name, strategy,
-                start_time, step, browser_event, stop_requested,
-                register_stop_handler,
-                fast_profile=new_profile,
-                live_level_getter=live_level_getter,
-            )
-            # Merge pipeline results with our sequential ones
-            pipeline_rows = (pipeline_result or {}).get("results", []) or []
-            seen_rows = {r.get("row") for r in results}
-            for r in pipeline_rows:
-                if r.get("row") not in seen_rows:
-                    results.append(r)
-                    seen_rows.add(r.get("row"))
-                    if r.get("status") == "found":
-                        found_count += 1
-                    elif r.get("status") == "not_found":
-                        not_found_count += 1
-                    else:
-                        error_count += 1
-        except Exception as e:
-            step(f"[Mode] Pipeline handoff failed: {e} — saving sequential results only")
-
-    results = sorted(results, key=lambda item: item.get("row", 0))
-    if len(results) != total:
-        step(
-            f"[Pipeline] WARNING: final result count {len(results)} does not match "
-            f"input rows {total}"
-        )
-
-    step("Generating worked + not-found Excel reports...")
+    results.sort(key=lambda result: result["row"])
+    save_reports()
+    found_count = sum(result["status"] == "found" for result in results)
+    not_found_count = sum(result["status"] == "not_found" for result in results)
+    error_count = len(results) - found_count - not_found_count
     run_status = "stopped" if stop_requested() else "success"
-    output_path = ""
-    not_found_path = ""
-    if results:
-        try:
-            output_path, not_found_path = write_pct_reports(results, on_step=step, gazette=gazette)
-            step(f"Output saved: {Path(output_path).name} + {Path(not_found_path).name}")
-        except Exception as e:
-            step(f"[Output] FAILED to write reports: {e} — "
-                 f"results were already streamed to the resumable JSONL log")
-    else:
-        step("No processed rows available to write into Work Report")
-
-    step("Running self-tests...")
+    if run_status != "stopped" and (fatal_error or report_error or len(results) != total):
+        run_status = "partial" if results else "failure"
+    output_path, not_found_path = report_paths or ("", "")
+    execution_time = time.time() - start_time
     agent_result = _build_partial_result(
-        run_status, results, total, found_count, not_found_count,
-        error_count, output_path=output_path, not_found_path=not_found_path,
+        run_status, results, total, found_count, not_found_count, error_count,
+        output_path=output_path, not_found_path=not_found_path, execution_time=execution_time,
     )
-
+    agent_result["progress_file"] = str(journal.path)
+    agent_result["resumed_rows"] = resumed_count
+    if fatal_error or report_error:
+        agent_result["error"] = fatal_error or f"report_write_failed: {report_error}"
     test_result = tests.run(agent_result)
     agent_result["tests"] = test_result
-
-    if test_result["passed"]:
-        step(f"All {test_result['total']} self-tests passed!")
-    else:
-        step(f"Self-tests: {test_result['passed_count']}/{test_result['total']} passed")
-
-    execution_time = time.time() - start_time
-    insight = (
-        f"Sequential chunk processing completed {total} rows: "
-        f"{found_count} found, {not_found_count} not found, {error_count} errors"
-    )
-    save_learning(
-        agent_name, "process_excel",
-        run_status if run_status == "stopped" else ("success" if found_count > 0 or not_found_count > 0 else "partial"),
-        insight, strategy, execution_time,
-    )
-
-    step(f"Learning saved. Total time: {execution_time:.1f}s")
-    if run_status == "stopped":
-        step(
-            f"STOPPED - partial output created with {len(results)} processed rows "
-            f"({found_count} found, {not_found_count} not found, {error_count} errors)"
-        )
-    else:
-        step(
-            f"DONE - {found_count} contacts found, {not_found_count} not found, "
-            f"{error_count} errors out of {total} rows"
-        )
-
-    agent_result["execution_time"] = round(execution_time, 2)
-    agent_result["attempts"] = 1
-    agent_result["input_file"] = archived_input_path or str(file_path)
-    agent_result["input_file_name"] = Path(archived_input_path or file_path).name
-    agent_result["mode"] = mode
-    agent_result["gazette"] = gazette or ""
+    if not test_result["passed"] and run_status == "success":
+        agent_result["status"] = run_status = "partial"
+    save_learning(agent_name, "process_excel", run_status,
+                  f"Single-browser overlap processed {len(results)}/{total} rows: "
+                  f"{found_count} found, {not_found_count} not found, {error_count} errors",
+                  strategy, execution_time)
+    agent_result.update(input_file=archived_input_path or str(file_path),
+                        input_file_name=Path(archived_input_path or file_path).name,
+                        mode=mode, gazette=gazette or "")
+    step(f"[Pipeline] {run_status}: {len(results)}/{total} processed; {found_count} found, "
+         f"{not_found_count} not found, {error_count} errors")
     return agent_result
+
 
 
 WORK_REPORT_HEADERS = [
@@ -1325,7 +846,7 @@ WORK_REPORT_HEADERS = [
 ]
 
 
-def write_pct_reports(results, on_step=None, gazette=None):
+def write_pct_reports(results, on_step=None, gazette=None, output_paths=None):
     """Write the two PCT deliverables and return (worked_path, not_found_path).
 
     - worked_<gazette>.xlsx    : rows where contacts were extracted (status found)
@@ -1338,12 +859,15 @@ def write_pct_reports(results, on_step=None, gazette=None):
     mark_repeated(results)
     found_rows = [r for r in results if r.get("status") == "found"]
     miss_rows = [r for r in results if r.get("status") != "found"]
-    worked_path = generate_work_report(found_rows, on_step=on_step, gazette=gazette, kind="worked")
-    not_found_path = generate_work_report(miss_rows, on_step=on_step, gazette=gazette, kind="not_found")
+    worked_target, missed_target = output_paths or (None, None)
+    worked_path = generate_work_report(found_rows, on_step=on_step, gazette=gazette,
+                                      kind="worked", target_path=worked_target)
+    not_found_path = generate_work_report(miss_rows, on_step=on_step, gazette=gazette,
+                                         kind="not_found", target_path=missed_target)
     return worked_path, not_found_path
 
 
-def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
+def generate_work_report(results, on_step=None, gazette=None, kind="worked", target_path=None):
     """Generate a PCT report Excel matching the standard output format.
 
     ``kind`` selects which deliverable this is:
@@ -1368,23 +892,23 @@ def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
         cell.font = Font(bold=True)
 
     for i, r in enumerate(results, start=2):
-        ws.cell(row=i, column=1, value=r.get("patent_id", ""))
-        ws.cell(row=i, column=2, value=r.get("title", ""))
-        ws.cell(row=i, column=3, value=r.get("appl_no", ""))
-        ws.cell(row=i, column=4, value=r.get("applicant", ""))
-        ws.cell(row=i, column=5, value=r.get("url", ""))
-        ws.cell(row=i, column=6, value=r.get("category", ""))
-        ws.cell(row=i, column=7, value="; ".join(r.get("phones", [])))
-        ws.cell(row=i, column=8, value="; ".join(r.get("emails", [])))
-        ws.cell(row=i, column=9, value=r.get("display_name", r.get("agent_name", "")))
-        ws.cell(row=i, column=10, value=r.get("country", ""))
-        ws.cell(row=i, column=11, value=r.get("researcher", ""))
-        ws.cell(row=i, column=12, value=r.get("priority_date", ""))
+        values = [r.get("patent_id", ""), r.get("title", ""), r.get("appl_no", ""),
+                  r.get("applicant", ""), r.get("url", ""), r.get("category", ""),
+                  "; ".join(r.get("phones", [])), "; ".join(r.get("emails", [])),
+                  r.get("display_name", r.get("agent_name", "")), r.get("country", ""),
+                  r.get("researcher", ""), r.get("priority_date", "")]
+        for column, value in enumerate(values, 1):
+            # XML 1.0 cannot store these non-printing control characters.
+            # Clean only the exported cell; preserve source/evidence/journal data.
+            if isinstance(value, str):
+                from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+                value = ILLEGAL_CHARACTERS_RE.sub("", value)
+            ws.cell(row=i, column=column, value=value)
 
     # PCT output files are local-only. The database may store metadata and
     # a local path, but the report sheet itself stays in this folder.
     output_dir = PCT_OUTPUT_DIR.resolve()
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Filename: prefer the gazette (e.g. "worked_28-2025.xlsx" /
     # "not_found_28-2025.xlsx"); fall back to a dated name for uploaded sheets.
@@ -1397,18 +921,27 @@ def generate_work_report(results, on_step=None, gazette=None, kind="worked"):
     output_name = f"{base_name}.xlsx"
     output_path = output_dir / output_name
     counter = 2
-    while output_path.exists():
+    while not target_path and output_path.exists():
         output_name = f"{base_name} book{counter}.xlsx"
         output_path = output_dir / output_name
         counter += 1
 
-    output_path = output_path.resolve()
+    output_path = Path(target_path).resolve() if target_path else output_path.resolve()
     if output_path.suffix.lower() not in PCT_REPORT_EXTENSIONS:
         raise ValueError(f"Unsupported PCT output extension: {output_path.suffix}")
     if output_dir not in output_path.parents:
         raise ValueError("PCT output must be saved inside the local outputs folder")
 
-    wb.save(str(output_path))
+    # Keep the previous checkpoint readable if saving is interrupted or Excel
+    # has the destination open. Only the coordinator writes these workbooks.
+    from uuid import uuid4
+    temporary = output_path.with_name(f".{output_path.stem}.{uuid4().hex}.tmp.xlsx")
+    try:
+        wb.save(str(temporary))
+        os.replace(temporary, output_path)
+    finally:
+        wb.close()
+        temporary.unlink(missing_ok=True)
 
     if on_step:
         label = "Not-found list" if kind == "not_found" else "Work Report"

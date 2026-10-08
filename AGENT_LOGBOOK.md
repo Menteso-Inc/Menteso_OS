@@ -1,6 +1,6 @@
 # Menteso Agent Operations Logbook
 
-Last updated: 2026-08-27 (Asia/Calcutta)
+Last updated: 2026-10-08 (Asia/Calcutta)
 
 This is the operating register for Menteso agents. Credentials are never stored
 in this document. Every agent must use its own mailbox identity, secret boundary,
@@ -208,3 +208,14 @@ For every future change, append:
 - Publishing source, tests, configuration templates and operational notes only. Secrets, production customer state, reference workbooks, source PDFs, generated reports and backups remain outside the public repository.
 - This is a source handoff; no service restart or bulk PCT run is part of the push. Prior deployment and rollback records remain above.
 - Handoff validation: 32 PCT tests and 24 reminder/calendar tests passed locally after installing missing test dependencies; staged whitespace checks and credential-pattern checks passed. Only the prepared publish checkout is committed; unrelated historical local-server changes remain untouched.
+
+### 2026-10-08 - Preserve deployed PCT pipeline for teammate deployments
+
+- Requested change: ensure a teammate's deployment does not overwrite the local PCT improvements or previously collected results.
+- Source handoff: `pct-deployment-handoff-20261008`, prepared from current `origin/main`, preserving upstream Accountant/dashboard changes. Includes the deployed single-browser overlap, bounded parallel PDF verification, durable checkpoints/resume, atomic Excel writes/control-character fix, and dashboard ETA/reconnection changes.
+- Files: PCT agent, verifier scheduling, browser failure reporting, overlap/parallel/resume modules and tests; focused dashboard changes; configuration examples/routing metadata; validation, handoff, keeper and dashboard patch scripts; this logbook and `CODEX_HANDOFF.md`. Added refusal guards to the legacy deploy script and its GitHub workflow before Git/service operations when the PCT keeper task exists.
+- Tests: 100 PCT regression tests passed in an isolated checkout; JavaScript syntax and real dashboard reconnect function checks passed. Read-only local preflight reported no active agent runs during preparation.
+- Deployment result: source preservation only; no production files, settings or services changed by this handoff. Local PCT and AWS frontend changes were already deployed during the October 7-8 work. Publishing a feature branch does not update `main`; teammates must merge it before deploying.
+- Private backups: `C:\ProgramData\Menteso\pct-pipeline-handoff-20261007` and `C:\ProgramData\Menteso\pct-parallel-handoff-20261008`. Collected data, original sheets, PDFs, runtime memory and secrets remain outside Git.
+- Rollback: restore only the target source/configuration after an idle check and any required validated handoff; preserve newer runtime data. Do not run the legacy PM2 deploy script or force-reset the local PCT checkout as part of unrelated AWS deployments.
+- External behavior approval: user requested source/deployment protection. No external email, bulk run, merge to `main` or service restart was performed as part of preparing this handoff.

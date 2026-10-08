@@ -740,6 +740,9 @@ class PatentBrowser:
         self._context = None
         self._page = None
 
+        # Distinguish a checked missing document from an unsuccessful lookup.
+        self.last_failure_reason = ""
+
     def __enter__(self):
         self.start()
         return self
@@ -824,9 +827,11 @@ class PatentBrowser:
         Returns path to downloaded PDF, or None.
         """
         step = on_step or self.on_step or (lambda m: None)
+        self.last_failure_reason = ""
         page = self._page
         self._check_stop()
         if not page:
+            self.last_failure_reason = "browser_not_started"
             step("[Browser] ERROR: Browser not started")
             return None
 
@@ -844,6 +849,7 @@ class PatentBrowser:
                 if attempt == 0:
                     time.sleep(0.5)
                     continue
+                self.last_failure_reason = "nav_failed"
                 return None
 
             # --- Step 2: Wait for content ---
@@ -855,6 +861,7 @@ class PatentBrowser:
                 time.sleep(0.5)
 
         if not loaded:
+            self.last_failure_reason = "load_timeout"
             step("[Browser] Page did not load after retries")
             return None
 
@@ -870,22 +877,29 @@ class PatentBrowser:
             if self.is_stop_requested():
                 raise BrowserStopRequested("Stop requested")
             step(f"[Browser] Could not open Documents tab: {e}")
+            self.last_failure_reason = "docs_tab"
             return None
 
         # WIPO sometimes serves a captcha specifically after the Documents
         # click. Run the solver before trying to find the PDF link.
         if not _solve_if_captcha(page, on_step=step, label="Documents click"):
             step("[Browser] Captcha after Documents click could not be solved")
+            self.last_failure_reason = "captcha_persistent"
             return None
 
         # --- Step 4: Find RO/101 PDF link ---
         pdf_url = self._find_ro101_pdf(on_step=step)
         if not pdf_url:
+            # An absent link does not prove the tab finished loading. Keep it
+            # retryable instead of claiming that contact information is absent.
+            self.last_failure_reason = "pdf_lookup_unconfirmed"
             step("[Browser] No RO/101, 306, or Request form PDF found")
             return None
 
         # --- Step 5: Download the PDF ---
         pdf_path = self._download_pdf(pdf_url, doc_id, on_step=step)
+        if not pdf_path:
+            self.last_failure_reason = "download_failed"
         return pdf_path
 
     def _wait_for_content(self, timeout=120, on_step=None):

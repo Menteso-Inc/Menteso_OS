@@ -30,6 +30,19 @@ jobs:
           chmod 600 ~/.ssh/menteso_deploy_key
           ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
+      # The existing remote command changes Git before invoking deploy.ps1.
+      # Check the runtime first so merging unrelated AWS work cannot reset or
+      # restart the local PCT server managed by its Windows keeper task.
+      - name: Refuse legacy deployment on the PCT keeper server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          ssh -i ~/.ssh/menteso_deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" "powershell -NoProfile -NonInteractive -Command \"if (Get-ScheduledTask -ErrorAction Stop | Where-Object TaskName -eq 'Menteso PCT Dashboard Keeper') { throw 'Legacy deployment refused: local PCT uses its keeper. Follow CODEX_HANDOFF.md; do not reset or restart this checkout.' }\""
+
       - name: Deploy on server
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
