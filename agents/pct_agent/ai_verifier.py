@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -435,6 +436,21 @@ def _unresolved_applicant_email(first, second, confirmed):
     return bool(pages(first) & pages(second)) and not confirmed_applicant
 
 
+def _read_original_pages(pages, rules, context, on_step=None):
+    """Run the existing independent readings together, keeping their identities.
+
+    Both requests see only original images and metadata. The second still gets
+    reversed page order, never the first answer. _API_LOCK caps all requests at
+    two, including focused rereads. Await both before applying the same policy.
+    """
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pct-image-read") as readers:
+        first = readers.submit(_request, pages, rules, context)
+        second = readers.submit(_request, list(reversed(pages)), rules, context)
+        if on_step:
+            on_step("[AI Verification] Independent second reading running alongside the first")
+        return first.result(), second.result()
+
+
 def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
     evidence_dir = None
     try:
@@ -455,10 +471,7 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
         pages, total_pages = _render_pages(pdf_path)
         if on_step:
             on_step(f"[AI Verification] Reading {len(pages)} original PDF page(s) with {model_name()}")
-        extraction = _request(pages, rules, context)
-        if on_step:
-            on_step("[AI Verification] Independent second reading of original pages")
-        second = _request(list(reversed(pages)), rules, context)
+        extraction, second = _read_original_pages(pages, rules, context, on_step)
         page_numbers = [p for p, _ in pages]
         first_groups, first_issues = policy.valid_fields(extraction, rules, page_numbers)
         second_groups, second_issues = policy.valid_fields(second, rules, page_numbers)

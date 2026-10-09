@@ -258,6 +258,7 @@ async function loadAgentDetail(name) {
 async function loadAgentRunStatus(name) {
     try {
         const res = await fetch(`/api/agents/${name}/run-status`);
+        if (!res.ok) throw new Error(`Run status request failed (${res.status})`);
         const data = await res.json();
         state.agentRunStatus = data.status || "idle";
         applyRunStatusSnapshot(data);
@@ -267,6 +268,11 @@ async function loadAgentRunStatus(name) {
         return state.agentRunStatus;
     } catch (e) {
         console.error("Failed to load agent run status:", e);
+        if (name === "pct_agent") {
+            // Keep polling: a network failure cannot confirm an idle worker.
+            startRunStatusPoller();
+            return "unknown";
+        }
         state.agentRunStatus = "idle";
         return "idle";
     }
@@ -274,6 +280,16 @@ async function loadAgentRunStatus(name) {
 
 function applyRunStatusSnapshot(data) {
     if (!data || typeof data !== "object") return;
+    if (state.selectedAgent?.module_name === "pct_agent"
+            && ["running", "stopping"].includes(data.status)) {
+        if (data.run_id && state.pctRunId !== data.run_id) {
+            state.pctRunId = data.run_id;
+            state.executionLog = [];
+        }
+        state.lastResult = null;
+        state.isRunning = true;
+        state.stopRequested = data.status === "stopping";
+    }
     if (data.lastEvent?.type === "complete" && state.isRunning) {
         state.lastResult = data.lastEvent.result || null;
         state.isRunning = false;
@@ -293,10 +309,25 @@ function applyRunStatusSnapshot(data) {
         if (Number(metrics.errorRows) >= 0) state.runMetrics.errorRows = Number(metrics.errorRows);
         if (Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
         const newProcessed = state.runMetrics.processedRows || 0;
-        const delta = Math.max(0, newProcessed - previousProcessed);
-        const now = Date.now();
-        for (let i = 0; i < delta; i++) {
-            pushRowCompletionTimestamp(now);
+        const timing = data.browser?.timing;
+        if (state.selectedAgent?.module_name === "pct_agent" && timing?.startedAt) {
+            // Authoritative completion times exclude restored rows and survive
+            // refresh, reconnection and duplicate SSE/poll delivery.
+            const rm = state.runMetrics;
+            rm.startedAt = timing.startedAt;
+            rm.modeChangedAt = timing.startedAt;
+            rm.rowsAtModeChange = timing.resumedRows || 0;
+            rm.rowTimestamps = (timing.rowTimestamps || []).slice(-20);
+            rm.recalibrating = rm.rowTimestamps.length < 5;
+            if (["running", "stopping"].includes(data.status)) {
+                rm.finishedAt = null;
+                state.isRunning = true;
+                startRunMetricsTicker();
+            }
+        } else {
+            const delta = Math.max(0, newProcessed - previousProcessed);
+            const now = Date.now();
+            for (let i = 0; i < delta; i++) pushRowCompletionTimestamp(now);
         }
         updateRunMetricsPanel();
     }
@@ -902,6 +933,7 @@ async function runAgent(name, params = {}) {
                 if (data.status) state.agentRunStatus = data.status;
             } catch {}
             addLogLine(message, "error");
+            if (await recoverPCTRunAfterStream(name)) return;
             state.isRunning = false;
             state.stopRequested = false;
             state.browser.event = "done";
@@ -937,6 +969,7 @@ async function runAgent(name, params = {}) {
         addLogLine(`Connection error: ${e.message}`, "error");
     }
 
+    if (await recoverPCTRunAfterStream(name)) return;
     state.isRunning = false;
     state.stopRequested = false;
     state.agentRunStatus = "idle";
@@ -957,6 +990,21 @@ async function runAgent(name, params = {}) {
         }
     }
     renderMain();
+}
+
+async function recoverPCTRunAfterStream(name) {
+    if (name !== "pct_agent") return false;
+    const status = await loadAgentRunStatus(name);
+    if (status === "idle") return false;
+    // A closed log stream is not evidence that the background worker stopped.
+    state.isRunning = true;
+    state.stopRequested = status === "stopping";
+    addLogLine(status === "unknown"
+        ? "Dashboard connection interrupted; checking the agent status again."
+        : "Live log connection ended; continuing updates from the running agent.", "step");
+    startRunStatusPoller();
+    renderMain();
+    return true;
 }
 
 function handleSSEEvent(data) {
