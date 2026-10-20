@@ -5,12 +5,13 @@ profile now enables `discover_directories`. This update is source/tested code;
 it has not been deployed to AWS. No live collection run, provider credit
 operation, email, upload or change to unrelated services is part of this work.
 
-The subsequent market preference keeps worldwide eligibility (`countries: []`)
-while prioritizing US/Australia queries (`priority_countries`). The first bounded
-search plan covers both named markets, and a global search lane remains in the
-rotation. A nonempty country allowlist still overrides the preference. Existing
-inventory/qualification keys are preserved. US product hosting is user-provided
-context; country does not establish acceptance, consent or residency compliance.
+The user's final clarification is worldwide lawyer discovery. The saved profile
+uses `countries: []` and `priority_countries: []`; US/Australia were examples, not
+a fixed targeting list. International directory queries and solicitor/advocate
+terminology supplement the existing sources. Optional explicit country targeting
+is available for future runs. Inventory/qualification keys are preserved. US
+product hosting is user-provided context; assess each firm's requirements without
+inferring acceptance, consent or residency compliance from its country.
 
 ## Pipeline
 

@@ -4,7 +4,7 @@
   "extraction_mode": "rules",
   "spend_policy": "free_allowance_only",
   "countries": [],
-  "priority_countries": ["United States", "Australia"],
+  "priority_countries": [],
   "target_segments": [
     "solo",
     "small",

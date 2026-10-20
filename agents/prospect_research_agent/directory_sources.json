@@ -2,7 +2,9 @@
   "version": "2026-10-20.1",
   "discovery_queries": [
     "lawyer directory attorney profiles law firms",
-    "(site:lawyers.justia.com OR site:avvo.com OR site:lawyers.findlaw.com OR site:martindale.com) lawyer law firm"
+    "(site:lawyers.justia.com OR site:avvo.com OR site:lawyers.findlaw.com OR site:martindale.com) lawyer law firm",
+    "international lawyer directory law firms worldwide",
+    "solicitor advocate lawyer directory professional profiles"
   ],
   "sources": [
     {"host":"justia.com","name":"Justia","homepage":"https://lawyers.justia.com/","state":"restricted","terms_url":"https://www.justia.com/terms-of-service/","reviewed_on":"2026-10-20","note":"Commercial copying/reuse is restricted by the published terms. No collection permission for Lexmom is recorded."},

@@ -220,7 +220,22 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(profile.budget_usd, 0)
         self.assertEqual(profile.max_llm_calls, 0)
         self.assertEqual(profile.countries, [])
-        self.assertEqual(profile.priority_countries, ["United States", "Australia"])
+        self.assertEqual(profile.priority_countries, [])
+
+    def test_worldwide_saved_profile_has_no_implicit_country_preference(self):
+        profile_path = Path(__file__).parents[1] / "lexmom_marketing_agent" / "research_profile.json"
+        profile = ResearchRequest.model_validate(json.loads(profile_path.read_text()))
+        self.assertEqual(search_geographies(profile), [""])
+        self.tools.request = profile
+        self.tools.directory_policy = load_directory_policy()
+        with patch.dict(os.environ, {"PROSPECT_RESEARCH_AGENT_SERPAPI_API_KEY": "offline-only"}), \
+             patch.object(self.tools, "_require_free_allowance"), \
+             patch.object(self.tools, "_provider_json", return_value=(200, {"organic_results": []})) as provider:
+            self.tools.discover()
+        queries = [parse_qs(urlsplit(call.args[1]).query)["q"][0] for call in provider.call_args_list]
+        self.assertEqual(len(queries), 3)
+        self.assertTrue(all("United States" not in query and "Australia" not in query for query in queries))
+        self.assertTrue(any("worldwide" in query for query in self.tools.directory_policy.discovery_queries))
 
     def test_market_priorities_keep_worldwide_eligibility_and_existing_inventory_key(self):
         from shared.prospect_store import targeting_key

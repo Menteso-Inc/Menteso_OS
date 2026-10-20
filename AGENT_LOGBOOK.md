@@ -603,6 +603,8 @@ For every future change, append:
 
 ## 2026-10-20 — US and Australia research priorities
 
+Superseded by the worldwide-discovery clarification below.
+
 - User clarified worldwide eligibility with US/Australia as the main commercial
   research focus, citing US product hosting. Added editable `priority_countries`
   separately from the existing `countries` eligibility allowlist. The saved
@@ -617,3 +619,18 @@ For every future change, append:
   No live search, verification credit operation, campaign, deployment or service
   change was performed. Hosting location is user-provided context, not a claim
   that every firm in a country accepts it or that other countries forbid it.
+
+## 2026-10-20 — Clarification: worldwide lawyer discovery
+
+- User clarified that US/Australia are examples and discovery should identify
+  lawyers worldwide. Cleared saved `priority_countries` while preserving empty
+  `countries` for global eligibility. Optional per-run country targeting remains
+  available; no market is excluded because of assumed hosting requirements.
+- Added international and solicitor/advocate directory search themes within the
+  same rotating query/credit caps. Corrected current documentation and added an
+  offline regression check that the saved search does not append either country.
+- Existing source-permission holds, qualification, lead inventory, verification
+  and disabled sending/publishing remain unchanged. No provider work, AWS deploy,
+  service restart or production data change is part of this correction.
+- Validation: 49 directory-source and manager/dashboard checks passed, including
+  the worldwide saved-profile search regression; no live providers were contacted.
