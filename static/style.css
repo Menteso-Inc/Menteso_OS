@@ -3346,22 +3346,108 @@ body {
 .lexmom-control-buttons .secondary-btn:hover { background: var(--bg-card-hover); border-color: var(--accent); }
 .lexmom-control-buttons button:disabled { opacity: .6; cursor: not-allowed; }
 .lexmom-targeting { margin-bottom: 1.5rem; }
-.lexmom-research-layout { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-.lexmom-research-main { min-width: 0; }
-.lexmom-source-card, .lexmom-source-preview { padding: 1.1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-secondary); }
-.lexmom-source-card h3, .lexmom-source-preview h3 { margin: 0 0 .5rem; }
-.lexmom-source-card p, .lexmom-source-preview p { margin: .6rem 0; }
-.lexmom-source-card form { display: grid; gap: .65rem; margin: 1rem 0; }
-.lexmom-source-card input { width: 100%; min-width: 0; min-height: 44px; padding: .65rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; }
-.lexmom-source-card button { min-height: 44px; }
-.lexmom-source-note { font-size: .8rem; color: var(--text-secondary); line-height: 1.5; }
-.lexmom-source-preview { margin-bottom: 1.25rem; }
-.lexmom-source-heading { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.lexmom-source-table { min-width: 680px; width: 100%; }
-.lexmom-source-table th, .lexmom-source-table td { padding: .85rem; text-align: left; vertical-align: top; }
-.lexmom-source-table th[scope="row"] { min-width: 230px; }
-.lexmom-source-table th[scope="row"] span { font-weight: normal; white-space: nowrap; }
-@media (max-width: 1100px) { .lexmom-research-layout { grid-template-columns: minmax(0, 1fr); } }
+/* Lexmom responsive research workspace: keep table width inside its own region. */
+html:has(body.lexmom-active) { height: 100%; overflow: clip; }
+body.lexmom-active { height: 100dvh; overflow: clip; }
+body.lexmom-active .app { height: 100dvh; }
+body.lexmom-active .app { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+body.lexmom-active .main { min-width: 0; padding: clamp(1rem, 2.3vw, 2rem); }
+body.lexmom-active #lexmom-panel { min-width: 0; container: lexmom / inline-size; }
+.lexmom-research-workspace { display: grid; gap: 2rem; min-width: 0; }
+.lexmom-research-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: stretch; min-width: 0; }
+.lexmom-research-main, .lexmom-research-workspace .lexmom-leads { min-width: 0; }
+.lexmom-source-card, .lexmom-source-preview { min-width: 0; padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+.lexmom-source-card h3, .lexmom-source-preview h3 { margin: 0; font-size: 1.05rem; font-weight: 650; line-height: 1.4; }
+.lexmom-source-card p, .lexmom-source-preview p { margin: .75rem 0 0; line-height: 1.6; overflow-wrap: anywhere; }
+.lexmom-source-description { color: var(--text-secondary); font-size: .875rem; }
+.lexmom-source-card form { display: grid; gap: .65rem; margin: 1.25rem 0 .75rem; }
+.lexmom-source-card label { color: var(--text-primary); font-size: .85rem; font-weight: 600; }
+.lexmom-source-card input { width: 100%; min-width: 0; min-height: 46px; padding: .7rem .8rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); font: inherit; font-size: .9rem; }
+.lexmom-source-card button { min-height: 46px; padding: .7rem 1rem; border: 1px solid #5749d8; border-radius: var(--radius-sm); background: #5749d8; color: #fff; font: inherit; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.lexmom-source-card button:hover:not(:disabled) { background: #4d3bc7; }
+.lexmom-source-card button:disabled { opacity: .65; cursor: wait; }
+.lexmom-source-card :is(input,button):focus-visible, .lexmom-table-wrap:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 3px; }
+.lexmom-source-note { font-size: .8125rem; color: var(--text-secondary); line-height: 1.6; }
+.lexmom-source-preview { height: 100%; font-size: .875rem; }
+.lexmom-source-preview > a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-hover); overflow-wrap: anywhere; }
+.lexmom-source-heading { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.lexmom-source-heading > div { min-width: 0; }
+.lexmom-source-heading p { color: var(--text-secondary); }
+.lexmom-source-status { display: inline-block; margin-top: .5rem; padding: .2rem .6rem; border: 1px solid var(--border-light); border-radius: 2rem; color: var(--text-secondary); font-size: .75rem; }
+.lexmom-source-heading button { min-height: 44px; padding: .6rem .85rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); font: inherit; cursor: pointer; }
+.lexmom-source-empty { display: flex; flex-direction: column; justify-content: center; min-height: 14rem; background: var(--bg-secondary); }
+.lexmom-table-wrap { position: relative; min-width: 0; width: 100%; max-height: 24rem; overflow: auto; margin-top: 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.lexmom-source-table { min-width: 38rem; width: 100%; border-collapse: collapse; font-size: .85rem; line-height: 1.6; }
+.lexmom-source-table th, .lexmom-source-table td { padding: .85rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.lexmom-source-table thead th { background: var(--bg-secondary); color: var(--text-secondary); font-size: .75rem; white-space: nowrap; position: sticky; top: 0; }
+.lexmom-source-table th[scope="row"] { min-width: 14rem; max-width: 22rem; overflow-wrap: anywhere; }
+.lexmom-source-table th[scope="row"] span { font-weight: normal; }
+.lexmom-source-table tr:last-child > * { border-bottom: 0; }
+.lexmom-research-workspace .lexmom-leads-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: 1rem; }
+.lexmom-leads-heading h3 { font-size: 1.2rem; font-weight: 650; }
+.lexmom-leads-heading > span { color: var(--text-secondary); font-size: .875rem; }
+.lexmom-research-workspace .lexmom-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .85rem; margin: 0; }
+.lexmom-research-workspace .stat-card { min-width: 0; text-align: left; padding: 1rem 1.15rem; }
+.lexmom-research-workspace .stat-value { font-size: clamp(1.5rem, 2vw, 2rem); line-height: 1.2; }
+.lexmom-research-workspace .stat-label { color: var(--text-secondary); font-size: .8125rem; text-transform: none; letter-spacing: 0; line-height: 1.45; }
+.lexmom-research-workspace .lexmom-lead-toolbar { display: block; margin-top: 1rem; }
+.lexmom-research-workspace .lexmom-lead-toolbar > p { font-size: .8125rem; color: var(--text-secondary); margin: 0 0 1rem; }
+.lexmom-research-workspace .lexmom-lead-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: .85rem; width: 100%; }
+.lexmom-research-workspace .lexmom-lead-actions label { display: grid; gap: .4rem; min-width: 0; color: var(--text-secondary); font-size: .8125rem; }
+.lexmom-research-workspace .lexmom-lead-actions :is(select,button) { width: 100%; min-width: 0; min-height: 44px; padding: .6rem .8rem; border-color: var(--border-light); color: var(--text-primary); font: inherit; font-size: .875rem; }
+.lexmom-research-workspace .lexmom-table-scroll { position: relative; width: 100%; min-width: 0; max-height: 42rem; overflow: auto; margin-top: 1.25rem; scrollbar-width: thin; }
+.lexmom-research-workspace .lexmom-lead-table { min-width: 62rem; font-size: .875rem; }
+.lexmom-research-workspace .lexmom-lead-table caption { padding: 1rem; font-size: .8125rem; background: var(--bg-secondary); }
+.lexmom-research-workspace .lexmom-lead-table thead th { position: sticky; top: 0; z-index: 1; padding: .85rem 1rem; color: var(--text-secondary); }
+.lexmom-research-workspace .lexmom-lead-table :is(th,td) { padding: 1rem; }
+.lexmom-research-workspace .lexmom-lead-table th[scope="row"] { min-width: 15rem; max-width: 20rem; word-break: normal; }
+.lexmom-research-workspace .lexmom-lead-email { min-width: 0; white-space: normal; overflow-wrap: anywhere; margin: .2rem 0; }
+.lexmom-research-workspace .lexmom-lead-table td small { display: block; color: var(--text-secondary); }
+.lexmom-research-workspace .lexmom-lead-table td:nth-child(5), .lexmom-research-workspace .lexmom-lead-table td:nth-child(6) { min-width: 7rem; }
+.lexmom-research-workspace .lexmom-lead-details-btn { min-height: 44px; padding: .5rem .75rem; }
+.lexmom-research-workspace .lexmom-log { margin-top: 0; }
+@container lexmom (min-width: 54rem) {
+    .lexmom-research-layout { grid-template-columns: minmax(17rem, 18rem) minmax(0, 1fr); }
+}
+@container lexmom (max-width: 53.99rem) {
+    .lexmom-source-card form { grid-template-columns: minmax(0,1fr) auto; align-items: end; }
+    .lexmom-source-card label { grid-column: 1 / -1; }
+}
+@container lexmom (max-width: 48rem) {
+    .lexmom-research-workspace .lexmom-lead-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .lexmom-research-workspace .lexmom-table-scroll, .lexmom-table-wrap { max-height: none; overflow: visible; border: 0; }
+    .lexmom-research-workspace .lexmom-lead-table, .lexmom-source-table { display: block; min-width: 0; width: 100%; }
+    .lexmom-lead-table caption { display: block; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: .75rem; }
+    /* Keep semantic headers available to assistive technology in stacked rows. */
+    .lexmom-lead-table thead, .lexmom-source-table thead { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+    .lexmom-lead-table tbody, .lexmom-source-table tbody { display: grid; gap: .85rem; }
+    .lexmom-lead-table tbody tr, .lexmom-source-table tbody tr { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; padding: 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); }
+    .lexmom-research-workspace .lexmom-lead-table tbody :is(th,td), .lexmom-source-table tbody :is(th,td) { display: block; padding: 0; border: 0; min-width: 0; max-width: none; overflow-wrap: anywhere; }
+    .lexmom-research-workspace .lexmom-lead-table tbody td:first-child { display: none; }
+    .lexmom-lead-table th[scope="row"], .lexmom-source-table th[scope="row"], .lexmom-lead-table td:last-child, .lexmom-source-table td:last-child { grid-column: 1 / -1; }
+    .lexmom-lead-table td[data-label]::before, .lexmom-source-table td[data-label]::before { content: attr(data-label); display: block; color: var(--text-secondary); font-size: .75rem; margin-bottom: .3rem; }
+    .lexmom-lead-table td:last-child::before, .lexmom-source-table td:last-child::before { display: none; }
+    .lexmom-lead-table td:last-child button, .lexmom-source-table td:last-child button { width: 100%; }
+}
+@container lexmom (max-width: 25rem) {
+    .lexmom-source-card form { grid-template-columns: minmax(0,1fr); }
+    .lexmom-source-card, .lexmom-source-preview { padding: 1rem; }
+    .lexmom-research-workspace .stat-card { padding: .85rem .65rem; }
+    .lexmom-research-workspace .lexmom-counts { gap: .5rem; }
+    .lexmom-research-workspace .stat-label { font-size: .75rem; }
+    .lexmom-research-workspace .lexmom-lead-actions { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 47.99rem) {
+    body.lexmom-active .app { grid-template-columns: minmax(0, 1fr); }
+    body.lexmom-active .sidebar { padding: 0; max-height: none; overflow-y: hidden; scrollbar-width: thin; }
+    body.lexmom-active .sidebar-header { display: none; }
+    body.lexmom-active .agent-list { padding: .65rem .75rem; }
+    body.lexmom-active .agent-item { flex-basis: 13rem; padding: .6rem .75rem; }
+    body.lexmom-active .agent-item-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.lexmom-active .lexmom-tabs { gap: .5rem; margin-bottom: 1.25rem; }
+    body.lexmom-active .lexmom-chip { flex: 1 1 40%; border-radius: var(--radius-sm); min-height: 44px; padding: .6rem; }
+}
+/* End Lexmom responsive research workspace */
 @media (max-width: 800px) {
     .lexmom-business-metrics { grid-template-columns: 1fr; }
     .lexmom-metric { padding: 1rem 1.25rem; }

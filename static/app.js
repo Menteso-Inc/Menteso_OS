@@ -2078,40 +2078,39 @@ function renderLexmomResults(result, {auditOnly = false} = {}) {
 }
 
 function renderLexmomResearchWorkspace(snapshot) {
-    const inventory = snapshot.prospectInventory || [];
     const latest = state.lastResult;
     const table = snapshot.leadTable;
-    return `<div class="lexmom-research-layout"><aside class="lexmom-source-card" aria-labelledby="lexmom-source-title">
-        <h3 id="lexmom-source-title">Test a source</h3><p>Website, directory or reviewed API feed</p>
+    return `<div class="lexmom-research-workspace"><div class="lexmom-research-layout"><aside class="lexmom-source-card" aria-labelledby="lexmom-source-title">
+        <h3 id="lexmom-source-title">Test a source</h3><p class="lexmom-source-description">Preview contacts from a website, directory or reviewed API feed.</p>
         <form id="lexmom-source-form"><label for="lexmom-source-url">Source URL</label>
-        <input id="lexmom-source-url" type="url" required maxlength="2000" placeholder="https://…" value="${esc(state.lexmom.sourceUrl || "")}" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>
-        <button class="secondary-btn" type="submit" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>Extract batch</button></form>
-        <p class="lexmom-source-note">Up to 50 new records per batch. Saved progress prevents repeat downloads. Keys belong in server settings.</p>
-        <p class="lexmom-source-note">Access and layout checks apply. Imported records need qualification and email verification.</p>
+        <input id="lexmom-source-url" type="url" required maxlength="2000" aria-describedby="lexmom-source-help" placeholder="https://example.com" value="${esc(state.lexmom.sourceUrl || "")}" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>
+        <button class="secondary-btn" type="submit" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "Extracting…" : "Extract batch"}</button></form>
+        <p class="lexmom-source-note" id="lexmom-source-help">Up to 50 records per batch. Progress is saved.</p>
+        <p class="lexmom-source-note">Source access checks apply. Results still need qualification and email verification.</p>
         ${state.lexmom.sourceError ? `<p class="warning-banner" role="alert">${esc(state.lexmom.sourceError)}</p>` : ""}</aside>
-        <div class="lexmom-research-main">${renderLexmomSourceImport()}
+        <div class="lexmom-research-main">${renderLexmomSourceImport()}</div></div>
         ${snapshot.inventoryError ? `<div class="warning-banner">${esc(snapshot.inventoryError)}</div>` : ""}
         ${table ? renderLexmomLeadTable(table) : '<div class="memory-empty">Lead activity is loading. Refresh to view the saved contacts.</div>'}
         ${renderLexmomDirectorySources(snapshot)}
-        ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}</div></div>`;
+        ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}</div>`;
 }
 
 function renderLexmomSourceImport() {
     const job = state.lexmom.sourceImport;
-    if (!job || job.status === "idle") return "";
+    if (!job || job.status === "idle") return `<section class="lexmom-source-preview lexmom-source-empty" aria-label="Source test results"><h3>Source preview</h3><p>Enter a source URL to see the contacts and evidence it publishes.</p><p class="lexmom-source-note">Preview records stay separate from your qualified leads.</p></section>`;
     const rows = job.records || [];
     const labels = {queued:"Queued",running:"Extracting",partial:"More work remains",complete:"Selected scope complete",cached:"Saved result",held:"Source held",failed:"Stopped"};
     return `<section class="lexmom-source-preview" aria-label="Source test results">
-        <div class="lexmom-source-heading"><div><h3>Source test · ${esc(labels[job.status] || job.status)}</h3>
-        <p>${rows.length} source records · ${Number(job.pages_read) || 0} pages · ${job.coverage === "reviewed_feed" ? "Reviewed feed scope" : "Selected page only"}</p></div>
+        <div class="lexmom-source-heading"><div><h3>Source results</h3><span class="lexmom-source-status">${esc(labels[job.status] || job.status)}</span>
+        <p>${rows.length} ${rows.length === 1 ? "record" : "records"} · ${Number(job.pages_read) || 0} ${Number(job.pages_read) === 1 ? "page" : "pages"} · ${job.coverage === "reviewed_feed" ? "Reviewed feed scope" : "Selected page only"}</p></div>
         ${job.status === "partial" ? '<button type="button" class="secondary-btn" id="lexmom-source-continue">Continue batch</button>' : ""}</div>
         <p role="status">${esc(job.message || "Checking source…")}</p>
         ${lexmomSourceLink(job.source_url, "Selected source")}
         ${rows.length ? `<p class="lexmom-source-note">Unverified observations · excluded from qualified lead totals · no sending</p>
-        <div class="lexmom-table-wrap"><table class="lexmom-source-table"><thead><tr><th scope="col">Person / email</th><th scope="col">Firm / role</th><th scope="col">Country</th><th scope="col">Change</th><th scope="col">Details</th></tr></thead><tbody>
-        ${rows.map((row,index)=>`<tr><th scope="row">${esc(row.name || "Name unresolved")}<br><span>${esc(row.email || "No published email")}</span></th>
-        <td>${esc(row.firm || "Firm unresolved")}<br>${esc(row.role || "Role unresolved")}</td><td>${esc(row.country || "Unresolved")}</td>
-        <td>${esc(row.change || "new")}</td><td><button type="button" class="lexmom-lead-details-btn" aria-haspopup="dialog" data-lexmom-source-details="${index}">Details</button></td></tr>`).join("")}
+        <div class="lexmom-table-wrap" role="region" aria-label="Source observations" tabindex="0"><table class="lexmom-source-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Person / email</th><th scope="col" role="columnheader">Firm / role</th><th scope="col" role="columnheader">Country</th><th scope="col" role="columnheader">Change</th><th scope="col" role="columnheader">Details</th></tr></thead><tbody role="rowgroup">
+        ${rows.map((row,index)=>`<tr role="row"><th scope="row" role="rowheader" data-label="Contact">${esc(row.name || "Name unresolved")}<br><span>${esc(row.email || "No published email")}</span></th>
+        <td role="cell" data-label="Firm / role">${esc(row.firm || "Firm unresolved")}<br>${esc(row.role || "Role unresolved")}</td><td role="cell" data-label="Country">${esc(row.country || "Unresolved")}</td>
+        <td role="cell" data-label="Change">${esc(row.change || "new")}</td><td role="cell" data-label="Details"><button type="button" class="lexmom-lead-details-btn" aria-haspopup="dialog" data-lexmom-source-details="${index}">Details</button></td></tr>`).join("")}
         </tbody></table></div>` : ""}</section>`;
 }
 
@@ -2199,20 +2198,20 @@ function renderLexmomLeadTable(table) {
         && (readiness === "all" || (readiness === "ready" ? row.research_ready : !row.research_ready))
         && (product === "all" || row.product === product || row.product === "both"));
     const labels = {new: "New", opened: "Opened", warm: "Warm", hot: "Hot", replied: "Replied · review", suppressed: "Suppressed", unknown: "Unknown"};
-    return `<section class="lexmom-leads" aria-label="Saved leads"><div class="section-title">Leads</div>
+    return `<section class="lexmom-leads" aria-label="Saved leads"><div class="lexmom-leads-heading"><h3>Leads</h3><span>${esc(String(table.total ?? rows.length))} saved contacts</span></div>
         <div class="stats-grid lexmom-counts">${[["Qualified & verified", table.qualified_verified ?? rows.filter(row=>row.research_ready).length], ["Needs research", table.held ?? rows.filter(row=>!row.research_ready).length], ["Hot", table.hot]].map(([label, value]) => `<div class="stat-card"><div class="stat-value">${esc(String(value ?? 0))}</div><div class="stat-label">${label}</div></div>`).join("")}</div>
-        <div class="lexmom-lead-toolbar"><p class="seo-note-text">${esc(String(table.total ?? rows.length))} saved contacts · One lead per unique email · campaign sending off</p>
-        <div class="lexmom-lead-actions"><label>Research <select id="lexmom-lead-readiness">${[["ready","Qualified & verified"],["held","Needs research"],["all","All saved contacts"]].map(([key,label])=>`<option value="${key}" ${readiness===key?"selected":""}>${label}</option>`).join("")}</select></label>
-        <label>Product <select id="lexmom-lead-product">${[["all","Both products"],["launch","Lexmom Launch"],["manage","Lexmom Manage"]].map(([key,label])=>`<option value="${key}" ${product===key?"selected":""}>${label}</option>`).join("")}</select></label>
-        <label>Activity <select id="lexmom-lead-filter">${[["all", "All leads"], ...Object.entries(labels)].map(([key,label]) => `<option value="${key}" ${filter === key ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label><button type="button" class="secondary-btn" id="lexmom-refresh">Refresh</button></div></div>
-        ${visible.length ? `<div class="lexmom-table-scroll" role="region" aria-label="Lead contacts and activity" tabindex="0"><table class="lexmom-table lexmom-lead-table"><caption>${visible.length} ${readiness==="ready"?"qualified & verified leads":readiness==="held"?"held contacts":"saved contacts"} · ${rows.length} saved contacts total</caption><thead><tr>${["#", "Lead / firm", "Product", "Verification", "Lead status", "Activity", "Last activity", "Details"].map(label => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>
-        ${visible.map((row, index) => `<tr><td>${index + 1}</td><th scope="row"><strong>${esc(row.name || "Firm contact")}</strong>${row.role ? `<small>${esc(row.role)}</small>` : ""}<div class="lexmom-lead-email">${esc(row.email)}</div>${lexmomSourceLink(row.website, row.firm)}</th>
-            <td>${esc({manage:"Manage",launch:"Launch",both:"Manage + Launch"}[row.product] || "Needs research")}</td>
-            <td>${esc(String(row.verification || "Not checked").replaceAll("_"," "))}<small>${row.research_ready ? "Research ready" : "Held"}</small></td>
-            <td><span class="lexmom-temperature lexmom-temperature-${lexmomAttr(row.temperature)}">${esc(labels[row.temperature] || "Unknown")}</span></td>
-            <td>${esc(String(row.activity?.opens || 0))} opens · ${esc(String(row.activity?.clicks || 0))} clicks<br>${esc(String(row.activity?.replies || 0))} replies</td>
-            <td>${row.activity?.last_activity_at ? esc(new Date(row.activity.last_activity_at).toLocaleString()) : "No recorded activity"}</td>
-            <td><button type="button" class="lexmom-lead-details-btn" data-lexmom-lead-details="${rows.indexOf(row)}" aria-haspopup="dialog" aria-controls="lexmom-lead-drawer" aria-label="Details for ${lexmomAttr(row.name || row.email)}">Details <span aria-hidden="true">↗</span></button></td></tr>`).join("")}</tbody></table></div>` : `<div class="memory-empty">${rows.length ? "No leads match this activity filter." : "No published contact emails yet. Firms without an email are not counted as leads."}</div>`}
+        <div class="lexmom-lead-toolbar"><p class="seo-note-text">One lead per unique email · campaign sending off</p>
+        <div class="lexmom-lead-actions"><label>Research <select id="lexmom-lead-readiness" aria-label="Research">${[["ready","Qualified & verified"],["held","Needs research"],["all","All saved contacts"]].map(([key,label])=>`<option value="${key}" ${readiness===key?"selected":""}>${label}</option>`).join("")}</select></label>
+        <label>Product <select id="lexmom-lead-product" aria-label="Product">${[["all","Both products"],["launch","Lexmom Launch"],["manage","Lexmom Manage"]].map(([key,label])=>`<option value="${key}" ${product===key?"selected":""}>${label}</option>`).join("")}</select></label>
+        <label>Activity <select id="lexmom-lead-filter" aria-label="Activity">${[["all", "All leads"], ...Object.entries(labels)].map(([key,label]) => `<option value="${key}" ${filter === key ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label><button type="button" class="secondary-btn" id="lexmom-refresh">Refresh</button></div></div>
+        ${visible.length ? `<div class="lexmom-table-scroll" role="region" aria-label="Lead contacts and activity" tabindex="0"><table class="lexmom-table lexmom-lead-table" role="table"><caption>${visible.length} ${readiness==="ready"?"qualified & verified leads":readiness==="held"?"held contacts":"saved contacts"} · ${rows.length} saved contacts total</caption><thead role="rowgroup"><tr role="row">${["#", "Lead / firm", "Product", "Verification", "Lead status", "Activity", "Last activity", "Details"].map(label => `<th scope="col" role="columnheader">${label}</th>`).join("")}</tr></thead><tbody role="rowgroup">
+        ${visible.map((row, index) => `<tr role="row"><td role="cell" data-label="#">${index + 1}</td><th scope="row" role="rowheader" data-label="Lead / firm"><strong>${esc(row.name || "Firm contact")}</strong>${row.role ? `<small>${esc(row.role)}</small>` : ""}<div class="lexmom-lead-email">${esc(row.email)}</div>${lexmomSourceLink(row.website, row.firm)}</th>
+            <td role="cell" data-label="Product">${esc({manage:"Manage",launch:"Launch",both:"Manage + Launch"}[row.product] || "Needs research")}</td>
+            <td role="cell" data-label="Verification">${esc(String(row.verification || "Not checked").replaceAll("_"," "))}<small>${row.research_ready ? "Research ready" : "Held"}</small></td>
+            <td role="cell" data-label="Lead status"><span class="lexmom-temperature lexmom-temperature-${lexmomAttr(row.temperature)}">${esc(labels[row.temperature] || "Unknown")}</span></td>
+            <td role="cell" data-label="Activity">${esc(String(row.activity?.opens || 0))} opens · ${esc(String(row.activity?.clicks || 0))} clicks<br>${esc(String(row.activity?.replies || 0))} replies</td>
+            <td role="cell" data-label="Last activity">${row.activity?.last_activity_at ? esc(new Date(row.activity.last_activity_at).toLocaleString()) : "No recorded activity"}</td>
+            <td role="cell" data-label="Details"><button type="button" class="lexmom-lead-details-btn" data-lexmom-lead-details="${rows.indexOf(row)}" aria-haspopup="dialog" aria-controls="lexmom-lead-drawer" aria-label="Details for ${lexmomAttr(row.name || row.email)}">Details <span aria-hidden="true">↗</span></button></td></tr>`).join("")}</tbody></table></div>` : `<div class="memory-empty">${rows.length ? "No leads match these filters." : "No published contact emails yet. Firms without an email are not counted as leads."}</div>`}
         <details class="lexmom-log"><summary>How lead status is calculated</summary><p>New: no recorded activity. Opened: an email open. Warm: a tracked product-link click. Hot: a confirmed interested reply or demo request. Likely bot events are ignored; opens alone do not prove interest. Research qualification and sending permission are separate.</p></details></section>`;
 }
 
