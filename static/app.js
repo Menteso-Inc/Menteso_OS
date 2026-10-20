@@ -2352,8 +2352,72 @@ function renderLexmomDashboard(main, agent) {
     });
 }
 
+function bindResponsiveNavigation() {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const sidebar = document.querySelector(".sidebar");
+    const brand = document.querySelector(".header-brand");
+    const main = document.getElementById("main-content");
+    if (!sidebar || !brand || !main) return;
+    sidebar.id = "office-agent-sidebar";
+    sidebar.setAttribute("aria-label", "Agent navigation");
+    sidebar.querySelectorAll(".agent-item").forEach(item => {
+        item.setAttribute("role", "button");
+        item.tabIndex = 0;
+    });
+    if (document.getElementById("office-nav-toggle")) return;
+    const toggle = document.createElement("button");
+    toggle.id = "office-nav-toggle";
+    toggle.className = "office-nav-toggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-controls", sidebar.id);
+    toggle.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+    brand.prepend(toggle);
+    const backdrop = document.createElement("button");
+    backdrop.className = "office-nav-backdrop";
+    backdrop.type = "button";
+    backdrop.tabIndex = -1;
+    backdrop.setAttribute("aria-label", "Close agent navigation");
+    document.body.append(backdrop);
+    const mobile = window.matchMedia("(max-width: 47.99rem)");
+    const setOpen = (open, restoreFocus = false) => {
+        open = mobile.matches && open;
+        document.body.classList.toggle("office-nav-open", open);
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "Close agent menu" : "Open agent menu");
+        sidebar.inert = mobile.matches && !open;
+        main.inert = open;
+        backdrop.hidden = !open;
+        if (open) window.requestAnimationFrame(() => {
+            if (toggle.getAttribute("aria-expanded") === "true") sidebar.querySelector(".agent-item.active, .agent-item")?.focus();
+        });
+        if (restoreFocus) toggle.focus();
+    };
+    toggle.onclick = () => setOpen(toggle.getAttribute("aria-expanded") !== "true");
+    backdrop.onclick = () => setOpen(false, true);
+    sidebar.addEventListener("click", event => {
+        if (event.target.closest(".agent-item")) setOpen(false);
+    });
+    sidebar.addEventListener("keydown", event => {
+        const item = event.target.closest(".agent-item");
+        if (item && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); item.click(); }
+    });
+    document.addEventListener("keydown", event => {
+        if (toggle.getAttribute("aria-expanded") !== "true") return;
+        if (event.key === "Escape") { setOpen(false, true); return; }
+        if (event.key !== "Tab") return;
+        const targets = [toggle, ...sidebar.querySelectorAll('.agent-item, a[href], button, [tabindex="0"]')];
+        const unique = [...new Set(targets)].filter(element => element.getClientRects().length);
+        const index = unique.indexOf(document.activeElement);
+        if (event.shiftKey && index <= 0) { event.preventDefault(); unique.at(-1)?.focus(); }
+        else if (!event.shiftKey && (index === unique.length - 1 || index === -1)) { event.preventDefault(); toggle.focus(); }
+    });
+    mobile.addEventListener("change", () => setOpen(false));
+    setOpen(false);
+}
+
 function renderMain() {
     const main = document.getElementById("main-content");
+    bindResponsiveNavigation();
     document.body?.classList.toggle("lexmom-active", state.selectedAgent?.ui_type === "lexmom_research");
 
     if (!state.selectedAgent) {

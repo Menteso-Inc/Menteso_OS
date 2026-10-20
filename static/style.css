@@ -3347,6 +3347,10 @@ body {
 .lexmom-control-buttons button:disabled { opacity: .6; cursor: not-allowed; }
 .lexmom-targeting { margin-bottom: 1.5rem; }
 /* Lexmom responsive research workspace: keep table width inside its own region. */
+.app { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); }
+.main { min-width: 0; }
+.office-nav-toggle { display: none; }
+.office-nav-backdrop { display: none; }
 html:has(body.lexmom-active) { height: 100%; overflow: clip; }
 body.lexmom-active { height: 100dvh; overflow: clip; }
 body.lexmom-active .app { height: 100dvh; }
@@ -3438,15 +3442,27 @@ body.lexmom-active #lexmom-panel { min-width: 0; container: lexmom / inline-size
     .lexmom-research-workspace .lexmom-lead-actions { grid-template-columns: minmax(0,1fr); }
 }
 @media (max-width: 47.99rem) {
-    body.lexmom-active .app { grid-template-columns: minmax(0, 1fr); }
-    body.lexmom-active .sidebar { padding: 0; max-height: none; overflow-y: hidden; scrollbar-width: thin; }
-    body.lexmom-active .sidebar-header { display: none; }
-    body.lexmom-active .agent-list { padding: .65rem .75rem; }
-    body.lexmom-active .agent-item { flex-basis: 13rem; padding: .6rem .75rem; }
-    body.lexmom-active .agent-item-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .app, body.lexmom-active .app { grid-template-columns: minmax(0,1fr); grid-template-rows: var(--header-height) minmax(0,1fr); grid-template-areas: "header" "main"; }
+    .header, body.lexmom-active .header { padding: 0 .75rem; gap: .5rem; position: relative; z-index: 40; }
+    .header-brand, body.lexmom-active .header-brand { gap: .5rem; min-width: 0; }
+    .header-subtitle, .header-status { display: none; }
+    .header-icon, body.lexmom-active .header-icon { width: 2rem; height: 2rem; font-size: 1.4rem; flex-shrink: 0; }
+    .header-title { font-size: .875rem; letter-spacing: 1.5px; }
+    .main { padding: 1rem; }
+    .office-nav-toggle { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+    .office-nav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .office-nav-backdrop:not([hidden]) { display: block; position: fixed; inset: var(--header-height) 0 0; z-index: 20; border: 0; background: #05091299; cursor: pointer; }
+    .sidebar, body.lexmom-active .sidebar { position: fixed; top: var(--header-height); bottom: 0; left: 0; z-index: 30; width: min(18rem, calc(100vw - 3rem)); max-height: none; padding: 1rem 0; overflow-y: auto; overflow-x: hidden; border-right: 1px solid var(--border); border-bottom: 0; box-shadow: 12px 0 32px #0003; transform: translateX(-100%); visibility: hidden; transition: transform .18s ease, visibility .18s; }
+    body.office-nav-open .sidebar { transform: translateX(0); visibility: visible; }
+    body.lexmom-active .sidebar-header { display: flex; padding: 0 1rem .85rem; margin-bottom: .75rem; }
+    body.lexmom-active .agent-list { display: block; padding: 0 .65rem; }
+    .sidebar .agent-item, body.lexmom-active .agent-item { display: flex; min-height: 58px; padding: .75rem; margin: 0 0 .35rem; }
+    .sidebar .agent-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .agent-item-role { overflow-wrap: anywhere; }
     body.lexmom-active .lexmom-tabs { gap: .5rem; margin-bottom: 1.25rem; }
     body.lexmom-active .lexmom-chip { flex: 1 1 40%; border-radius: var(--radius-sm); min-height: 44px; padding: .6rem; }
 }
+@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 /* End Lexmom responsive research workspace */
 @media (max-width: 800px) {
     .lexmom-business-metrics { grid-template-columns: 1fr; }
