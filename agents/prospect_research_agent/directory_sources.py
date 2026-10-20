@@ -14,6 +14,7 @@ from typing import Literal
 from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .source_formats import CollectionRecipe, CollectionRoute
 
 
 POLICY_PATH = Path(__file__).with_name("directory_sources.json")
@@ -41,6 +42,8 @@ class DirectoryRule(BaseModel):
     profile_path_prefixes: list[str] = Field(default_factory=list, max_length=20)
     max_profile_pages_per_run: int = Field(default=3, ge=1, le=20)
     min_interval_seconds: float = Field(default=5, ge=1, le=60)
+    collection: CollectionRecipe | None = None
+    collection_routes: list[CollectionRoute] = Field(default_factory=list, max_length=10)
 
     @field_validator("host")
     @classmethod
@@ -69,6 +72,9 @@ class DirectoryRule(BaseModel):
 
     @model_validator(mode="after")
     def documented_permission(self):
+        paths = [route.path_prefix for route in self.collection_routes]
+        if len(paths) != len(set(paths)):
+            raise ValueError("Collection route paths must be unique")
         if not host_matches(urlsplit(self.homepage).hostname or "", self.host):
             raise ValueError("Homepage must belong to the directory host")
         if self.state == "permitted" and not all((self.terms_url, self.reviewed_on,
@@ -77,6 +83,11 @@ class DirectoryRule(BaseModel):
                 self.reviewed_terms_sha256, self.profile_path_prefixes)):
             raise ValueError("Permitted collection requires documented, dated terms and use rights")
         return self
+
+    def reader_for(self, url):
+        path = unquote(urlsplit(url).path)
+        routes = [route for route in self.collection_routes if path == route.path_prefix or path.startswith(route.path_prefix + "/")]
+        return max(routes, key=lambda route: len(route.path_prefix)).reader if routes else self.collection
 
 
 class DirectoryPolicy(BaseModel):
@@ -133,7 +144,7 @@ def access_decision(url, policy, *, today=None):
     if "%" in path or any(part in {".", ".."} for part in path.split("/")) or not any(
             path == prefix.rstrip("/") or path.startswith(prefix.rstrip("/") + "/")
             for prefix in rule.profile_path_prefixes):
-        return {**details, "source_access": "path_disallowed", "reason": "URL is outside the reviewed profile paths; whole-directory downloads are disabled"}
+        return {**details, "source_access": "path_disallowed", "reason": "URL is outside the reviewed collection paths; unrestricted site downloads are disabled"}
     return {**details, "reason": "Reviewed directory profile; live terms and robots checks still required"}
 
 

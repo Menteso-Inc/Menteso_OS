@@ -1,0 +1,162 @@
+# URL source tests and bulk batches — 20 October 2026
+
+Development source, not an AWS deployment. No real directory was enabled or
+downloaded by this change. All campaign and social write switches remain off.
+
+## User flow
+
+The Prospect Research workspace has a **Test a source** card on the left on
+desktop, above the table on smaller screens. Submit a public website, directory
+or reviewed JSON API URL. An ordinary readable website returns contacts from
+that selected page. Recognized directories still require current recorded use
+rights and live source checks. A supported URL is not a claim that the source
+allows bulk reuse or exposes its whole database.
+
+The separate preview table shows source observations, names/emails when
+published, firm/role, country, change status and a Details drawer with evidence,
+original retrieval time, JSON path where applicable and source/website links.
+It does not inflate the qualified lead table or enroll anyone in email campaigns.
+Primary-firm research, separate Launch/Manage qualification and current email
+verification are still required in the existing research workflow. This preview
+does not automatically run that downstream workflow or spend its provider credits.
+
+The card accepts different source domains rather than only the sixteen catalogue
+seeds. A new directory, unknown API schema, blocked/JavaScript-only source or
+unsupported query gets a held/setup-required result; it is not silently treated
+as an empty successful download. Literal "any URL extracts all data" is not a
+capability: private/internal addresses, credential URLs, nonstandard ports and
+unreviewed navigation are blocked.
+
+## What dynamic means
+
+`DirectoryRule.collection` is the default reviewed reader. Optional
+`collection_routes` select different readers by the longest matching path prefix,
+so one site can have different index, profile and API layouts. Existing
+`profile_path_prefixes` remain the independent access boundary, including any
+explicitly reviewed listing/feed paths. Config changes never grant themselves
+collection rights.
+
+- HTML recipes specify record containers, field selectors, profile links and
+  the next-page link. Supported selectors are bounded descendant combinations
+  of tag, `#id` and `.class`; no JavaScript, arbitrary expressions or executable
+  model-generated parsers. Values stay inside their record container. Duplicate
+  email fields are withheld and multiple next destinations hold navigation.
+- JSON recipes specify the record-array path, explicit lead-field mappings and
+  a next-URL path. Extra payload fields are not exported. Dotted object paths are
+  supported; arbitrary JSONPath/code and guessed array traversals are not.
+  Missing array/next fields and incompatible response types hold the job instead
+  of claiming that the database ended. An explicit empty array and null/empty
+  next URL can end a reviewed JSON feed.
+- Only explicitly returned profile/next links are followed. HTML path pagination
+  and JSON next URLs are supported. Cursor-only APIs that do not return a usable
+  URL, browser-only pagination, GraphQL/POST APIs and downloadable database/CSV
+  files require an additional adapter; this change does not pretend to support them.
+- Authenticated JSON feeds can name a dedicated
+  `PROSPECT_RESEARCH_AGENT_SOURCE_*_KEY` or `*_TOKEN` environment variable.
+  `Authorization: Bearer` or `X-API-Key` are supported only on the exact HTTPS
+  homepage host. Credentials are never sent to robots/terms or another host.
+  Add each actually configured variable to `.env.example`; never put a real key
+  in a recipe, pasted URL, browser form, log or Git. No real feed key was configured.
+- API queries are limited to reviewed pagination keys. Page/offset values are
+  numeric; limit/page-size values cannot exceed 100. Queries are canonicalized
+  so changing parameter order does not duplicate a saved scope. Arbitrary filter,
+  signature or authentication query parameters require a separate reviewed adapter.
+
+Example **synthetic layout**, not permission to enable a real provider:
+
+```json
+{
+  "collection_routes": [
+    {
+      "path_prefix": "/lawyers",
+      "reader": {
+        "format": "html",
+        "record_selector": "article.lawyer",
+        "field_selectors": {"name": "h2", "email": "a.email", "role": ".role"},
+        "next_selector": "a.next"
+      }
+    },
+    {
+      "path_prefix": "/api/lawyers",
+      "reader": {
+        "format": "json",
+        "records_path": "data.people",
+        "field_paths": {"name": "full_name", "email": "email", "firm": "company.name"},
+        "next_path": "paging.next",
+        "query_keys": ["page", "limit"]
+      }
+    }
+  ]
+}
+```
+
+The real source rule still needs the collection/storage/commercial-use review,
+terms hash, dated permission reference and finite page/delay limits documented in
+[directory research](DIRECTORY_RESEARCH_20261020.md). No recipes for held real
+providers were guessed from their brands. No real catalogue source is permitted.
+
+## Batch progress and monthly revisit behavior
+
+One source job runs at a time. A page/API response can supply many records in a
+single request; each batch adds at most 50 observations, with up to 100 records
+per reviewed response. Remaining records are buffered, so continuing a 60-row
+response reads its last ten rows without downloading it again. A completed page
+is not revisited within a partial job. Duplicate email contacts are removed.
+Name-only observations retain their source identity rather than merging common
+names across unrelated profiles.
+
+Each batch has a 120-second deadline, 15-second request timeouts, at most ten
+content pages and twenty total HTTP requests including robots/terms/redirects.
+The stricter reviewed per-source page cap and crawl delay still apply. Clicking
+**Continue batch** is required to start another bounded batch. Five hundred
+observations per test job is a hard ceiling; narrow the reviewed feed scope to
+proceed further. No endless crawler or uncontrolled whole-database download runs.
+An additive private `source_requests` table reserves request slots transactionally
+across source-test URLs, explicit batches and worker restarts. Starting a new test
+does not reset its source's pace. Waiting beyond a deadline leaves resumable work;
+it does not manufacture a permanent source-denial hold.
+
+Private JSON checkpoints contain the selected URL, rule/reader fingerprint,
+visited pages, pending queue, unread buffer and observations. A completed scope
+can be reused for the rest of its **UTC calendar month**, preserving original
+retrieval times. Permission reviews and persisted holds are still checked and,
+for permitted sources, the live terms are rechecked before cache reuse. Changed
+rules/reader revisions invalidate that cache. A requested refresh or a later-month
+test re-reads the selected scope and marks new, changed and unchanged records.
+This is on-demand behavior, not a newly enabled monthly scheduler.
+
+"Selected page only" never means site exhausted. "Reviewed URL feed exhausted"
+only covers that configured URL, returned links, filters and navigation contract.
+A partial/error/blocked run never sets a completion timestamp or month-long skip.
+Pagination loops, off-host links and paths outside review are held. HTTP denial,
+rate-limit and changed-terms holds persist in the existing private source store.
+
+## Runtime boundary and validation
+
+`source_formats.py`, `source_import.py` and `source_api.py` are deterministic tools
+inside the existing Prospect Research specialist, not another created employee.
+Routes live under `/api/agents/lexmom_marketing_agent/source-imports`; both local
+and isolated AWS adapters register them. They require authenticated admin/operator
+access, same-origin writes, bounded input and private no-store responses. Only
+the server accepts/configures recipes and credentials. Browser requests cannot
+raise budgets, start search/model/verification work, modify source permissions,
+send emails or publish social posts.
+
+State is under the existing private research directory's `source-imports/`.
+Keep it, the source-hold database and existing private data/environment during
+deployment. Source jobs are single-worker; process locking serializes collection
+across adapters sharing the same state. Do not delete checkpoints or release
+source holds just to clear a stopped status.
+
+Offline fixtures exercise different HTML layouts, same-site layout routing, JSON
+pagination, 50-row buffers, monthly reuse/refresh, changes/deduplication, source
+limits, dangerous navigation, source denials, dedicated credential boundaries and
+HTTP authorization. No real source/API operation or research-provider credit was
+used. Provider-specific feed fees are not inferred to be zero merely because
+SerpAPI, Hunter and model operations are absent.
+
+AWS identity verification failed during this work; its diagnostic stays private.
+No production deployment, restart, data migration or deployment cleanup ran.
+After access is restored, use the isolated Lexmom procedure in
+`TEAM_HANDOFF_20261020.md`, preserve shared static/PCT customizations and verify
+the actual authenticated live card before reporting it deployed.

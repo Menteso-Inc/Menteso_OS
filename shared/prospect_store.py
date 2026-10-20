@@ -42,6 +42,8 @@ class ProspectStore:
                 CREATE TABLE IF NOT EXISTS source_holds (
                     host TEXT PRIMARY KEY, reason TEXT NOT NULL,
                     retry_at REAL, observed_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS source_requests (
+                    host TEXT PRIMARY KEY, next_request_at REAL NOT NULL);
             """)
 
     @contextmanager
@@ -92,6 +94,24 @@ class ProspectStore:
         """Operator-only recovery after reviewing the cause; never called by retries."""
         with self._connection() as db:
             db.execute("DELETE FROM source_holds WHERE host=?", (host,))
+
+    def reserve_source_request(self, host, interval, max_wait):
+        """Atomic pacing across explicit batches, URLs and worker restarts.
+
+        A failed/unused reservation is conservative. Never advance the queue
+        when the caller cannot wait for the next slot within its own deadline.
+        """
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT next_request_at FROM source_requests WHERE host=?", (host,)).fetchone()
+            now = time.time()
+            scheduled = max(now, row[0] if row else now)
+            wait = scheduled - now
+            if wait >= max_wait:
+                return None
+            db.execute("INSERT INTO source_requests VALUES (?, ?) ON CONFLICT(host) DO UPDATE SET next_request_at=excluded.next_request_at",
+                       (host, scheduled + interval))
+            return wait
 
     def save(self, profile, run_id, record):
         from agents.prospect_research_agent.models import FirmRecord

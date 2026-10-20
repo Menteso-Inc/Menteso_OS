@@ -223,7 +223,7 @@ class ManagerTests(unittest.TestCase):
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const main = {innerHTML: ''}, nodes = {};
 const node = id => nodes[id] ||= {focus() {}, click() { this.onclick?.(); }};
-const context = {URL, location:{hash:''}, history:{replaceState() {}}, localStorage: {getItem: () => null}, document: {
+const context = {URL, setTimeout:()=>1, clearTimeout:()=>{}, location:{hash:''}, history:{replaceState() {}}, localStorage: {getItem: () => null}, document: {
     querySelectorAll: () => [],
     addEventListener: () => {}, getElementById: id => id === 'main-content' ? main : main.innerHTML.includes('id="'+id+'"') ? node(id) : null,
     createElement: () => ({textContent: '', get innerHTML() {return this.textContent.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');}})
@@ -245,7 +245,8 @@ assert.strictEqual(typeof node('lexmom-run').onclick, 'function');
 node('lexmom-tab-1').click();
 assert(!main.innerHTML.includes('id="lexmom-run"'));
 assert(main.innerHTML.includes('aria-selected="true" tabindex="0">Prospect Research'));
-assert(!main.innerHTML.includes('<form'));
+assert(main.innerHTML.includes('id="lexmom-source-form"'));
+assert(main.innerHTML.includes('id="lexmom-source-url"'));
 assert(!main.innerHTML.includes('name="countries"'));
 assert(!main.innerHTML.includes('name="target_segments"'));
 
@@ -279,6 +280,13 @@ assert(directorySources.includes('restricted'));
 assert(directorySources.includes('2026-10-20'));
 assert(!directorySources.includes('<script>bad</script>'));
 assert(!directorySources.includes('href="javascript:'));
+const sourcePreview = vm.runInContext(`state.lexmom.sourceImport={status:'partial',source_url:'javascript:alert(1)',pages_read:1,message:'<script>bad</script>',records:[{name:'<img onerror=bad>',email:'safe@example.org',evidence_excerpt:'<svg onload=bad>',change:'new'}]}; renderLexmomSourceImport()`,context);
+assert(sourcePreview.includes('Continue batch'));
+assert(sourcePreview.includes('Unverified observations'));
+assert(sourcePreview.includes('data-lexmom-source-details="0"'));
+assert(!sourcePreview.includes('<script>bad</script>'));
+assert(!sourcePreview.includes('<img onerror='));
+assert(!sourcePreview.includes('href="javascript:'));
 const unsafeDrawer = vm.runInContext(`renderLexmomLeadDrawer({email:'safe@example.org',name:'<script>bad</script>',website:'javascript:alert(1)',hold_reasons:['<script>bad</script>'],product_assessments:{manage:{reasons:['<img onerror=bad>']}},evidence:[{excerpt:'<svg onload=bad>',source_url:'javascript:alert(1)'}]}, {rules:{}})`,context);
 assert(!unsafeDrawer.includes('<script>bad</script>'));
 assert(!unsafeDrawer.includes('<img onerror='));

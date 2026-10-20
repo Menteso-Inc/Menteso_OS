@@ -295,6 +295,28 @@ class SourceTools:
         host = domain(url)
         return rule.host if rule else host if host in self._directory_hosts else None
 
+    def collection_url(self, url):
+        """Allow only explicitly reviewed API pagination queries, never URL secrets."""
+        rule = self.directory_policy.find(url)
+        recipe = rule.reader_for(url) if rule else None
+        if not recipe or recipe.format != "json":
+            return normalize_source_url(url)
+        safe = validate_public_url(url, allow_query=True)
+        parts = urlsplit(safe)
+        try:
+            pairs = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True, max_num_fields=8) if parts.query else []
+        except ValueError:
+            raise SourceError("unsafe_url: invalid API pagination query") from None
+        if (len({key for key, _ in pairs}) != len(pairs) or
+                any(key not in recipe.query_keys or len(value) > 200 or not value for key, value in pairs)):
+            raise SourceError("unsafe_url: API query is outside the reviewed pagination keys; never paste credentials in a URL")
+        for key, value in pairs:
+            if key in {"page", "offset", "limit", "per_page", "page_size"}:
+                maximum = 100 if key in {"limit", "per_page", "page_size"} else 100_000_000
+                if not value.isascii() or not value.isdigit() or not 0 <= int(value) <= maximum:
+                    raise SourceError("unsafe_url: numeric pagination value is outside the bounded API reader")
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(sorted(pairs)), ""))
+
     def _assert_source_available(self, url):
         host = self._directory_host(url)
         if not host:
@@ -462,13 +484,25 @@ class SourceTools:
         request_headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity", "Accept": "text/html,text/plain,application/json"}
         request_headers.update(headers or {})
         for redirect_index in range(MAX_REDIRECTS + 1):
-            current = validate_public_url(current, allow_query=True) if provider else normalize_source_url(current)
+            current = validate_public_url(current, allow_query=True) if provider else self.collection_url(current)
             current_host = urlsplit(current).hostname
             same_site = current_host == host or (
                 not provider and domain(current) == domain("https://" + host)
             )
             if not same_site:
                 raise SourceError("blocked_redirect: destination leaves the approved host")
+            recipe = directory.reader_for(current) if directory else None
+            if profile_request:
+                request_headers.pop("Authorization", None)
+                request_headers.pop("X-API-Key", None)
+            if profile_request and recipe and recipe.auth_env:
+                parts = urlsplit(current)
+                if parts.scheme != "https" or parts.hostname != urlsplit(directory.homepage).hostname:
+                    raise SourceError("blocked_redirect: authenticated feed must stay on its exact HTTPS homepage host")
+                credential = os.getenv(recipe.auth_env, "")
+                if not credential or re.search(r"[\x00-\x20\x7f]", credential):
+                    raise SourceError("source_auth_missing: configure the dedicated source credential in .env")
+                request_headers[recipe.auth_header] = ("Bearer " if recipe.auth_header == "Authorization" else "") + credential
             if profile_request and access_decision(current, self.directory_policy)["source_access"] != "permitted":
                 raise SourceError("blocked_redirect: destination leaves the reviewed directory profile paths")
             if urlsplit(url).scheme == "https" and urlsplit(current).scheme != "https":
@@ -683,7 +717,7 @@ class SourceTools:
                 raise SourceError("robots_delay_exceeds_budget: source cannot be fetched within the deadline")
             time.sleep(wait)
 
-    def _read_page(self, url: str, host: str) -> dict:
+    def _read_page(self, url: str, host: str, *, include_document=False) -> dict:
         directory = self._check_directory_terms(url)
         if directory and self._directory_pages.get(directory.host, 0) >= directory.max_profile_pages_per_run:
             raise SourceError("directory_page_limit: reviewed source page allowance reached")
@@ -700,6 +734,12 @@ class SourceTools:
         if not policy.can_fetch(USER_AGENT, response.url):
             raise SourceError("robots_disallowed: redirected page is blocked by source policy")
         content_type = response.headers.get("content-type", "text/html")
+        recipe = directory.reader_for(response.url) if directory else None
+        if include_document and recipe and recipe.format == "json":
+            if "application/json" not in content_type and "+json" not in content_type:
+                raise SourceError("layout_changed: reviewed API did not return JSON")
+            return {"url": response.url, "retrieved_at": utc_now(),
+                    "document": response.body.decode("utf-8", errors="strict")}
         if "text/html" not in content_type and "text/plain" not in content_type:
             raise SourceError("unsupported_content: expected public HTML or plain text")
         charset = re.search(r"charset=([\w-]+)", content_type, re.I)
@@ -746,9 +786,12 @@ class SourceTools:
             try:link=normalize_source_url(urljoin(response.url,anchor['href']))
             except SourceError:continue
             if domain(link)==domain(response.url) and link in links:profile_links.append(link)
-        return {"url": response.url, "text": text, "retrieved_at": utc_now(), "links": links, "profile_links":list(dict.fromkeys(profile_links)),"website_links": external,
+        page = {"url": response.url, "text": text, "retrieved_at": utc_now(), "links": links, "profile_links":list(dict.fromkeys(profile_links)),"website_links": external,
                 "headings": parser.headings[:5], "titles": parser.titles[:3], "structured_data": parser.structured_parts,
                 "contact_blocks": parser.contact_blocks, "contact_headings": parser.contact_headings[:100], "footer_blocks": parser.footer_blocks}
+        if include_document:
+            page["document"] = document
+        return page
 
     def read_firm(self, url: str, strategy: str = "standard") -> list[dict]:
         """Read the root and bounded linked public information pages on one host."""

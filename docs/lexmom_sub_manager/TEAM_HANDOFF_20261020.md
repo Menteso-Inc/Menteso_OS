@@ -25,6 +25,13 @@ source holds. It is not deployed by this handoff. No real source is currently
 configured as permitted for automated commercial collection; tests use synthetic
 permissions. Do not mistake recognized sources for active licensed integrations.
 
+The subsequent [source URL test card and bulk reader](SOURCE_IMPORT_20261020.md)
+adds per-path HTML/JSON recipes, bounded explicit pagination, 50-record batches,
+private checkpoints and monthly completed-scope reuse. Imported observations stay
+outside qualified inventory and campaigns. Both HTTP adapters register the
+operator-only routes, but this source update is also **not deployed**. AWS identity
+verification failed; no live source collection, restart or publication occurred.
+
 The last live research check was **16 October 2026**, not a fresh check on the
 date of this handoff. It confirmed 53 research-ready contacts across 12 firms:
 45 named buyer-role contacts and eight general firm inboxes. Primary routing was

@@ -14,6 +14,10 @@ The first working specialist under **Lexmom Sub Manager**. It researches solo, s
 - Optionally verify a published email through Hunter. Catch-all, pending, unknown, and dated verification remain visible. Research never grants outreach eligibility.
 - Run automatic output checks, try up to three adjusted strategies, checkpoint work, support cancellation/resume, and update private versioned learning.
 - Export the complete JSON dataset and show it through the manager's research dashboard.
+- Test a supplied website or reviewed directory/JSON feed from the left-hand URL
+  card. Source-specific layouts, bounded pagination, 50-record batches, saved
+  progress and monthly scope reuse keep imported observations separate from
+  qualified leads. See [source tests and limits](../../docs/lexmom_sub_manager/SOURCE_IMPORT_20261020.md).
 
 The initial size defaults are solo=1 attorney, small=2-10, and mid-size=11-50. These are configurable campaign boundaries, not universal firm classifications. `small_firm_max`, `size_min`, and `size_max` can change them. Country filters accept recognized names or ISO codes; an empty list does not restrict country. The first version expects readable public HTML and explicit evidence. Javascript-only pages or missing size information may require further research.
 

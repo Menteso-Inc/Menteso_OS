@@ -3346,6 +3346,22 @@ body {
 .lexmom-control-buttons .secondary-btn:hover { background: var(--bg-card-hover); border-color: var(--accent); }
 .lexmom-control-buttons button:disabled { opacity: .6; cursor: not-allowed; }
 .lexmom-targeting { margin-bottom: 1.5rem; }
+.lexmom-research-layout { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.lexmom-research-main { min-width: 0; }
+.lexmom-source-card, .lexmom-source-preview { padding: 1.1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-secondary); }
+.lexmom-source-card h3, .lexmom-source-preview h3 { margin: 0 0 .5rem; }
+.lexmom-source-card p, .lexmom-source-preview p { margin: .6rem 0; }
+.lexmom-source-card form { display: grid; gap: .65rem; margin: 1rem 0; }
+.lexmom-source-card input { width: 100%; min-width: 0; min-height: 44px; padding: .65rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px; }
+.lexmom-source-card button { min-height: 44px; }
+.lexmom-source-note { font-size: .8rem; color: var(--text-secondary); line-height: 1.5; }
+.lexmom-source-preview { margin-bottom: 1.25rem; }
+.lexmom-source-heading { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.lexmom-source-table { min-width: 680px; width: 100%; }
+.lexmom-source-table th, .lexmom-source-table td { padding: .85rem; text-align: left; vertical-align: top; }
+.lexmom-source-table th[scope="row"] { min-width: 230px; }
+.lexmom-source-table th[scope="row"] span { font-weight: normal; white-space: nowrap; }
+@media (max-width: 1100px) { .lexmom-research-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 800px) {
     .lexmom-business-metrics { grid-template-columns: 1fr; }
     .lexmom-metric { padding: 1rem 1.25rem; }

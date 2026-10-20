@@ -634,3 +634,36 @@ Superseded by the worldwide-discovery clarification below.
   service restart or production data change is part of this correction.
 - Validation: 49 directory-source and manager/dashboard checks passed, including
   the worldwide saved-profile search regression; no live providers were contacted.
+
+## 2026-10-20 — Dynamic source URL tests and bounded bulk imports
+
+- User requested bulk extraction, different site layouts, remembered source
+  progress and a left-side URL/API test card in Prospect Research. Added that
+  card, a separate unverified-observation table and source Details drawer.
+  Qualified inventory and sending remain separate and unchanged.
+- Added reviewed per-path HTML/JSON reader recipes, container-scoped fields,
+  explicit profile/next URLs, safe pagination queries and dedicated environment
+  authentication for feeds. Unknown/incompatible layouts and unreviewed or
+  restricted directories remain held. No real directory/feed was enabled.
+- Source jobs add up to 50 observations per explicit batch, buffer unread rows,
+  checkpoint progress, deduplicate and resume within existing source limits.
+  Only a completed selected URL/feed scope gets UTC calendar-month reuse; a
+  partial job never marks the whole site exhausted. Refresh/later-month tests
+  mark new/changed/unchanged observations. No new recurring schedule was enabled.
+- Both local and isolated AWS adapters register authenticated, operator-only,
+  same-origin routes. Browser requests cannot alter policy, enter credentials,
+  raise fixed test caps or trigger provider verification/search/model operations.
+- AWS identity verification failed, with diagnostics retained privately. This
+  is source/UI/documentation only: no production deployment, service restart,
+  real source collection, lead migration, campaign or social publication occurred.
+  No deployment cleanup applied; test fixtures use automatically cleaned private
+  temporary directories. See `SOURCE_IMPORT_20261020.md` for exact limits and
+  continuation/deployment instructions.
+- Added transactional `source_requests` pacing for explicit source tests so
+  changing URLs or restarting a batch cannot reset its source request interval.
+  A pacing deadline retains partial work without creating a permanent denial.
+- Validation: 201 research checks, 153 shared/email/social/runtime/dashboard
+  checks and 18 manager/UI checks passed (372 total), plus JavaScript syntax
+  and PCT reconnect checks. Reviewed the synthetic credential-URL rejection
+  fixture during the pre-publication audit; no real environment values or
+  private business records are included in this source change.

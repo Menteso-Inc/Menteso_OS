@@ -2081,10 +2081,103 @@ function renderLexmomResearchWorkspace(snapshot) {
     const inventory = snapshot.prospectInventory || [];
     const latest = state.lastResult;
     const table = snapshot.leadTable;
-    return `${snapshot.inventoryError ? `<div class="warning-banner">${esc(snapshot.inventoryError)}</div>` : ""}
+    return `<div class="lexmom-research-layout"><aside class="lexmom-source-card" aria-labelledby="lexmom-source-title">
+        <h3 id="lexmom-source-title">Test a source</h3><p>Website, directory or reviewed API feed</p>
+        <form id="lexmom-source-form"><label for="lexmom-source-url">Source URL</label>
+        <input id="lexmom-source-url" type="url" required maxlength="2000" placeholder="https://…" value="${esc(state.lexmom.sourceUrl || "")}" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>
+        <button class="secondary-btn" type="submit" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>Extract batch</button></form>
+        <p class="lexmom-source-note">Up to 50 new records per batch. Saved progress prevents repeat downloads. Keys belong in server settings.</p>
+        <p class="lexmom-source-note">Access and layout checks apply. Imported records need qualification and email verification.</p>
+        ${state.lexmom.sourceError ? `<p class="warning-banner" role="alert">${esc(state.lexmom.sourceError)}</p>` : ""}</aside>
+        <div class="lexmom-research-main">${renderLexmomSourceImport()}
+        ${snapshot.inventoryError ? `<div class="warning-banner">${esc(snapshot.inventoryError)}</div>` : ""}
         ${table ? renderLexmomLeadTable(table) : '<div class="memory-empty">Lead activity is loading. Refresh to view the saved contacts.</div>'}
         ${renderLexmomDirectorySources(snapshot)}
-        ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}`;
+        ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}</div></div>`;
+}
+
+function renderLexmomSourceImport() {
+    const job = state.lexmom.sourceImport;
+    if (!job || job.status === "idle") return "";
+    const rows = job.records || [];
+    const labels = {queued:"Queued",running:"Extracting",partial:"More work remains",complete:"Selected scope complete",cached:"Saved result",held:"Source held",failed:"Stopped"};
+    return `<section class="lexmom-source-preview" aria-label="Source test results">
+        <div class="lexmom-source-heading"><div><h3>Source test · ${esc(labels[job.status] || job.status)}</h3>
+        <p>${rows.length} source records · ${Number(job.pages_read) || 0} pages · ${job.coverage === "reviewed_feed" ? "Reviewed feed scope" : "Selected page only"}</p></div>
+        ${job.status === "partial" ? '<button type="button" class="secondary-btn" id="lexmom-source-continue">Continue batch</button>' : ""}</div>
+        <p role="status">${esc(job.message || "Checking source…")}</p>
+        ${lexmomSourceLink(job.source_url, "Selected source")}
+        ${rows.length ? `<p class="lexmom-source-note">Unverified observations · excluded from qualified lead totals · no sending</p>
+        <div class="lexmom-table-wrap"><table class="lexmom-source-table"><thead><tr><th scope="col">Person / email</th><th scope="col">Firm / role</th><th scope="col">Country</th><th scope="col">Change</th><th scope="col">Details</th></tr></thead><tbody>
+        ${rows.map((row,index)=>`<tr><th scope="row">${esc(row.name || "Name unresolved")}<br><span>${esc(row.email || "No published email")}</span></th>
+        <td>${esc(row.firm || "Firm unresolved")}<br>${esc(row.role || "Role unresolved")}</td><td>${esc(row.country || "Unresolved")}</td>
+        <td>${esc(row.change || "new")}</td><td><button type="button" class="lexmom-lead-details-btn" aria-haspopup="dialog" data-lexmom-source-details="${index}">Details</button></td></tr>`).join("")}
+        </tbody></table></div>` : ""}</section>`;
+}
+
+let lexmomSourcePollTimer;
+async function loadLexmomSourceImport(jobId) {
+    const base = "/api/agents/lexmom_marketing_agent/source-imports";
+    const response = await fetch(base + (jobId ? "/" + encodeURIComponent(jobId) : ""), {cache:"no-store"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || data.detail || "Source status could not be loaded");
+    state.lexmom.sourceImport = data;
+    state.lexmom.sourceLoaded = true;
+    if (data.source_url && !state.lexmom.sourceUrl) state.lexmom.sourceUrl = data.source_url;
+}
+
+function bindLexmomSourceImport() {
+    const form = document.getElementById("lexmom-source-form");
+    if (!form) return;
+    clearTimeout(lexmomSourcePollTimer);
+    const input = document.getElementById("lexmom-source-url");
+    input.oninput = () => { state.lexmom.sourceUrl = input.value; };
+    const start = async url => {
+        if (state.lexmom.sourceStarting) return;
+        state.lexmom.sourceStarting = true;
+        state.lexmom.sourceError = "";
+        renderMain();
+        try {
+            const response = await fetch("/api/agents/lexmom_marketing_agent/source-imports", {
+                method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || data.detail || "Source test could not start");
+            state.lexmom.sourceImport = data;
+            state.lexmom.sourceLoaded = true;
+        } catch (error) { state.lexmom.sourceError = error.message; }
+        finally { state.lexmom.sourceStarting = false; renderMain(); }
+    };
+    form.onsubmit = event => {event.preventDefault(); if (input.reportValidity()) start(input.value.trim());};
+    const more = document.getElementById("lexmom-source-continue");
+    if (more) more.onclick = () => start(state.lexmom.sourceImport.source_url);
+    document.querySelectorAll("[data-lexmom-source-details]").forEach(button => {
+        button.onclick = () => {
+            const row = state.lexmom.sourceImport.records[Number(button.dataset.lexmomSourceDetails)];
+            const drawer = document.createElement("dialog");
+            drawer.className = "lexmom-lead-drawer";
+            drawer.setAttribute("aria-labelledby", "lexmom-source-drawer-title");
+            drawer.innerHTML = `<header class="lexmom-drawer-header"><h2 id="lexmom-source-drawer-title">Source observation</h2><button type="button" class="lexmom-drawer-close" aria-label="Close source details">×</button></header>
+            <div class="lexmom-drawer-body"><section class="lexmom-drawer-section"><h3>${esc(row.name || "Name unresolved")}</h3>
+            <p>${esc(row.email || "No email")}<br>${esc(row.role || "Role unresolved")} · ${esc(row.firm || "Firm unresolved")}</p>
+            <p>Country: ${esc(row.country || "Unresolved")}</p><p>Qualification: needs research · email: not verified</p>
+            ${lexmomSourceLink(row.website,"Website")}</section><section class="lexmom-drawer-section"><h3>Evidence</h3>
+            <blockquote>${esc(row.evidence_excerpt || "No supporting excerpt")}</blockquote>${lexmomSourceLink(row.source_url,"View source")}
+            <p>Retrieved: ${esc(row.retrieved_at || "Unknown")}</p>${row.evidence_path ? `<p>JSON path: ${esc(row.evidence_path)}</p>` : ""}</section></div>`;
+            drawer.querySelector("button").onclick = () => drawer.close();
+            drawer.addEventListener("close",()=>{drawer.remove(); button.focus();},{once:true});
+            document.body.appendChild(drawer); drawer.showModal();
+        };
+    });
+    const active = ["queued","running"].includes(state.lexmom.sourceImport?.status);
+    if ((!state.lexmom.sourceLoaded || active) && !state.lexmom.sourceLoading && !state.lexmom.sourceStarting) {
+        lexmomSourcePollTimer = setTimeout(async () => {
+            if (!document.getElementById("lexmom-source-form")) return;
+            state.lexmom.sourceLoading = true;
+            try {await loadLexmomSourceImport(active ? state.lexmom.sourceImport.job_id : null);}
+            catch(error) {state.lexmom.sourceError = error.message; state.lexmom.sourceLoaded = true;}
+            finally {state.lexmom.sourceLoading = false; renderMain();}
+        }, active ? 1500 : 0);
+    }
 }
 
 function renderLexmomDirectorySources(snapshot) {
@@ -2248,6 +2341,7 @@ function renderLexmomDashboard(main, agent) {
     if (refresh) refresh.onclick = async () => { await loadLexmomDashboardData(agent.module_name); renderMain(); };
     if (emailView) bindLexmomEmailWorkspace();
     if (socialView) bindLexmomSocialWorkspace();
+    if (!overview && !emailView && !socialView) bindLexmomSourceImport();
     const leadFilter = document.getElementById("lexmom-lead-filter");
     if (leadFilter) leadFilter.onchange = () => { state.lexmom.leadFilter = leadFilter.value; renderMain(); document.getElementById("lexmom-lead-filter")?.focus(); };
     for (const [id,key] of [["lexmom-lead-readiness","leadReadiness"],["lexmom-lead-product","leadProduct"]]) {
