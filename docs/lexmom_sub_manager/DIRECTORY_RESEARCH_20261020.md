@@ -5,6 +5,13 @@ profile now enables `discover_directories`. This update is source/tested code;
 it has not been deployed to AWS. No live collection run, provider credit
 operation, email, upload or change to unrelated services is part of this work.
 
+The subsequent market preference keeps worldwide eligibility (`countries: []`)
+while prioritizing US/Australia queries (`priority_countries`). The first bounded
+search plan covers both named markets, and a global search lane remains in the
+rotation. A nonempty country allowlist still overrides the preference. Existing
+inventory/qualification keys are preserved. US product hosting is user-provided
+context; country does not establish acceptance, consent or residency compliance.
+
 ## Pipeline
 
 1. Interleave general directory and site-targeted queries with the existing

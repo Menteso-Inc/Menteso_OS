@@ -104,6 +104,7 @@ class ResearchRequest(Contract):
     extraction_mode: Literal["model", "rules"] = "model"
     spend_policy: Literal["metered", "free_allowance_only"] = "metered"
     countries: list[str] = Field(default_factory=list, max_length=25)
+    priority_countries: list[str] = Field(default_factory=list, max_length=25)
     target_segments: list[Literal["solo", "small", "mid_size"]] = Field(
         default_factory=lambda: ["solo", "small", "mid_size"], min_length=1, max_length=3
     )
@@ -137,7 +138,7 @@ class ResearchRequest(Contract):
     fixture_pages: list[dict] = Field(default_factory=list, max_length=150, exclude=True)
     fixture_extractions: list[dict] = Field(default_factory=list, max_length=50, exclude=True)
 
-    @field_validator("countries", "query_terms", "exclude_domains", "buyer_roles")
+    @field_validator("countries", "priority_countries", "query_terms", "exclude_domains", "buyer_roles")
     @classmethod
     def bounded_strings(cls, values):
         if any(not value.strip() or len(value) > 200 for value in values):

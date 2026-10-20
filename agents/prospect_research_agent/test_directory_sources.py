@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from pydantic import ValidationError
 
 from .directory_sources import DirectoryPolicy, DirectoryRule, access_decision, load_directory_policy, profile_observation, terms_digest
-from .discovery import select_candidates, source_kind
+from .discovery import matching_profile, search_geographies, select_candidates, source_kind
 from .models import DiscoveryDecision, ResearchRequest
 from .test_tools import _Budget, request, response
 from .tools import SourceError, SourceTools
@@ -219,6 +219,35 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(profile.max_queries, 3)
         self.assertEqual(profile.budget_usd, 0)
         self.assertEqual(profile.max_llm_calls, 0)
+        self.assertEqual(profile.countries, [])
+        self.assertEqual(profile.priority_countries, ["United States", "Australia"])
+
+    def test_market_priorities_keep_worldwide_eligibility_and_existing_inventory_key(self):
+        from shared.prospect_store import targeting_key
+        original = ResearchRequest(countries=[])
+        preferred = original.model_copy(update={"priority_countries": ["United States", "Australia"]})
+        self.assertEqual(search_geographies(preferred), ["United States", "Australia", ""])
+        self.assertEqual(targeting_key(original, "same-policy"), targeting_key(preferred, "same-policy"))
+        self.assertEqual(matching_profile(original.model_dump()), matching_profile(preferred.model_dump()))
+
+    def test_explicit_country_filter_takes_precedence_over_search_priorities(self):
+        profile = ResearchRequest(countries=["United Kingdom"], priority_countries=["US", "Australia"])
+        self.assertEqual(search_geographies(profile), ["United Kingdom"])
+        profile = ResearchRequest(countries=["Australia", "US"], priority_countries=["United States", "Australia"])
+        self.assertEqual(search_geographies(profile), ["US", "Australia"])
+
+    def test_first_bounded_directory_run_covers_us_and_australia(self):
+        self.tools.request = request(countries=[], priority_countries=["United States", "Australia"],
+                                    discover_directories=True, max_queries=3)
+        with patch.dict(os.environ, {"PROSPECT_RESEARCH_AGENT_SERPAPI_API_KEY": "offline-only"}), \
+             patch.object(self.tools, "_provider_json", return_value=(200, {"organic_results": []})) as provider:
+            self.tools.discover()
+        queries = [parse_qs(urlsplit(call.args[1]).query)["q"][0] for call in provider.call_args_list]
+        self.assertEqual(len(queries), 3)
+        self.assertIn("United States", queries[0])
+        self.assertIn("directory", queries[1])
+        self.assertIn("Australia", queries[2])
+        self.assertEqual(self.budget.counts["queries"], 3)
 
     def test_policy_validation_does_not_trust_path_wildcards_or_whole_site_permission(self):
         for paths in (["/"], ["/lawyer/%2e%2e/"], ["/lawyer/../private"]):

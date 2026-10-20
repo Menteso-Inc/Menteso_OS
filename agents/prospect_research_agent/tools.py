@@ -26,7 +26,7 @@ from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 from shared import config as _config  # Loads the project-root .env once.
-from .discovery import domain, source_kind, score_candidate, select_candidates
+from .discovery import domain, search_geographies, source_kind, score_candidate, select_candidates
 from .directory_sources import DIRECTORY_HINT, access_decision, discovery_queries, load_directory_policy, profile_observation, terms_digest
 
 
@@ -538,10 +538,13 @@ class SourceTools:
         defaults = [policy.products[product].query_terms[index] for index in range(max(len(policy.products[product].query_terms) for product in products))
                     for product in products if index < len(policy.products[product].query_terms)]
         terms = self.request.query_terms or defaults
-        countries = self.request.countries or [""]
-        queries = [" ".join(value for value in (term, country) if value) for country in countries for term in terms]
+        countries = search_geographies(self.request)
+        prioritised = bool(getattr(self.request, "priority_countries", []))
+        pairs = ((term, country) for term in terms for country in countries) if prioritised else (
+            (term, country) for country in countries for term in terms)
+        queries = [" ".join(value for value in (term, country) if value) for term, country in pairs]
         if getattr(self.request, "discover_directories", False):
-            queries = discovery_queries(queries, countries, self.directory_policy)
+            queries = discovery_queries(queries, countries, self.directory_policy, round_robin=prioritised)
         if self.query_reserver:
             queries = self.query_reserver(queries, self.request.max_queries)
         if self._query_count >= self.request.max_queries:

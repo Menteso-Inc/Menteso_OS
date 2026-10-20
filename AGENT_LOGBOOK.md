@@ -600,3 +600,20 @@ For every future change, append:
   processes and disabled send/publish settings were not changed. A future isolated
   deployment must follow `CODEX_HANDOFF.md`; rollback restores source while
   preserving newer databases/holds. Details: `DIRECTORY_RESEARCH_20261020.md`.
+
+## 2026-10-20 — US and Australia research priorities
+
+- User clarified worldwide eligibility with US/Australia as the main commercial
+  research focus, citing US product hosting. Added editable `priority_countries`
+  separately from the existing `countries` eligibility allowlist. The saved
+  profile keeps global eligibility and prefers the two named markets; it retains
+  a global query lane and the same query/credit limits. No other market was added
+  to the priority list or automatically excluded based on assumed hosting needs.
+- Round-robin website/directory query generation covers both preferred markets
+  in the first three-search plan before ordinary historical query rotation.
+  An explicit country allowlist takes precedence. Changing a search preference
+  does not invalidate or hide existing inventory or alter qualification rules.
+- Validation: 174 research checks and 43 manager/runtime checks passed (217 total).
+  No live search, verification credit operation, campaign, deployment or service
+  change was performed. Hosting location is user-provided context, not a claim
+  that every firm in a country accepts it or that other countries forbid it.

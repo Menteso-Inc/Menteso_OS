@@ -137,10 +137,11 @@ def access_decision(url, policy, *, today=None):
     return {**details, "reason": "Reviewed directory profile; live terms and robots checks still required"}
 
 
-def discovery_queries(website_queries, countries, policy):
+def discovery_queries(website_queries, countries, policy, *, round_robin=False):
     """Share the existing query budget; directory discovery is not an extra allowance."""
-    directory_queries = [" ".join(part for part in (query, country) if part)
-                         for country in countries for query in policy.discovery_queries]
+    pairs = ((query, country) for query in policy.discovery_queries for country in countries) if round_robin else (
+        (query, country) for country in countries for query in policy.discovery_queries)
+    directory_queries = [" ".join(part for part in (query, country) if part) for query, country in pairs]
     combined = []
     for index in range(max(len(website_queries), len(directory_queries))):
         if index < len(website_queries):

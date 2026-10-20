@@ -22,6 +22,26 @@ def matches_host(host, values):
     return any(host == item or host.endswith("." + item) for item in values)
 
 
+def search_geographies(request):
+    """Search preferences do not narrow country eligibility or invalidate inventory."""
+    import pycountry
+    def code(value):
+        try:
+            return pycountry.countries.lookup(value).alpha_2
+        except LookupError:
+            return value.casefold()
+    priorities = getattr(request, "priority_countries", [])
+    allowed = {code(country): country for country in request.countries}
+    selected = {}
+    for country in priorities:
+        key = code(country)
+        if not allowed or key in allowed:
+            selected.setdefault(key, allowed.get(key, country))
+    for key, country in allowed.items():
+        selected.setdefault(key, country)
+    return list(selected.values()) + ([""] if not allowed else [])
+
+
 def source_kind(url, title="", snippet=""):
     host = domain(url)
     institutional = bool(re.search(r"\.(?:gov|edu)(?:\.[a-z]{2})?$|\.ac\.[a-z]{2}$", host))

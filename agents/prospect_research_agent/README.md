@@ -17,6 +17,15 @@ The first working specialist under **Lexmom Sub Manager**. It researches solo, s
 
 The initial size defaults are solo=1 attorney, small=2-10, and mid-size=11-50. These are configurable campaign boundaries, not universal firm classifications. `small_firm_max`, `size_min`, and `size_max` can change them. Country filters accept recognized names or ISO codes; an empty list does not restrict country. The first version expects readable public HTML and explicit evidence. Javascript-only pages or missing size information may require further research.
 
+The saved Lexmom profile keeps `countries: []` (worldwide eligibility) and sets
+`priority_countries: ["United States", "Australia"]`. These are search preferences,
+not exclusions or inferred hosting consent. Searches cover preferred markets first
+and retain a global lane; existing query rotation and limits still apply. An explicit
+nonempty `countries` allowlist always takes precedence. Preferences do not change
+qualification rules or the saved-inventory key. The user reports US product hosting;
+do not infer that every prospect in a market accepts it or that other locations
+universally require local hosting. No legal/data-residency assurance is inferred.
+
 The current saved profile uses a 50-contact inventory goal, separate from the
 qualified-firm target. It counts only unique, sourced, research-ready contacts
 with acceptable current email verification. A met goal reuses saved results

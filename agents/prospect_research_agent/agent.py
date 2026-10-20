@@ -112,8 +112,8 @@ def live_preflight(request):
             raise ValueError("PROSPECT_RESEARCH_AGENT_HUNTER_API_KEY is required when verification is enabled")
     if request.spend_policy != "free_allowance_only" and any(request.unit_costs.get(kind, 0) <= 0 for kind in required):
         raise ValueError("Configure positive conservative unit costs for enabled provider calls before a live run")
-    if any(_country(country) is None for country in request.countries):
-        raise ValueError("Country filters must be recognized country names or ISO codes")
+    if any(_country(country) is None for country in [*request.countries, *request.priority_countries]):
+        raise ValueError("Country filters and search priorities must be recognized country names or ISO codes")
 
 
 def _ground_evidence(extracted, pages):
