@@ -9,8 +9,9 @@ remain off.
 
 The Prospect Research workspace has a **Test a source** card on the left on
 desktop, above the table on smaller screens. Submit a public website, directory
-or reviewed JSON API URL. An ordinary readable website returns contacts from
-that selected page. Recognized directories still require current recorded use
+or reviewed JSON API URL. An ordinary readable website follows returned contact,
+team, about and named profile links on the same site, without a site-specific
+reader. Recognized directories still require current recorded use
 rights and live source checks. A supported URL is not a claim that the source
 allows bulk reuse or exposes its whole database.
 
@@ -28,6 +29,39 @@ unsupported query gets a held/setup-required result; it is not silently treated
 as an empty successful download. Literal "any URL extracts all data" is not a
 capability: private/internal addresses, credential URLs, nonstandard ports and
 unreviewed navigation are blocked.
+
+### Public-site repair and repository inspection
+
+The public reader uses `lxml`, the parser also used by Scrapy's maintained HTML
+link extractor. It recognizes semantic contact links, nested person/role cards,
+mailto links and React's explicit streamed Suspense segments without executing
+page scripts. A person's name and published role remain observations even without
+an email address. Adjacent cards, generic inboxes and unrelated external emails
+are not combined into a made-up person/company association. Hidden elements and
+script text are excluded. These facts still do not establish product fit.
+
+Public jobs retain checked/skipped-page evidence and use a parser revision in
+their cache key, so old one-page results do not hide repaired extraction. They
+allow at most 30 pages per test, 100 observations per page and the existing
+50-observation/ten-page batches. Broken or robots-blocked linked pages are
+recorded and skipped; seed failures and access denials stop the job. Source
+pacing persists between batches. No search, model or email-verification calls
+are made by this reader.
+
+References actually inspected: [Scrapy link extraction source](https://github.com/scrapy/scrapy/blob/master/scrapy/linkextractors/lxmlhtml.py),
+[Scrapy persistent jobs](https://docs.scrapy.org/en/latest/topics/jobs.html),
+[Firecrawl crawler source](https://github.com/firecrawl/firecrawl/blob/main/apps/api/src/scraper/WebScraper/crawler.ts)
+and [Firecrawl self-hosting](https://docs.firecrawl.dev/contributing/self-host).
+Scrapy's bounded navigation, parsing, throttling and job persistence are useful
+patterns. Our existing transport/checkpoint boundary is retained. Full Scrapy
+and Firecrawl are not installed; no Firecrawl source is copied. Firecrawl's
+TypeScript/multi-service runtime would add an unnecessary second crawler for
+the two supplied sites, which expose usable public HTML. JavaScript-only apps
+are not claimed to be supported by this change.
+
+Avvo stays restricted under its website terms; the catalogue now points to the
+website terms rather than suggesting its API terms alone govern HTML collection.
+An extraction library does not change that source-access decision.
 
 ## What dynamic means
 

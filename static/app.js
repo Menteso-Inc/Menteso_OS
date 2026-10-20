@@ -2081,7 +2081,7 @@ function renderLexmomResearchWorkspace(snapshot) {
     const latest = state.lastResult;
     const table = snapshot.leadTable;
     return `<div class="lexmom-research-workspace"><div class="lexmom-research-layout"><aside class="lexmom-source-card" aria-labelledby="lexmom-source-title">
-        <h3 id="lexmom-source-title">Test a source</h3><p class="lexmom-source-description">Preview contacts from a website, directory or reviewed API feed.</p>
+        <h3 id="lexmom-source-title">Test a source</h3><p class="lexmom-source-description">Extract public contacts and follow linked contact, team and profile pages. Reviewed directory feeds also supported.</p>
         <form id="lexmom-source-form"><label for="lexmom-source-url">Source URL</label>
         <input id="lexmom-source-url" type="url" required maxlength="2000" aria-describedby="lexmom-source-help" placeholder="https://example.com" value="${esc(state.lexmom.sourceUrl || "")}" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>
         <button class="secondary-btn" type="submit" ${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "disabled" : ""}>${state.lexmom.sourceStarting || ["queued","running"].includes(state.lexmom.sourceImport?.status) ? "Extracting…" : "Extract batch"}</button></form>
@@ -2102,10 +2102,11 @@ function renderLexmomSourceImport() {
     const labels = {queued:"Queued",running:"Extracting",partial:"More work remains",complete:"Selected scope complete",cached:"Saved result",held:"Source held",failed:"Stopped"};
     return `<section class="lexmom-source-preview" aria-label="Source test results">
         <div class="lexmom-source-heading"><div><h3>Source results</h3><span class="lexmom-source-status">${esc(labels[job.status] || job.status)}</span>
-        <p>${rows.length} ${rows.length === 1 ? "record" : "records"} · ${Number(job.pages_read) || 0} ${Number(job.pages_read) === 1 ? "page" : "pages"} · ${job.coverage === "reviewed_feed" ? "Reviewed feed scope" : "Selected page only"}</p></div>
+        <p>${rows.length} ${rows.length === 1 ? "record" : "records"} · ${Number(job.pages_read) || 0} ${Number(job.pages_read) === 1 ? "page" : "pages"} · ${job.coverage === "reviewed_feed" ? "Reviewed feed scope" : job.coverage === "linked_pages" ? "Linked public pages" : "Selected page only"}</p></div>
         ${job.status === "partial" ? '<button type="button" class="secondary-btn" id="lexmom-source-continue">Continue batch</button>' : ""}</div>
         <p role="status">${esc(job.message || "Checking source…")}</p>
         ${lexmomSourceLink(job.source_url, "Selected source")}
+        ${job.page_results?.length ? `<details class="lexmom-source-pages"><summary>Pages checked (${job.page_results.length})</summary><ul>${job.page_results.map(page=>`<li>${lexmomSourceLink(page.url, page.url)} — ${page.status === "read" ? `${Number(page.records) || 0} observations` : `Skipped: ${esc(page.reason || "Unavailable")}`}</li>`).join("")}</ul></details>` : ""}
         ${rows.length ? `<p class="lexmom-source-note">Unverified observations · excluded from qualified lead totals · no sending</p>
         <div class="lexmom-table-wrap" role="region" aria-label="Source observations" tabindex="0"><table class="lexmom-source-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Person / email</th><th scope="col" role="columnheader">Firm / role</th><th scope="col" role="columnheader">Country</th><th scope="col" role="columnheader">Change</th><th scope="col" role="columnheader">Details</th></tr></thead><tbody role="rowgroup">
         ${rows.map((row,index)=>`<tr role="row"><th scope="row" role="rowheader" data-label="Contact">${esc(row.name || "Name unresolved")}<br><span>${esc(row.email || "No published email")}</span></th>

@@ -250,15 +250,86 @@ class ImportTests(unittest.TestCase):
             self.assertEqual(headers.get("X-API-Key"), "fixture-private-value" if url == URL else None)
         self.assertNotIn("fixture-private-value", json.dumps(job))
 
-    def test_plain_website_test_is_only_one_page_with_unverified_contacts(self):
+    def test_plain_website_without_links_keeps_contacts_unverified(self):
         self.policy = permitted_policy(host="other.example")
         self.content_type = "text/html"
         self.documents[URL] = b"<title>Example Law</title><h1>Example Law</h1>Law firm. Contact: info@directory.example"
         result = self.run_job()
         self.assertEqual(result["status"], "complete", result)
-        self.assertEqual(result["coverage"], "page_only")
-        self.assertIn("Whole-site coverage has not been established", result["message"])
+        self.assertEqual(result["coverage"], "linked_pages")
+        self.assertIn("whole-site coverage has not been established", result["message"])
         self.assertEqual(result["records"][0]["email"], "info@directory.example")
+
+    def test_plain_site_follows_contact_and_people_links_without_a_site_recipe(self):
+        self.policy = permitted_policy(host="other.example")
+        self.content_type = "text/html"
+        self.documents[URL] = b'<title>Example Association</title><a href="/contact">Contact</a><a href="/team">Our team</a>'
+        self.documents['https://directory.example/contact'] = b'<p>Contact: info@directory.example</p>'
+        self.documents['https://directory.example/team'] = b'<article><h3>Jane Example</h3><p>Partner</p></article>'
+        result = self.run_job()
+        self.assertEqual(result['status'], 'complete', result)
+        self.assertEqual(result['pages_read'], 3)
+        self.assertEqual(len(result['page_results']), 3)
+        self.assertEqual(len(result['records']), 2)
+        self.assertTrue(any(row.get('name') == 'Jane Example' and not row.get('email') for row in result['records']))
+        self.assertEqual(result['budget']['counts']['queries'], 0)
+        self.assertEqual(result['budget']['counts']['verifications'], 0)
+        self.assertEqual(result['budget']['counts']['llm_calls'], 0)
+        self.calls.clear()
+        cached = self.run_job()
+        self.assertEqual(cached['status'], 'cached')
+        self.assertEqual(self.calls, [])
+
+    def test_missing_linked_page_is_recorded_without_losing_other_paths(self):
+        self.policy = permitted_policy(host="other.example")
+        self.content_type = "text/html"
+        self.documents[URL] = b'<a href="/contact">Contact</a><a href="/team">Team</a>'
+        self.documents['https://directory.example/team'] = b'info@directory.example'
+        original = self.service.tools_factory
+        def factory(*args):
+            tools = original(*args)
+            transport = tools._transport
+            tools._transport = lambda url, *rest: response(url, status=404) if url.endswith('/contact') else transport(url, *rest)
+            return tools
+        self.service.tools_factory = factory
+        result = self.run_job()
+        self.assertEqual(result['status'], 'complete', result)
+        self.assertTrue(any(item['status'] == 'skipped' for item in result['page_results']))
+        self.assertEqual(result['records'][0]['email'], 'info@directory.example')
+
+    def test_plain_site_resumes_page_batches_and_stops_at_total_page_limit(self):
+        self.policy = permitted_policy(host="other.example")
+        self.content_type = "text/html"
+        self.documents[URL] = ''.join(f'<a href="/team/{i}">Member {i}</a>' for i in range(35)).encode()
+        self.documents.update({f'https://directory.example/team/{i}': b'<p>Public biography</p>' for i in range(35)})
+        first = self.run_job()
+        self.assertEqual(first['status'], 'partial')
+        self.assertEqual(first['pages_read'], 10)
+        for _ in range(3): result = self.run_job()
+        self.assertEqual(result['status'], 'held', result)
+        self.assertEqual(result['pages_read'], 30)
+        self.assertTrue(result['truncated'])
+        self.assertEqual(sum(url == URL for url in self.calls), 1)
+
+    def test_oversized_public_page_never_claims_exhaustive_completion(self):
+        self.policy = permitted_policy(host="other.example")
+        self.content_type = 'text/html'
+        self.documents[URL] = ' '.join(f'person{i}@directory.example' for i in range(110)).encode()
+        first = self.run_job()
+        self.assertEqual(first['status'], 'partial')
+        result = self.run_job()
+        self.assertEqual(result['status'], 'held', result)
+        self.assertTrue(result['truncated'])
+        self.assertEqual(len(result['records']), 100)
+
+    def test_javascript_shell_requires_rendering_instead_of_empty_success(self):
+        self.policy = permitted_policy(host='other.example')
+        self.content_type = 'text/html'
+        self.documents[URL] = b'<title>Example</title><div id="root"></div><script src="/bundle.js"></script>'
+        result = self.run_job()
+        self.assertEqual(result['status'], 'held', result)
+        self.assertTrue(result['message'].startswith('browser_render_required:'))
+        self.assertIsNone(result['completed_at'])
 
     def test_api_routes_enforce_auth_role_origin_and_body_limits(self):
         app = FastAPI()

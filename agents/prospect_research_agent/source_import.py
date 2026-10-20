@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +24,7 @@ from shared.research_runtime import BudgetExceeded, RunBudget, _atomic_json, _fi
 from .directory_sources import access_decision
 from .models import ResearchRequest
 from .source_formats import extract_collection, recipe_fingerprint
+from .public_site import MAX_SITE_PAGES, REVISION, information_links, public_observations, same_site
 from .tools import USER_AGENT, SourceError, SourceTools, utc_now, validate_public_url
 
 
@@ -132,7 +134,7 @@ class SourceImports:
         if state is None:
             return {"status": "idle", "records": []}
         return {key: state.get(key) for key in ("job_id", "source_url", "status", "message", "records",
-            "pages_read", "updated_at", "completed_at", "coverage", "budget", "adapter", "truncated")}
+            "pages_read", "updated_at", "completed_at", "coverage", "budget", "adapter", "truncated", "page_results")}
 
     def latest(self):
         if self.active is not None and self.future is not None and not self.future.done():
@@ -169,18 +171,17 @@ class SourceImports:
             tools.source_access_store = self.store
             url = tools.collection_url(request.url)
             rule = tools.directory_policy.find(url)
-            if rule:
-                self._pace(tools, rule)
+            self._pace(tools, rule, urlsplit(url).hostname)
             recipe = rule.reader_for(url) if rule else None
-            fingerprint = recipe_fingerprint(rule)
+            fingerprint = recipe_fingerprint(rule) if rule else REVISION
             job_id = hashlib.sha256((url + "|" + fingerprint).encode()).hexdigest()
             previous = self._read(job_id)
             fresh = request.refresh or previous is None or (previous.get("completed_at") and not _same_month(previous["completed_at"]))
             if fresh:
                 state = {"job_id": job_id, "source_url": url, "fingerprint": fingerprint,
                          "queue": [url], "visited": [], "buffer": [], "records": [], "pages_read": 0,
-                         "coverage": "reviewed_feed" if recipe and
-                             any((recipe.next_path, recipe.next_selector, recipe.profile_link_selector)) else "page_only",
+                         "coverage": ("reviewed_feed" if recipe and any((recipe.next_path, recipe.next_selector, recipe.profile_link_selector)) else "page_only") if rule else "linked_pages",
+                         "page_results": [],
                          "previous": {_key(row): _digest(row) for row in (previous or {}).get("records", [])}}
             else:
                 state = previous
@@ -190,16 +191,17 @@ class SourceImports:
             self.future = self.executor.submit(self._execute, state, tools, reset)
             return self.public(state)
 
-    def _pace(self, tools, rule):
+    def _pace(self, tools, rule, selected_host):
         transport = tools._transport
         def paced(url, *args):
             origin = f"{urlsplit(url).scheme}://{urlsplit(url).netloc}/"
             robots = tools._robots.get(origin)
-            delay = max(rule.min_interval_seconds, robots.crawl_delay(USER_AGENT) or 0) if robots else rule.min_interval_seconds
+            minimum = rule.min_interval_seconds if rule else 1
+            delay = max(minimum, robots.crawl_delay(USER_AGENT) or 0) if robots else minimum
             rate = robots.request_rate(USER_AGENT) if robots else None
             if rate and rate.requests:
                 delay = max(delay, rate.seconds / rate.requests)
-            wait = self.store.reserve_source_request(rule.host, delay, tools._timeout())
+            wait = self.store.reserve_source_request(rule.host if rule else selected_host.removeprefix('www.'), delay, tools._timeout())
             if wait is None:
                 raise BudgetExceeded("Source pacing cannot fit inside the remaining request deadline")
             if wait:
@@ -261,13 +263,26 @@ class SourceImports:
                     return
                 if not state["queue"]:
                     break
+                if not rule and len(state["visited"]) >= MAX_SITE_PAGES:
+                    state.update(status="held", truncated=True, message="This website test reached 30 pages. Saved observations are preserved; use a more specific contact or team URL. Whole-site completion is not claimed.")
+                    return
                 url = tools.collection_url(state["queue"][0])
                 if url in state["visited"]:
                     raise SourceError("pagination_loop: source returned an already visited page; review navigation")
                 if rule and (tools.directory_policy.find(url) != rule or
                              urlsplit(url).hostname != urlsplit(state["source_url"]).hostname):
                     raise SourceError("blocked_navigation: collection cannot leave the selected source host")
-                page = tools._read_page(url, urlsplit(url).hostname, include_document=True)
+                try:
+                    page = tools._read_page(url, urlsplit(url).hostname, include_document=True)
+                except SourceError as error:
+                    if rule or not state["visited"] or not str(error).startswith(("page_unavailable: HTTP 404", "page_unavailable: HTTP 410", "robots_disallowed:")):
+                        raise
+                    state["queue"].pop(0)
+                    state["visited"].append(url)
+                    state.setdefault("page_results", []).append({"url": url, "status": "skipped", "reason": str(error)[:200]})
+                    read_count += 1
+                    self._write(state)
+                    continue
                 read_count += 1
                 recipe = rule.reader_for(page["url"]) if rule else None
                 if recipe:
@@ -276,15 +291,18 @@ class SourceImports:
                     data = self._directory_profile(page, rule)
                 else:
                     data = self._public_page(page, tools.request)
+                    data["profile_urls"] = information_links(page, state["source_url"])
                 # Validate all records and all navigation before committing a page.
                 rows = [SourceObservation.model_validate(row).model_dump() for row in data["records"]]
                 navigation = [*data.get("profile_urls", []), *([data["next_url"]] if data.get("next_url") else [])]
                 checked = []
                 for link in navigation:
                     link = tools.collection_url(link)
-                    if (not rule or tools.directory_policy.find(link) != rule or urlsplit(link).hostname != urlsplit(url).hostname
-                            or (urlsplit(state["source_url"]).scheme == "https" and urlsplit(link).scheme != "https")
-                            or access_decision(link, tools.directory_policy)["source_access"] != "permitted"):
+                    allowed = (same_site(link, state["source_url"]) and tools.directory_policy.find(link) is None) if not rule else (
+                        tools.directory_policy.find(link) == rule and urlsplit(link).hostname == urlsplit(url).hostname
+                        and not (urlsplit(state["source_url"]).scheme == "https" and urlsplit(link).scheme != "https")
+                        and access_decision(link, tools.directory_policy)["source_access"] == "permitted")
+                    if not allowed:
                         raise SourceError("blocked_navigation: link is outside the reviewed source paths")
                     if link in state["visited"] or link == url:
                         if link == data.get("next_url"):
@@ -298,12 +316,17 @@ class SourceImports:
                 state["queue"].extend(checked)
                 state["visited"].append(url)
                 state["pages_read"] += 1
+                state.setdefault("page_results", []).append({"url": page["url"], "status": "read", "records": len(rows)})
                 state["buffer"].extend(rows)
                 state["adapter"] = data["adapter"]
+                state["truncated"] = state.get("truncated", False) or data.get("truncated", False)
                 self._write(state)
+            if state.get('truncated'):
+                state.update(status='held', message='A public page reached the 100-observation limit. Saved records are preserved; narrow the source URL. Exhaustive coverage is not claimed.')
+                return
             state.update(status="complete", completed_at=utc_now(), message=(
                 "Reviewed URL feed exhausted. These are unverified source records, not qualified leads."
-                if state["coverage"] == "reviewed_feed" else "Selected page extracted. Whole-site coverage has not been established."))
+                if state["coverage"] == "reviewed_feed" else "Linked public information pages checked. These are unverified observations; whole-site coverage has not been established." if state["coverage"] == "linked_pages" else "Selected page extracted. Whole-site coverage has not been established."))
         except BudgetExceeded:
             state.update(status="partial", message="Time or request budget reached. Completed records and the next page are saved.")
         except (SourceError, ValueError, TypeError, RecursionError) as error:
@@ -332,15 +355,10 @@ class SourceImports:
 
     @staticmethod
     def _public_page(page, request):
-        from .models import ExtractedFirm
-        from .rule_extraction import extract_rules
-        extracted = ExtractedFirm.model_validate(extract_rules([page], request))
-        records = []
-        for contact in extracted.contacts:
-            evidence = next((item.excerpt for item in extracted.evidence if item.field == "email" and item.value == contact.email), "")
-            records.append({"name": contact.name, "role": contact.role, "email": contact.email,
-                "firm": extracted.name, "website": page["url"], "country": extracted.country,
-                "source_url": page["url"], "retrieved_at": page["retrieved_at"],
-                "evidence_excerpt": evidence, "verification_status": "not_checked",
-                "qualification_status": "needs_research", "outreach_eligible": False})
-        return {"records": records, "profile_urls": [], "next_url": None, "adapter": "public-page:rules"}
+        records = public_observations(page, request)
+        if (not records and len(page.get('text', '').strip()) < 200
+            and re.search(r'<(?:div|main)\b[^>]*\bid=[\"\x27](?:root|app|__next)[\"\x27]', page.get('document', ''), re.I)
+            and re.search(r'<script\b[^>]*\bsrc=', page.get('document', ''), re.I)):
+            raise SourceError('browser_render_required: source returned a JavaScript app shell, not contact content; no empty import claimed')
+        return {"records": records, "profile_urls": [], "next_url": None, "adapter": REVISION,
+                "truncated": len(records) >= 100}

@@ -3464,6 +3464,10 @@ body.lexmom-active #lexmom-panel { min-width: 0; container: lexmom / inline-size
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 /* End Lexmom responsive research workspace */
+.lexmom-source-pages { margin: 1rem 0; font-size: .8125rem; color: var(--text-secondary); }
+.lexmom-source-pages summary { cursor: pointer; padding: .5rem 0; }
+.lexmom-source-pages ul { padding-left: 1.25rem; }
+.lexmom-source-pages li { margin: .6rem 0; overflow-wrap: anywhere; }
 @media (max-width: 800px) {
     .lexmom-business-metrics { grid-template-columns: 1fr; }
     .lexmom-metric { padding: 1rem 1.25rem; }
