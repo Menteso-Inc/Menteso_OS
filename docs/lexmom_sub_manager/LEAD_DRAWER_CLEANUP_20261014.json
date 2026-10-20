@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-14",
+  "status": "Automatic approval review rejected removal before execution",
+  "reason": "blocked by policy",
+  "free_before": 9525456896,
+  "free_after": 9519853568,
+  "removed": [],
+  "retained": [
+    "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-lead-drawer-20261014\\deploy.py"
+  ],
+  "retained_bytes": 4824,
+  "processes_stopped": [],
+  "worktrees_archived": [],
+  "preserved": [
+    "Source and five-message lifecycle proposals",
+    "Environment, private lead/mail state and generated assets",
+    "AWS rollback release",
+    "Earlier blocked-cleanup paths"
+  ]
+}

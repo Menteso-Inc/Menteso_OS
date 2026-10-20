@@ -2,6 +2,15 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## Agent pipeline continuation — 20 October 2026
+
+Read [the current team handoff](docs/lexmom_sub_manager/TEAM_HANDOFF_20261020.md)
+for Lexmom's research, email and social packages, offline checks, isolated AWS
+runtime and unfinished integrations. The branch contains development source;
+private environment files, collected leads, mailbox data and live service state
+are not in Git. Publishing and campaign sending remain disabled. Preserve all
+PCT deployment protections and runtime boundaries below.
+
 ## Repository layout
 
 - `agents/pct_agent`: PCT agent (local-server runtime).

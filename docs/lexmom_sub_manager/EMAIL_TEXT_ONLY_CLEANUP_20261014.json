@@ -1,0 +1,25 @@
+{
+  "owned_processes_active": false,
+  "free_before": 9828679680,
+  "removed": [
+    {
+      "bytes": 5428,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-text-email-20261014\\deploy.py"
+    },
+    {
+      "bytes": 8275,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-text-email-20261014\\revise.py"
+    }
+  ],
+  "free_after": 9828593664,
+  "preserved": [
+    "campaigns.before-text-only.json",
+    "source",
+    "Google Doc",
+    "review artifacts",
+    "live state",
+    "rollback releases",
+    "all env files"
+  ],
+  "older_blocked_targets_untouched": true
+}

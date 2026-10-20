@@ -1,34 +1,39 @@
-"""Safety checks for the inactive marketing-agent placeholder."""
+"""Manager handoff checks run after every delegated research task."""
 
 from shared.self_test import SelfTest
+
+def valid_handoff(result):
+    data = result.get("data")
+    return (isinstance(data, dict) and isinstance(data.get("firms"), list)
+            and isinstance(data.get("summary"), dict)
+            and isinstance(result.get("artifacts", []), list))
+
 
 tests = SelfTest(
     agent_name="lexmom_marketing_agent",
     validations=[
-        {
-            "name": "awaiting_instructions",
-            "check": lambda result: result.get("status") == "pending_setup"
-            and bool(result.get("message")),
-            "message": "The placeholder must clearly wait for instructions.",
-        },
-        {
-            "name": "no_execution",
-            "check": lambda result: result.get("executionEnabled") is False,
-            "message": "Execution must stay disabled until work is defined.",
-        },
-        {
-            "name": "no_schedule_or_integrations",
-            "check": lambda result: result.get("schedule") == "Not configured"
-            and result.get("integrations") == [],
-            "message": "No schedules or external services should be enabled.",
-        },
+        {"name": "output_not_empty", "check": lambda r: isinstance(r, dict) and bool(r),
+         "message": "The research handoff is empty."},
+        {"name": "status_preserved", "check": lambda r: r.get("status") in
+         {"success", "partial", "failure", "cancelled"}, "message": "Invalid specialist status."},
+        {"name": "handoff_schema", "check": valid_handoff, "message": "Missing research records or summary."},
+        {"name": "child_verified", "check": lambda r: r.get("status") in {"failure", "cancelled"}
+         or (isinstance(r.get("specialist_tests"), dict) and r["specialist_tests"].get("passed") is True),
+         "message": "The specialist returned results without passing self-tests."},
+        {"name": "research_only", "check": lambda r: r.get("capabilities") == {"research": True,
+         "outreach": False, "ads": False, "sales_conversation": False, "customer_success": False},
+         "message": "An unapproved execution capability is enabled."},
+        {"name": "no_outreach_eligibility", "check": lambda r: all(
+         firm.get("outreach_eligible") is False for firm in r.get("data", {}).get("firms", [])),
+         "message": "Research records cannot grant outreach eligibility."},
     ],
 )
 
 
 if __name__ == "__main__":
-    from .agent import get_dashboard_data
-
-    report = tests.run(get_dashboard_data())
+    sample = {"status": "failure", "data": {"firms": [], "summary": {}}, "artifacts": [],
+              "capabilities": {"research": True, "outreach": False, "ads": False,
+                               "sales_conversation": False, "customer_success": False}}
+    report = tests.run(sample)
     print(report)
     raise SystemExit(0 if report["passed"] else 1)

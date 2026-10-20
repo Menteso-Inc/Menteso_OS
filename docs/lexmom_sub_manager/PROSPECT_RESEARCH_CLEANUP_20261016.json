@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-16",
+  "removed": [
+    {
+      "bytes": 237558,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-qualified-leads-20261016\\deployment-payload.bin"
+    }
+  ],
+  "free_before": 13404958720,
+  "free_after": 13405196288,
+  "source_lead_data_env_databases_and_rollback_preserved": true,
+  "preview_processes_stopped": 0,
+  "worktrees_created_or_archived": 0,
+  "previously_blocked_doc_exports_untouched": true,
+  "aws": {
+    "removed": [
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0000.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0001.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0002.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0003.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0004.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0005.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0006.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0007.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0008.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0009.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0010.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0011.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0012.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0013.bin",
+        "bytes": 16000
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/prospect-qualified-20261016-transfer/chunk-0014.bin",
+        "bytes": 13558
+      }
+    ],
+    "removed_bytes": 237558,
+    "free_before": 78152650752,
+    "free_after": 78152900608,
+    "rollback_releases_source_data_and_env_preserved": true
+  }
+}

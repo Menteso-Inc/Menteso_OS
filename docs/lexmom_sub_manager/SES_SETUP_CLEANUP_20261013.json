@@ -1,0 +1,122 @@
+{
+  "verified_at": "2026-10-13T10:30:15.449567+00:00",
+  "remote": {
+    "removed": [
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/ses-setup-20261013/staging",
+        "file_bytes": 14110,
+        "file_count": 4
+      }
+    ],
+    "free_bytes_before": 78414184448,
+    "free_bytes_after": 78414217216,
+    "preserved": [
+      "configured.env",
+      "before/.env",
+      "live runtime source and environment",
+      "isolated virtualenv",
+      "private test receipt/events",
+      "tests and release evidence"
+    ],
+    "preview_processes_stopped": [],
+    "dashboard_active": true,
+    "research_idle": true
+  },
+  "local": {
+    "status": "completed",
+    "removed": [
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\demo_apply.py",
+        "file_bytes": 4050
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\demo_configuration.py",
+        "file_bytes": 1847
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\demo_inspect.py",
+        "file_bytes": 1202
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\demo_verify.py",
+        "file_bytes": 2654
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\diagnose.py",
+        "file_bytes": 1014
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\internal_test.py",
+        "file_bytes": 4138
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\key_format.py",
+        "file_bytes": 503
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\operate.py",
+        "file_bytes": 4144
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\os_inspect.py",
+        "file_bytes": 889
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\reconcile_test.py",
+        "file_bytes": 3227
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\runtime_activate.py",
+        "file_bytes": 4213
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\runtime_stage.py",
+        "file_bytes": 3447
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\setup.py",
+        "file_bytes": 16264
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\ssh_demo.py",
+        "file_bytes": 5462
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\test_once_remote.py",
+        "file_bytes": 3197
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\web_connect.py",
+        "file_bytes": 3181
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\local_save.py",
+        "file_bytes": 2559
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\cloud_final.py",
+        "file_bytes": 3204
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\runtime_cleanup.py",
+        "file_bytes": 3461
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-ses-setup-20261013\\mailbox_verified.py",
+        "file_bytes": 1757
+      }
+    ],
+    "free_bytes_before": 13553414144,
+    "free_bytes_after": 13553520640,
+    "preserved": [
+      "All .env files and private operation metadata",
+      "Live source and uncommitted changes",
+      "Screenshots and compact release/test evidence",
+      "Runtime data and rollback backups",
+      "Earlier cleanup-blocked task files"
+    ],
+    "preview_processes_stopped": [],
+    "managed_worktrees_archived": []
+  },
+  "previous_cleanup_exceptions_preserved": "CLEANUP_20261013.json and RESEARCH_CLEANUP_20261009.json remain unchanged"
+}

@@ -14,5 +14,11 @@ PySocks>=1.7.1
 psycopg[binary]>=3.2.0
 pycountry>=24.6.1
 pydantic>=2.0.0
+crewai==1.15.23
+langchain==1.4.3
+anthropic>=0.69.0,<1.0.0
 
 dnspython>=2.6.1
+boto3>=1.35.24,<2.0.0
+tiktoken==0.12.0
+imageio-ffmpeg>=0.6.0,<1.0.0

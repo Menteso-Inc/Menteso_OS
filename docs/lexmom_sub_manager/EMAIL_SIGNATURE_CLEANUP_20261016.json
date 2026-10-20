@@ -1,0 +1,36 @@
+{
+  "checked_at": "2026-10-16T10:08:20.036593+00:00",
+  "removed": [],
+  "retained_exports": [
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-c08fcfd5-d008-4734-802b-df8068470c4e.md",
+      "bytes": 9679
+    },
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-caa6e030-56b5-4284-a1a9-32272dc35397.md",
+      "bytes": 9423
+    },
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-4dbe4130-eaf1-4656-8aab-80942500e0e3.md",
+      "bytes": 11284
+    },
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-03fd4cd6-1ebb-4e26-a9ad-a2de6d48f9f3.md",
+      "bytes": 9734
+    },
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-91e21e4e-ca07-45e2-94e4-c89b544331f3.md",
+      "bytes": 9510
+    },
+    {
+      "path": "C:\\Users\\hp\\AppData\\Local\\Temp\\browser-use\\exports\\LexMom Email Templates \u2014 Audience & Strategy-4d7841ee-e759-4c6a-9802-ab4810f2176e.md",
+      "bytes": 11371
+    }
+  ],
+  "retained_bytes": 61001,
+  "free_bytes_before": 16610955264,
+  "free_bytes_after": 16610955264,
+  "cleanup_executed": false,
+  "automatic_review": "Rejected deletion as blocked by policy. No retry or alternative deletion attempted.",
+  "preserved": "Google Doc, verified tab backups, source, secrets, data, active internal-review process and AWS rollback releases."
+}

@@ -257,6 +257,7 @@ async function loadAgentDetail(name) {
 
 async function loadAgentRunStatus(name) {
     try {
+        const previousStatus = state.agentRunStatus;
         const res = await fetch(`/api/agents/${name}/run-status`);
         if (!res.ok) throw new Error(`Run status request failed (${res.status})`);
         const data = await res.json();
@@ -264,6 +265,16 @@ async function loadAgentRunStatus(name) {
         applyRunStatusSnapshot(data);
         if (name === "pct_agent" && data.status === "running") {
             startRunStatusPoller();
+        } else if (name === "lexmom_marketing_agent") {
+            if (["running", "stopping"].includes(data.status)) {
+                state.lexmom = state.lexmom || {};
+                state.lexmom.profile = {...(state.lexmom.profile || {}), ...(data.input || {})};
+                startRunStatusPoller();
+            }
+            else if (["running", "stopping"].includes(previousStatus)) {
+                stopRunStatusPoller();
+                await loadLexmomDashboardData(name);
+            }
         }
         return state.agentRunStatus;
     } catch (e) {
@@ -987,6 +998,8 @@ async function runAgent(name, params = {}) {
         if (detail) state.selectedAgent = detail;
         if (state.selectedAgent.ui_type === "seo_posting") {
             await loadSeoDashboardData(state.selectedAgent.module_name);
+        } else if (state.selectedAgent.ui_type === "lexmom_research") {
+            await loadLexmomDashboardData(state.selectedAgent.module_name);
         }
     }
     renderMain();
@@ -1021,7 +1034,11 @@ function handleSSEEvent(data) {
     } else if (data.type === "complete") {
         state.lastResult = data.result;
         state.pipelineMode = false;
-        addLogLine(
+        if (state.selectedAgent?.ui_type === "lexmom_research") {
+            const status = data.result?.status || "failure";
+            addLogLine(`Research ${status}. ${data.result?.error || data.result?.message || "Evidence and results are available below."}`,
+                status === "failure" ? "error" : status === "success" ? "success" : "warning");
+        } else addLogLine(
             data.result?.status === "stopped"
                 ? "Agent stopped. Partial results are ready below."
                 : "Agent execution complete.",
@@ -1724,6 +1741,8 @@ function renderSidebar() {
                     await loadSeoDashboardData(agent.module_name);
                 } else if ((detail || agent).ui_type === "accountant_monitor") {
                     await loadAccountantDashboardData(agent.module_name);
+                } else if ((detail || agent).ui_type === "lexmom_research") {
+                    await loadLexmomDashboardData(agent.module_name);
                 } else {
                     state.seoDashboard.snapshot = null;
                     state.seoDashboard.error = "";
@@ -1792,6 +1811,8 @@ function renderSidebarFlat() {
                 await loadSeoDashboardData(agent.module_name);
             } else if ((detail || agent).ui_type === "accountant_monitor") {
                 await loadAccountantDashboardData(agent.module_name);
+            } else if ((detail || agent).ui_type === "lexmom_research") {
+                await loadLexmomDashboardData(agent.module_name);
             } else {
                 state.seoDashboard.snapshot = null;
                 state.seoDashboard.error = "";
@@ -1944,7 +1965,7 @@ async function loadAccountantDashboardData(name = "accountant_agent") {
     if (isInitialLoad) state.accountantDashboard.loading = true;
     state.accountantDashboard.error = "";
     try {
-        const response = await fetch(`/api/agents/${name}/dashboard-data`);
+        const response = await fetch(`/api/agents/${name}/dashboard-data`, {cache:"no-store"});
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to load AccountantAgent status");
         const fingerprint = JSON.stringify(data);
@@ -1961,8 +1982,271 @@ async function loadAccountantDashboardData(name = "accountant_agent") {
     }
 }
 
+async function loadLexmomDashboardData(name = "lexmom_marketing_agent") {
+    state.lexmom = state.lexmom || {};
+    try {
+        const response = await fetch(`/api/agents/${name}/dashboard-data`);
+        const snapshot = await response.json();
+        if (!response.ok) throw new Error(snapshot.error || "Research status is unavailable");
+        state.lexmom.snapshot = snapshot;
+        state.lexmom.error = "";
+        state.lastResult = snapshot.lastResult || state.lastResult;
+    } catch (error) {
+        state.lexmom.error = error.message;
+    }
+}
+
+function lexmomAttr(value) {
+    return esc(String(value ?? "")).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function lexmomSourceLink(value, label) {
+    try {
+        const url = new URL(value);
+        if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return "";
+        return `<a href="${lexmomAttr(url.href)}" target="_blank" rel="noopener noreferrer">${esc(label || url.hostname)}</a>`;
+    } catch { return ""; }
+}
+
+function renderLexmomResults(result, {auditOnly = false} = {}) {
+    const firms = result.data?.firms || [];
+    const status = result.status || "failure";
+    const emails = new Set(firms.flatMap(firm => (firm.contacts || []).map(contact => (contact.email || "").trim().toLowerCase()).filter(Boolean)));
+    const validEmails = new Set(firms.flatMap(firm => (firm.contacts || []).filter(contact => contact.email && contact.verification_status === "valid").map(contact => contact.email.trim().toLowerCase())));
+    const uniqueFirms = new Set(firms.map(firm => firm.domain || firm.firm_id || firm.website).filter(Boolean)).size;
+    const countStatus = value => firms.filter(firm => firm.fit_status === value).length;
+    const errors = (result.errors || []).map(error => typeof error === "string" ? error : `${error.phase ? error.phase + ": " : ""}${error.error || error.message || JSON.stringify(error)}`);
+    const failureMessage = result.error || (status === "failure" ? errors[0] : "");
+    const artifacts = (result.artifacts || []).filter(artifact => artifact.path).map(artifact => {
+        const filename = artifact.path.split(/[\\/]/).pop();
+        return `<a class="download-btn" href="/api/agents/lexmom_marketing_agent/artifacts/${encodeURIComponent(result.run_id || "")}/${encodeURIComponent(filename)}">${esc(artifact.label || filename)}</a>`;
+    }).join("");
+    const seeded = (result.request_profile?.seed_urls || []).length > 0;
+    const productFit = (firm, product) => {
+        const assessment = firm.product_assessments?.[product];
+        if (!assessment) return "Awaiting refresh";
+        if (assessment.status === "unknown") return "Needs research";
+        return `${esc(assessment.status.replaceAll("_", " "))}<small>${esc(assessment.confidence || "low")} confidence</small>`;
+    };
+    return `<section class="results-section lexmom-results" aria-label="Research results">
+        ${auditOnly ? "" : `<div class="section-title">Saved leads</div>`}
+        <p class="seo-note-text">${auditOnly ? `Last run: ${esc(status)} · ${seeded ? "Supplied websites" : "Search discovery"}` : "One record per firm · campaign sending off"} ${result.budget?.counts ? `· ${esc(String(result.budget.counts.queries || 0))} search requests attempted` : ""}</p>
+        ${result.mode === "fixture" || firms.some(firm => firm.provenance === "fixture") ? '<div class="warning-banner">Synthetic test data. These records are fixtures.</div>' : ""}
+        ${failureMessage ? `<div class="warning-banner">${esc(failureMessage)}</div>` : ""}
+        ${errors.length ? `<details class="lexmom-evidence"><summary>Run issues (${errors.length})</summary>${errors.map(error => `<p>${esc(error)}</p>`).join("")}</details>` : ""}
+        ${result.human_review_required ? '<div class="warning-banner">Recent evaluated runs require a strategy review.</div>' : ""}
+        ${auditOnly ? "" : `<div class="stats-grid lexmom-counts">
+            ${[["Firms", uniqueFirms], ["Qualified", countStatus("qualified")], ["Published emails", emails.size], ["Ready contacts", firms.reduce((sum, firm) => sum + (firm.contacts || []).filter(contact => contact.research_ready).length, 0)]].map(([label, count]) => `<div class="stat-card"><div class="stat-value">${esc(String(count))}</div><div class="stat-label">${label}</div></div>`).join("")}
+        </div>`}
+        ${(result.data?.candidates || []).length ? `<details class="lexmom-evidence"><summary>Discovery decisions (${result.data.candidates.length})</summary>
+            <div class="lexmom-table-scroll" role="region" aria-label="Discovery decisions" tabindex="0"><table class="lexmom-table"><thead><tr><th scope="col">Search / source</th><th scope="col">Candidate</th><th scope="col">Outcome</th><th scope="col">Reason</th></tr></thead><tbody>
+            ${result.data.candidates.map(candidate => `<tr><td>${esc(candidate.query || "Supplied website")}${candidate.position ? `<br>Search position ${esc(String(candidate.position))}` : ""}</td><td>${esc(candidate.title || "Source candidate")}<br>${lexmomSourceLink(candidate.url, "View source")}${candidate.resolved_url ? `<br>${lexmomSourceLink(candidate.resolved_url, "Firm website")}` : ""}${candidate.snippet ? `<p>${esc(candidate.snippet)}</p>` : ""}</td><td>${esc((candidate.status || "pending").replaceAll("_", " "))}</td><td>${esc(candidate.reason || "")}${candidate.previous_run_id ? `<br>Saved run: ${esc(candidate.previous_run_id)}` : ""}</td></tr>`).join("")}
+            </tbody></table></div></details>` : ""}
+        ${artifacts ? `<details class="lexmom-evidence"><summary>Saved run files</summary><div class="lexmom-exports">${artifacts}</div></details>` : ""}
+        ${auditOnly ? "" : firms.length ? `<div class="lexmom-table-scroll" role="region" aria-label="Scrollable firm records" tabindex="0"><table class="lexmom-table">
+            <caption>Saved firm and contact details</caption>
+            <thead><tr>${["#", "Firm / website", "Country", "Attorneys", "Qualification", "Manage fit", "Launch fit", "Primary product", "Published email", "Verification", "Contact readiness", "Details & evidence"].map(label => `<th scope="col">${label}</th>`).join("")}</tr></thead>
+            <tbody>${firms.map((firm, index) => {
+                const contacts = (firm.contacts || []).filter(contact => contact.email);
+                const visibleContacts = contacts.slice(0, 3);
+                const readyCount = contacts.filter(contact => contact.research_ready).length;
+                const fit = ["qualified", "excluded"].includes(firm.fit_status) ? firm.fit_status : "needs_research";
+                return `<tr><td>${index + 1}</td><th scope="row"><strong>${esc(firm.name || firm.domain || "Unknown firm")}</strong><br>${lexmomSourceLink(firm.website, firm.domain)}</th>
+                    <td>${esc(firm.country || "Unresolved")}</td><td>${firm.size == null ? "Unresolved" : esc(String(firm.size))}</td>
+                    <td><span class="lexmom-fit lexmom-fit-${fit}">${esc(fit.replaceAll("_", " "))}</span></td>
+                    <td>${productFit(firm, "manage")}</td><td>${productFit(firm, "launch")}</td>
+                    <td>${esc((firm.primary_product || "none").replaceAll("_", " "))}</td>
+                    <td>${contacts.length ? visibleContacts.map(contact => `<div class="lexmom-contact-line">${esc(contact.email)}</div>`).join("") + (contacts.length > 3 ? `<small>+${contacts.length - 3} in details</small>` : "") : "None found"}</td>
+                    <td>${contacts.length ? visibleContacts.map(contact => `<div class="lexmom-contact-line">${esc((contact.verification_status || "published_unverified").replaceAll("_", " "))}${contact.verified_at ? `<small>${esc(contact.verified_at)}</small>` : ""}</div>`).join("") : "Not checked"}</td>
+                    <td>${contacts.length ? `${readyCount} ready · ${contacts.length - readyCount} held` : "No contact found"}</td>
+                    <td><details class="lexmom-row-details"><summary>View details (${(firm.evidence || []).length} facts)</summary>
+                        <p><strong>Qualification:</strong> ${esc((firm.fit_reasons || []).join(" "))}</p>
+                        <p><strong>Practices:</strong> ${esc((firm.practice_areas || []).join(", ") || "Unresolved")}</p>
+                        <p><strong>Researched:</strong> ${esc(firm.researched_at || "Unknown")}</p>
+                        ${Object.entries(firm.product_assessments || {}).map(([product, decision]) => `<p><strong>${esc(product)}:</strong> ${esc((decision.reasons || []).join(" "))}<br>Interest: ${esc(decision.interest_status || "unknown")}${decision.hypothesis ? `<br>Question to validate: ${esc(decision.hypothesis)}` : ""}</p>`).join("")}
+                        ${(firm.personalization_briefs || []).map(brief => `<p><strong>${esc(brief.product)} · ${esc(brief.email)}</strong><br>${esc(brief.audience === "named" ? `Named contact: ${brief.contact_name}` : "Firm-level message")}: ${esc(brief.question)}<br>Held: ${esc((brief.hold_reasons || []).join("; "))}</p>`).join("")}
+                        ${(firm.contacts || []).map(contact => `<p><strong>${esc(contact.email || "No published email")}</strong><br>${esc(contact.name || "Name unresolved")} · ${esc(contact.role || "Role unresolved")}<br>Contact association: ${esc(contact.association_status || "unconfirmed")} · Buyer role: ${contact.buyer_role_match ? "matches profile" : "unconfirmed"}<br>Verification provider: ${esc(contact.verification_provider || "Not checked")}<br>Readiness: ${esc((contact.readiness_reasons || []).join("; ") || "Research checks passed; sending off")}</p>`).join("")}
+                        ${(firm.evidence || []).map(evidence => `<p><strong>${esc(evidence.field || "Fact")}: ${esc(evidence.value || "")}</strong><br>${esc(evidence.excerpt || "")}<br>${lexmomSourceLink(evidence.source_url, "View source")}</p>`).join("") || "<p>No usable evidence found.</p>"}
+                        ${(firm.research_errors || []).length ? `<p><strong>Research notes:</strong> ${esc(firm.research_errors.join("; "))}</p>` : ""}
+                    </details></td></tr>`;
+            }).join("")}</tbody></table></div>` : '<div class="memory-empty">0 records. No researched firms were returned. Run issues explain any missing access or unfinished work.</div>'}
+    </section>`;
+}
+
+function renderLexmomResearchWorkspace(snapshot) {
+    const inventory = snapshot.prospectInventory || [];
+    const latest = state.lastResult;
+    const table = snapshot.leadTable;
+    return `${snapshot.inventoryError ? `<div class="warning-banner">${esc(snapshot.inventoryError)}</div>` : ""}
+        ${table ? renderLexmomLeadTable(table) : '<div class="memory-empty">Lead activity is loading. Refresh to view the saved contacts.</div>'}
+        ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}`;
+}
+
+function renderLexmomLeadTable(table) {
+    const rows = table.rows || [];
+    const filter = state.lexmom.leadFilter || "all";
+    const readiness = state.lexmom.leadReadiness || (rows.some(row=>row.research_ready) ? "ready" : "all");
+    const product = state.lexmom.leadProduct || "all";
+    const visible = rows.filter(row => (filter === "all" || row.temperature === filter)
+        && (readiness === "all" || (readiness === "ready" ? row.research_ready : !row.research_ready))
+        && (product === "all" || row.product === product || row.product === "both"));
+    const labels = {new: "New", opened: "Opened", warm: "Warm", hot: "Hot", replied: "Replied · review", suppressed: "Suppressed", unknown: "Unknown"};
+    return `<section class="lexmom-leads" aria-label="Saved leads"><div class="section-title">Leads</div>
+        <div class="stats-grid lexmom-counts">${[["Qualified & verified", table.qualified_verified ?? rows.filter(row=>row.research_ready).length], ["Needs research", table.held ?? rows.filter(row=>!row.research_ready).length], ["Hot", table.hot]].map(([label, value]) => `<div class="stat-card"><div class="stat-value">${esc(String(value ?? 0))}</div><div class="stat-label">${label}</div></div>`).join("")}</div>
+        <div class="lexmom-lead-toolbar"><p class="seo-note-text">${esc(String(table.total ?? rows.length))} saved contacts · One lead per unique email · campaign sending off</p>
+        <div class="lexmom-lead-actions"><label>Research <select id="lexmom-lead-readiness">${[["ready","Qualified & verified"],["held","Needs research"],["all","All saved contacts"]].map(([key,label])=>`<option value="${key}" ${readiness===key?"selected":""}>${label}</option>`).join("")}</select></label>
+        <label>Product <select id="lexmom-lead-product">${[["all","Both products"],["launch","Lexmom Launch"],["manage","Lexmom Manage"]].map(([key,label])=>`<option value="${key}" ${product===key?"selected":""}>${label}</option>`).join("")}</select></label>
+        <label>Activity <select id="lexmom-lead-filter">${[["all", "All leads"], ...Object.entries(labels)].map(([key,label]) => `<option value="${key}" ${filter === key ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label><button type="button" class="secondary-btn" id="lexmom-refresh">Refresh</button></div></div>
+        ${visible.length ? `<div class="lexmom-table-scroll" role="region" aria-label="Lead contacts and activity" tabindex="0"><table class="lexmom-table lexmom-lead-table"><caption>${visible.length} ${readiness==="ready"?"qualified & verified leads":readiness==="held"?"held contacts":"saved contacts"} · ${rows.length} saved contacts total</caption><thead><tr>${["#", "Lead / firm", "Product", "Verification", "Lead status", "Activity", "Last activity", "Details"].map(label => `<th scope="col">${label}</th>`).join("")}</tr></thead><tbody>
+        ${visible.map((row, index) => `<tr><td>${index + 1}</td><th scope="row"><strong>${esc(row.name || "Firm contact")}</strong>${row.role ? `<small>${esc(row.role)}</small>` : ""}<div class="lexmom-lead-email">${esc(row.email)}</div>${lexmomSourceLink(row.website, row.firm)}</th>
+            <td>${esc({manage:"Manage",launch:"Launch",both:"Manage + Launch"}[row.product] || "Needs research")}</td>
+            <td>${esc(String(row.verification || "Not checked").replaceAll("_"," "))}<small>${row.research_ready ? "Research ready" : "Held"}</small></td>
+            <td><span class="lexmom-temperature lexmom-temperature-${lexmomAttr(row.temperature)}">${esc(labels[row.temperature] || "Unknown")}</span></td>
+            <td>${esc(String(row.activity?.opens || 0))} opens · ${esc(String(row.activity?.clicks || 0))} clicks<br>${esc(String(row.activity?.replies || 0))} replies</td>
+            <td>${row.activity?.last_activity_at ? esc(new Date(row.activity.last_activity_at).toLocaleString()) : "No recorded activity"}</td>
+            <td><button type="button" class="lexmom-lead-details-btn" data-lexmom-lead-details="${rows.indexOf(row)}" aria-haspopup="dialog" aria-controls="lexmom-lead-drawer" aria-label="Details for ${lexmomAttr(row.name || row.email)}">Details <span aria-hidden="true">↗</span></button></td></tr>`).join("")}</tbody></table></div>` : `<div class="memory-empty">${rows.length ? "No leads match this activity filter." : "No published contact emails yet. Firms without an email are not counted as leads."}</div>`}
+        <details class="lexmom-log"><summary>How lead status is calculated</summary><p>New: no recorded activity. Opened: an email open. Warm: a tracked product-link click. Hot: a confirmed interested reply or demo request. Likely bot events are ignored; opens alone do not prove interest. Research qualification and sending permission are separate.</p></details></section>`;
+}
+
+function renderLexmomLeadDrawer(row, table) {
+    const label = value => esc(String(value || "Unknown").replaceAll("_", " "));
+    const date = value => value && Number.isFinite(new Date(value).getTime()) ? esc(new Date(value).toLocaleString()) : "Not recorded";
+    const field = (name, value) => `<div><dt>${name}</dt><dd>${value}</dd></div>`;
+    const product = {manage:"Manage", launch:"Launch", both:"Manage + Launch"}[row.product] || "Needs research";
+    const temperature = {new:"New", opened:"Opened", warm:"Warm", hot:"Hot", replied:"Replied · review", suppressed:"Suppressed", unknown:"Unknown"}[row.temperature] || "Unknown";
+    return `<header class="lexmom-drawer-header"><div><h2 id="lexmom-lead-drawer-title">Lead details</h2><p>${esc(row.name || "Firm contact")} · ${esc(row.firm || "Firm unresolved")}</p></div><button type="button" class="lexmom-drawer-close" aria-label="Close lead details" autofocus>×</button></header>
+        <div class="lexmom-drawer-body">
+        <section class="lexmom-drawer-section" aria-labelledby="lexmom-drawer-contact"><h3 id="lexmom-drawer-contact">Contact</h3><dl class="lexmom-drawer-fields">
+            ${field("Email",esc(row.email))}${field("Role",esc(row.role || "Not confirmed"))}
+            ${field("Firm",esc(row.firm || "Not confirmed"))}${field("Website",lexmomSourceLink(row.website, "Open firm website") || "Not recorded")}
+            ${field("Published location",esc(row.country || "Not confirmed"))}${field(row.size_basis === "published_roster" ? "Attorneys in published roster" : "Published attorney count",row.size == null ? "Not confirmed" : esc(String(row.size)))}
+        </dl></section>
+        <section class="lexmom-drawer-section" aria-labelledby="lexmom-drawer-activity"><h3 id="lexmom-drawer-activity">Activity</h3>
+            <span class="lexmom-temperature lexmom-temperature-${lexmomAttr(row.temperature)}">${temperature}</span><p>${esc(table.rules?.[row.temperature] || "Activity connection needs attention")}</p>
+            <dl class="lexmom-drawer-fields lexmom-drawer-activity-counts">${field("Opens",esc(String(row.activity?.opens || 0)))}${field("Product clicks",esc(String(row.activity?.clicks || 0)))}${field("Replies",esc(String(row.activity?.replies || 0)))}</dl>
+            <p class="lexmom-drawer-muted">Last activity: ${date(row.activity?.last_activity_at)}</p>
+        </section>
+        <section class="lexmom-drawer-section" aria-labelledby="lexmom-drawer-research"><h3 id="lexmom-drawer-research">Qualification &amp; verification</h3><dl class="lexmom-drawer-fields">
+            ${field("Research readiness",row.research_ready ? "Ready" : "Held")}${field("Qualification",label(row.qualification || "needs_research"))}
+            ${field("Email verification",label(row.verification || "not_checked"))}${field("Verified at",date(row.verified_at))}
+            ${field("Verification provider",label(row.verification_provider || "Not checked"))}
+        </dl>${(row.hold_reasons || []).length ? `<h4>What needs attention</h4><ul>${row.hold_reasons.map(reason=>`<li>${esc(reason)}</li>`).join("")}</ul>` : '<p class="lexmom-drawer-muted">No research holds recorded.</p>'}<p class="lexmom-drawer-muted">Campaign sending remains off.</p></section>
+        <section class="lexmom-drawer-section" aria-labelledby="lexmom-drawer-products"><h3 id="lexmom-drawer-products">Product fit</h3><p>Primary product: <strong>${product}</strong></p><p class="lexmom-drawer-muted">Fit is a research hypothesis. No interest or purchase has been confirmed.</p>
+            ${Object.entries(row.product_assessments || {}).map(([name,fit])=>`<div class="lexmom-drawer-product"><h4>${esc({manage:"Lexmom Manage",launch:"Lexmom Launch"}[name] || name)}</h4><p>${label(fit.status)}${fit.confidence ? ` · ${label(fit.confidence)} confidence` : ""}</p>${(fit.reasons || []).length ? `<ul>${fit.reasons.map(reason=>`<li>${esc(reason)}</li>`).join("")}</ul>` : '<p class="lexmom-drawer-muted">No assessment reasons recorded.</p>'}</div>`).join("") || '<p class="lexmom-drawer-muted">Product assessment is pending.</p>'}
+        </section>
+        <section class="lexmom-drawer-section" aria-labelledby="lexmom-drawer-sources"><h3 id="lexmom-drawer-sources">Supporting sources</h3>
+            ${(row.evidence || []).map(fact=>`<article class="lexmom-drawer-source">${fact.field ? `<h4>${label(fact.field)}</h4>` : ""}${fact.value ? `<p>${esc(String(fact.value))}</p>` : ""}<blockquote>${esc(fact.excerpt || "No excerpt recorded")}</blockquote>${lexmomSourceLink(fact.source_url,"View source")}</article>`).join("") || '<p class="lexmom-drawer-muted">No supporting excerpts saved for this contact.</p>'}
+        </section></div>`;
+}
+
+function openLexmomLeadDrawer(index, opener) {
+    const table = state.lexmom?.snapshot?.leadTable;
+    const row = Number.isInteger(index) ? table?.rows?.[index] : null;
+    if (!row) return;
+    document.getElementById("lexmom-lead-drawer")?.close();
+    const drawer = document.createElement("dialog");
+    drawer.id = "lexmom-lead-drawer";
+    drawer.className = "lexmom-lead-drawer";
+    drawer.setAttribute("aria-labelledby", "lexmom-lead-drawer-title");
+    drawer.innerHTML = renderLexmomLeadDrawer(row, table);
+    drawer.addEventListener("close", () => {
+        drawer.remove();
+        if (opener?.isConnected) opener.focus();
+    }, {once:true});
+    drawer.querySelector(".lexmom-drawer-close").onclick = () => drawer.close();
+    drawer.addEventListener("click", event => {
+        if (event.target !== drawer) return;
+        const rect = drawer.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) drawer.close();
+    });
+    document.body.append(drawer);
+    drawer.showModal();
+}
+
+function renderLexmomDashboard(main, agent) {
+    state.lexmom = state.lexmom || {};
+    const snapshot = state.lexmom.snapshot || {};
+    const providers = snapshot.providerStatus || {};
+    const profile = snapshot.defaults || {};
+    const workflow = snapshot.workflowAgents || [{id: "prospect_research_agent", name: "Prospect Research", enabled: true}];
+    const tabs = [{id: "dashboard", name: "Dashboard"}, ...workflow];
+    const requested = state.lexmom.view || (location.hash.startsWith("#lexmom/") ? location.hash.slice(8) : "dashboard");
+    const view = tabs.some(tab => tab.id === requested) ? requested : "dashboard";
+    const overview = view === "dashboard";
+    const emailView = view === "email_campaign_agent";
+    const socialView = view === "social_media_posting_agent";
+    const busy = state.isRunning || ["running", "stopping"].includes(state.agentRunStatus);
+    const labels = {solo: "Solo", small: "Small", mid_size: "Mid-size"};
+    const targeting = [(profile.countries || []).join(", ") || "Global", (profile.target_segments || []).map(value => labels[value] || value).join(" / ") + " law firms"].join(" · ");
+    const blocked = !!snapshot.profileError || (providers.search?.remaining === 0 && !(profile.seed_urls || []).length) || !!state.lexmom.error;
+    const metrics = snapshot.businessSummary || {};
+    const money = value => typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat("en-US", {style: "currency", currency: "USD"}).format(value) : "—";
+    const cards = [
+        ["Total spend", money(metrics.total_spend_usd), "Actual billing not connected"],
+        ["Total revenue", money(metrics.total_revenue_usd), "Payment attribution not connected"],
+        ["Total leads", Number.isInteger(snapshot.leadTable?.total) ? String(snapshot.leadTable.total) : "—", "Unique email contacts · saved inventory"],
+    ];
+    main.innerHTML = `<div class="agent-header lexmom-manager-header"><h2>${esc(agent.name || "Lexmom Sub Manager")}</h2>
+        <span class="badge ${busy ? "badge-running" : "badge-warning"}">${esc(busy ? "Workflow running" : snapshot.readinessLabel || "Live pilot")}</span></div>
+        <div class="lexmom-tabs" role="tablist" aria-label="Lexmom workspace">${tabs.map((tab, index) => `<button type="button" role="tab" class="lexmom-chip" id="lexmom-tab-${index}" aria-controls="lexmom-panel" aria-selected="${view === tab.id}" tabindex="${view === tab.id ? 0 : -1}">${esc(tab.name)}</button>`).join("")}</div>
+        ${state.lexmom.error ? `<div class="warning-banner">${esc(state.lexmom.error)}</div>` : ""}
+        <section id="lexmom-panel" role="tabpanel" aria-labelledby="lexmom-tab-${tabs.findIndex(tab => tab.id === view)}">
+        ${overview ? `<div class="lexmom-business-metrics">${cards.map(([label, value, note]) => `<div class="lexmom-metric"><div class="lexmom-metric-label">${label}</div><div class="lexmom-metric-value">${esc(value)}</div><div class="lexmom-metric-note">${esc(note)}</div></div>`).join("")}</div>
+        <p class="lexmom-accounting-note">${metrics.reserved_cost_usd > 0 ? `Recorded cost reservations: ${money(metrics.reserved_cost_usd)} · not billed spend. ` : ""}Return on spend will appear when billing and revenue are connected.${metrics.history_complete === false ? " Some saved history is unavailable." : ""}</p>
+        <div class="lexmom-workflow-control"><div><h3>${busy ? "Workflow in progress" : "Ready to work"}</h3><p>${workflow.filter(item => item.enabled).length} active agent · Uses saved targeting</p></div>
+        <div class="lexmom-control-buttons"><button class="run-btn" type="button" id="lexmom-run" ${busy || blocked ? "disabled" : ""}>${busy ? "Running…" : "Run all agents"}</button>
+        ${busy ? `<button class="secondary-btn" type="button" id="lexmom-stop" ${state.stopRequested ? "disabled" : ""}>${state.stopRequested ? "Stopping…" : "Stop workflow"}</button>` : '<button class="secondary-btn" type="button" id="lexmom-refresh">Refresh</button>'}</div></div>
+        ${snapshot.profileError || blocked ? `<div class="warning-banner">${esc(snapshot.profileError || (state.lexmom.error ? "Refresh before starting a workflow." : "Search quota is exhausted."))}</div>` : ""}` : emailView ? renderLexmomEmailWorkspace() : socialView ? renderLexmomSocialWorkspace() : `<p class="lexmom-targeting">${esc(targeting)}${Number.isFinite(providers.search?.remaining) ? ` · ${providers.search.remaining} searches left at last check` : ""}</p>
+        ${renderLexmomResearchWorkspace(snapshot)}`}
+        <details class="lexmom-log" ${busy ? "open" : ""}><summary>Execution log</summary><div class="terminal" id="terminal">${state.executionLog.map(line => createTerminalLineHTML(line)).join("") || '<span class="terminal-empty">Ready.</span>'}</div></details></section>`;
+    tabs.forEach((tab, index) => {
+        const button = document.getElementById(`lexmom-tab-${index}`);
+        const select = () => {
+            state.lexmom.view = tab.id;
+            history.replaceState(null, "", `#lexmom/${tab.id}`);
+            renderMain();
+            document.getElementById(`lexmom-tab-${index}`)?.focus();
+        };
+        button.onclick = select;
+        button.onkeydown = event => {
+            let next;
+            if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+            if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+            if (event.key === "Home") next = 0;
+            if (event.key === "End") next = tabs.length - 1;
+            if (next !== undefined) { event.preventDefault(); document.getElementById(`lexmom-tab-${next}`).click(); }
+        };
+    });
+    const run = document.getElementById("lexmom-run");
+    if (run) run.onclick = async () => {
+        if (busy || blocked || state.lexmom.starting) return;
+        state.lexmom.starting = true;
+        run.disabled = true;
+        try {
+            if (await loadAgentRunStatus(agent.module_name) !== "idle") { renderMain(); return; }
+            await runAgent(agent.module_name, {method: "POST", body: {}});
+        } finally { state.lexmom.starting = false; renderMain(); }
+    };
+    const stop = document.getElementById("lexmom-stop");
+    if (stop) stop.onclick = async () => { await stopAgent(agent.module_name); state.stopRequested = true; state.agentRunStatus = "stopping"; renderMain(); };
+    const refresh = document.getElementById("lexmom-refresh");
+    if (refresh) refresh.onclick = async () => { await loadLexmomDashboardData(agent.module_name); renderMain(); };
+    if (emailView) bindLexmomEmailWorkspace();
+    if (socialView) bindLexmomSocialWorkspace();
+    const leadFilter = document.getElementById("lexmom-lead-filter");
+    if (leadFilter) leadFilter.onchange = () => { state.lexmom.leadFilter = leadFilter.value; renderMain(); document.getElementById("lexmom-lead-filter")?.focus(); };
+    for (const [id,key] of [["lexmom-lead-readiness","leadReadiness"],["lexmom-lead-product","leadProduct"]]) {
+        const select=document.getElementById(id);
+        if(select) select.onchange=()=>{state.lexmom[key]=select.value;renderMain();document.getElementById(id)?.focus();};
+    }
+    document.querySelectorAll("[data-lexmom-lead-details]").forEach(button => {
+        button.onclick = () => openLexmomLeadDrawer(Number(button.dataset.lexmomLeadDetails), button);
+    });
+}
+
 function renderMain() {
     const main = document.getElementById("main-content");
+    document.body?.classList.toggle("lexmom-active", state.selectedAgent?.ui_type === "lexmom_research");
 
     if (!state.selectedAgent) {
         main.innerHTML = `
@@ -1976,6 +2260,28 @@ function renderMain() {
     }
 
     const agent = state.selectedAgent;
+    if (agent.ui_type === "paused_workload") {
+        main.innerHTML = `
+            <div class="agent-header">
+                <h2>${esc(agent.name)}</h2>
+                <p class="agent-desc">${esc(agent.description)}</p>
+                <div class="agent-badges"><span class="badge badge-warning">Paused</span><span class="badge badge-role">Menteso OS · Ohio</span></div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value">${esc(String(agent.workflow_count))}</div><div class="stat-label">Saved workflow records</div></div>
+                <div class="stat-card"><div class="stat-value">${esc(String(agent.credential_count))}</div><div class="stat-label">Credentials preserved securely</div></div>
+            </div>
+            <div class="input-section"><div class="input-card">
+                <div class="seo-note-title">Execution disabled</div>
+                <div class="seo-note-text">Workflows, history and credentials are preserved. Both the original and migrated execution services are stopped. No run action is enabled here.</div>
+                <p class="agent-desc">Migration verified: ${esc(agent.verified_at || "Pending")}. Workflow records include saved versions. Existing API keys remain valid; this pause applies to these services.</p>
+            </div></div>`;
+        return;
+    }
+    if (agent.ui_type === "lexmom_research") {
+        renderLexmomDashboard(main, agent);
+        return;
+    }
     if (agent.ui_type === "pending_setup") {
         main.innerHTML = `
             <div class="agent-header">

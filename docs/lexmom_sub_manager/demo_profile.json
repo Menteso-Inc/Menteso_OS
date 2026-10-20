@@ -1,0 +1,26 @@
+{
+  "mode": "live",
+  "product": "manage",
+  "countries": [],
+  "target_segments": [
+    "solo",
+    "small",
+    "mid_size"
+  ],
+  "target_count": 1,
+  "max_candidates": 3,
+  "seed_urls": [
+    "https://therhlawoffice.com/about/"
+  ],
+  "query_terms": [],
+  "max_queries": 3,
+  "max_llm_calls": 15,
+  "max_verifications": 3,
+  "max_pages_per_firm": 3,
+  "max_input_tokens": 20000,
+  "max_output_tokens": 3000,
+  "request_timeout": 40,
+  "deadline_seconds": 300,
+  "budget_usd": 1,
+  "enable_verification": true
+}

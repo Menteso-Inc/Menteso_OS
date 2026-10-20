@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-14",
+  "removed": [
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-cta-labels-20261014\\update.py",
+      "bytes": 2224
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-cta-labels-20261014\\deploy.py",
+      "bytes": 4580
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-cta-labels-20261014\\verify_doc.py",
+      "bytes": 2404
+    }
+  ],
+  "removedFileBytes": 9208.0,
+  "freeBeforeBytes": 8532647936,
+  "freeAfterBytes": 8532664320,
+  "preserved": [
+    "campaign source",
+    "campaigns.before-labels.json",
+    "current review HTML/text",
+    "native Doc screenshot and readback evidence",
+    "server state and rollback",
+    "private environment and operation receipts",
+    "unfinished Google setup",
+    "older blocked cleanup paths"
+  ],
+  "serviceRestarts": 0,
+  "campaignEmailsSent": 0
+}

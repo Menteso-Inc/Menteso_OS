@@ -1115,6 +1115,9 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
     agent = next((a for a in agents if a["module_name"] == name), None)
     if not agent:
         return {"ok": False, "response": JSONResponse({"error": "Agent not found"}, status_code=404)}
+    if name == "prospect_research_agent":
+        return {"ok": False, "response": JSONResponse(
+            {"error": "Launch prospect research through Lexmom Sub Manager"}, status_code=409)}
     if agent.get("execution_enabled") is False:
         return {
             "ok": False,
@@ -1139,6 +1142,16 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
         }
 
     payload = dict(input_data or {})
+    if name == "lexmom_marketing_agent":
+        # Validate before creating a thread or making any external requests.
+        from agents.lexmom_marketing_agent.tools import validate_profile
+        try:
+            payload = validate_profile(payload, browser=True).model_dump()
+        except (ValueError, TypeError) as exc:
+            details = [{"field": ".".join(map(str, error["loc"])), "message": error["msg"]}
+                       for error in exc.errors()] if hasattr(exc, "errors") else []
+            return {"ok": False, "response": JSONResponse(
+                {"error": "Invalid live research profile", "details": details}, status_code=422)}
     run_id = str(payload.get("run_id") or f"{name}-{int(time.time())}-{secrets.token_hex(4)}")
     payload["run_id"] = run_id
 
@@ -1170,7 +1183,10 @@ def _launch_agent_run(name: str, input_data: dict | None = None, emit=None, on_c
     }
     RUN_LIVE_STATUS[name] = {
         "run_id": run_id,
-        "input": {k: v for k, v in payload.items() if k in {"file_path", "mode", "gazette", "fast_level"}},
+        "input": {k: v for k, v in payload.items() if k in (
+            {"mode", "product", "countries", "target_segments", "size_min", "size_max", "small_firm_max", "size_unit", "target_count", "max_candidates", "budget_usd", "query_terms", "seed_urls"}
+            if name == "lexmom_marketing_agent" else {"file_path", "mode", "gazette", "fast_level"}
+        )},
         "logs": [],
         "metrics": {
             "totalRows": 0,
@@ -1701,12 +1717,29 @@ def _persist_agent_completion(agent_name: str, result: dict | None, payload: dic
             agent_name,
             workspace_id=workspace_id,
             run_id=run_id,
-            task="daily_seo_blog" if agent_name == "patentzoom_seo_agent" else "process_excel",
+            task="daily_seo_blog" if agent_name == "patentzoom_seo_agent" else
+                 "prospect_research" if agent_name == "lexmom_marketing_agent" else "process_excel",
             status=status,
             result=safe_run_result,
             summary=summary,
             execution_time=execution_time,
         )
+        if agent_name == "lexmom_marketing_agent":
+            from agents.lexmom_marketing_agent.agent import resolve_research_artifact
+            child_run_id = str(result.get("run_id") or "")
+            for artifact in result.get("artifacts", []):
+                filename = Path(str(artifact.get("path") or "")).name if isinstance(artifact, dict) else ""
+                resolved = resolve_research_artifact(child_run_id, filename)
+                if resolved is not None:
+                    db_storage.insert_artifact(
+                        agent_name, workspace_id=workspace_id, run_id=run_id,
+                        artifact_type="research_dataset", name=filename, path=str(resolved),
+                        payload={"specialist_run_id": child_run_id, "summary": summary},
+                    )
+            db_storage.upsert_subagent_snapshot(
+                agent_name, "Prospect Research", workspace_id=workspace_id,
+                status=status, stats=summary, payload={"run_id": child_run_id, "status": status},
+            )
         if result.get("wordpressUrl"):
             db_storage.insert_artifact(
                 agent_name,
@@ -2010,6 +2043,8 @@ async def list_agents():
     agents = discover_agents()
     result = []
     for a in agents:
+        if a.get("hidden_from_dashboard"):
+            continue
         module_name = a.get("module_name", "")
         memory = load_memory(module_name)
         result.append({
@@ -2085,7 +2120,19 @@ async def agent_dashboard_data(name: str, workspace_id: str = "patent-drawing-ex
         return payload
     if name == "accountant_agent":
         return get_accountant_dashboard_data()
+    if name == "lexmom_marketing_agent":
+        from agents.lexmom_marketing_agent.agent import get_dashboard_data
+        return await asyncio.to_thread(get_dashboard_data)
     return JSONResponse({"error": "Dashboard data is not available for this agent"}, status_code=404)
+
+
+@app.get("/api/agents/lexmom_marketing_agent/artifacts/{run_id}/{filename}")
+async def lexmom_research_artifact(run_id: str, filename: str):
+    from agents.lexmom_marketing_agent.agent import resolve_research_artifact
+    artifact = resolve_research_artifact(run_id, filename)
+    if artifact is None:
+        return JSONResponse({"error": "Research artifact not found"}, status_code=404)
+    return FileResponse(artifact, filename=artifact.name)
 
 
 @app.post("/api/accountant/reminders/control")
@@ -2667,6 +2714,8 @@ async def run_agent_sse(
     gazette: str = None,
     fast_level: int = None,
 ):
+    if name == "lexmom_marketing_agent":
+        return JSONResponse({"error": "Research runs require a validated POST profile"}, status_code=405)
     input_data = {}
     if file_path:
         input_data["file_path"] = file_path
@@ -2680,12 +2729,16 @@ async def run_agent_sse(
 
 
 @app.post("/api/agents/{name}/run")
-async def run_agent_sse_post(name: str, payload: dict = Body(default=None)):
+async def run_agent_sse_post(name: str, request: Request, payload: dict = Body(default=None)):
+    if name == "lexmom_marketing_agent" and request.state.user.get("role") not in {"admin", "operator"}:
+        return JSONResponse({"error": "Agent execution requires an operator or admin account"}, status_code=403)
     return _start_agent_run(name, payload)
 
 
 @app.post("/api/agents/{name}/stop")
-async def stop_agent_run(name: str):
+async def stop_agent_run(name: str, request: Request):
+    if name == "lexmom_marketing_agent" and request.state.user.get("role") not in {"admin", "operator"}:
+        return JSONResponse({"error": "Agent control requires an operator or admin account"}, status_code=403)
     control = RUN_CONTROLS.get(name)
     if not control:
         return {"status": "idle", "note": "no active run"}
@@ -2711,13 +2764,15 @@ async def stop_agent_run(name: str):
 
 
 @app.post("/api/agents/{name}/force-clear")
-async def force_clear_agent_run(name: str):
+async def force_clear_agent_run(name: str, request: Request):
     """Hard-reset an agent's run state. Use when Stop alone doesn't bring
     the UI back to idle — typically because a previous worker thread
     crashed or got stuck. We signal stop + interruptors and then drop the
     entry so the UI can start a fresh run, even if the zombie thread
     refuses to die (it'll just be orphaned).
     """
+    if name == "lexmom_marketing_agent" and request.state.user.get("role") not in {"admin", "operator"}:
+        return JSONResponse({"error": "Agent control requires an operator or admin account"}, status_code=403)
     control = RUN_CONTROLS.get(name)
     if not control:
         return {"status": "idle", "note": "already cleared"}

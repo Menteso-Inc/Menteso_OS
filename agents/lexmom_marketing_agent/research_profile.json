@@ -1,0 +1,41 @@
+{
+  "mode": "live",
+  "product": "both",
+  "extraction_mode": "rules",
+  "spend_policy": "free_allowance_only",
+  "countries": [],
+  "target_segments": [
+    "solo",
+    "small",
+    "mid_size"
+  ],
+  "buyer_roles": [
+    "owner",
+    "founder",
+    "partner",
+    "administrator",
+    "operations"
+  ],
+  "size_unit": "attorneys",
+  "size_min": 1,
+  "size_max": 50,
+  "small_firm_max": 10,
+  "query_terms": [],
+  "seed_urls": [],
+  "exclude_domains": [],
+  "target_count": 5,
+  "target_contacts": 50,
+  "max_candidates": 50,
+  "max_queries": 3,
+  "max_pages_per_firm": 12,
+  "max_llm_calls": 0,
+  "max_verifications": 50,
+  "deadline_seconds": 900,
+  "request_timeout": 40,
+  "max_input_tokens": 20000,
+  "max_output_tokens": 3000,
+  "budget_usd": 0.0,
+  "enable_verification": true,
+  "research_freshness_days": 30,
+  "verification_freshness_days": 7
+}

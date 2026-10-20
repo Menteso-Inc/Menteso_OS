@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-14",
+  "scope": "Verified paused email conversation release",
+  "removed": [
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-context-email-20261014\\revise.py",
+      "bytes": 9975
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-context-email-20261014\\prepare_doc.py",
+      "bytes": 4459
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-context-email-20261014\\verify_doc.py",
+      "bytes": 1954
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-context-email-20261014\\deploy.py",
+      "bytes": 7214
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-context-email-20261014\\document-content.json",
+      "bytes": 32543
+    }
+  ],
+  "removedFileBytes": 56145.0,
+  "freeBeforeBytes": 8587522048,
+  "freeAfterBytes": 8587587584,
+  "preserved": [
+    "source code",
+    "campaigns.before-context.json",
+    "current review HTML/text",
+    "document verification and release evidence",
+    "private env and SSM receipts",
+    "live state and rollback",
+    "previous blocked cleanup paths"
+  ],
+  "taskProcessesStopped": 0,
+  "campaignEmailsSent": 0
+}
