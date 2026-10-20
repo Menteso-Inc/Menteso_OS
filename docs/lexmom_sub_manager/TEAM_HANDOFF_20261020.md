@@ -27,6 +27,13 @@ monthly completed-scope reuse. Imported observations stay outside qualified
 inventory and campaigns. See [the release receipt](SOURCE_CARD_RELEASE_20261020.md)
 for exact changed files, live checks and completed deployment cleanup.
 
+The subsequent [responsive layout release](RESPONSIVE_LAYOUT_RELEASE_20261020.md)
+is also live: full-width saved leads, contained tables, narrow-screen labeled
+rows, wrapping filters and a shared mobile agent menu. Only three static files
+were patched, with no service restart or environment/business-state change.
+Final UI source is `bc104a7`; the research backend boundary remains as documented
+in the source-card release. Sending/publishing remain disabled.
+
 The related [directory-discovery update](DIRECTORY_RESEARCH_20261020.md) adds the
 editable 16-source catalogue, bounded search/profile handling and durable holds.
 Its reader/catalogue/backend dependencies were included in this scoped release;

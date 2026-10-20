@@ -689,3 +689,25 @@ Superseded by the worldwide-discovery clarification below.
   backup, live state, source checkpoints, environment and compact evidence.
   Exact paths, sizes and measured disk space before/after are recorded in
   `docs/lexmom_sub_manager/SOURCE_CARD_RELEASE_20261020.md`.
+
+## 2026-10-20 — Responsive research layout and shared agent navigation
+
+- Repaired the cramped source/lead layout: saved leads now span the full content
+  width, source results have their own scroll boundary, and filters/statistics
+  adapt to container width. Narrow tables become labeled rows with explicit
+  table semantics; long emails remain inside their fields.
+- Added a shared mobile sidebar menu with an overlay, inert closed/background
+  states, keyboard navigation, focus handling and Escape dismissal. Preserved
+  desktop sidebar behavior and existing dashboard/PCT customizations.
+- Deployed only three scoped static files, ending at source commit `bc104a7`.
+  No service was restarted, environment changed or business data written.
+  Sending, publication and paid-generation flags stayed off.
+- Validation: 18 manager checks plus the actual-live-asset UI harness passed;
+  JavaScript syntax, PCT reconnect and publication audits passed. The live site
+  had no horizontal page overflow at 320/375/768/1024/1366/1920 CSS pixels.
+  Verified the mobile menu, Launch filter, 375-pixel drawer and light theme;
+  restored normal viewport, filters and theme.
+- Stopped the task-owned preview and removed five exact duplicate build/transfer
+  files. Kept source, environment, business state, both AWS rollback releases and
+  compact evidence. Exact paths and measured free space are recorded in
+  `docs/lexmom_sub_manager/RESPONSIVE_LAYOUT_RELEASE_20261020.md`.
