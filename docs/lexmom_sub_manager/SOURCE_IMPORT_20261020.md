@@ -1,7 +1,9 @@
 # URL source tests and bulk batches — 20 October 2026
 
-Development source, not an AWS deployment. No real directory was enabled or
-downloaded by this change. All campaign and social write switches remain off.
+The source test card and bounded reader are deployed on the isolated AWS Lexmom
+service. See [deployment and cleanup evidence](SOURCE_CARD_RELEASE_20261020.md).
+No real directory was enabled or downloaded. Campaign and social write switches
+remain off.
 
 ## User flow
 
@@ -155,8 +157,12 @@ HTTP authorization. No real source/API operation or research-provider credit was
 used. Provider-specific feed fees are not inferred to be zero merely because
 SerpAPI, Hunter and model operations are absent.
 
-AWS identity verification failed during this work; its diagnostic stays private.
-No production deployment, restart, data migration or deployment cleanup ran.
-After access is restored, use the isolated Lexmom procedure in
-`TEAM_HANDOFF_20261020.md`, preserve shared static/PCT customizations and verify
-the actual authenticated live card before reporting it deployed.
+An initial AWS identity failure delayed deployment. After the authorized Devteam
+session was renewed, the source card was deployed and verified in the authenticated
+public dashboard. Only `lexmom-dashboard.service` was restarted. Two selected-page
+smoke tests returned zero and one unverified observations, respectively; no search,
+verification or model operations were used. The four original prospect tables and
+the environment file passed before/after hash checks. Task-owned transfer/staging
+files were removed after verification; rollback and business state were retained.
+The saved normal-research profile and complete manager source were not replaced.
+See `SOURCE_CARD_RELEASE_20261020.md` for the precise deployment boundary.

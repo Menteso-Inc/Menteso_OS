@@ -667,3 +667,25 @@ Superseded by the worldwide-discovery clarification below.
   and PCT reconnect checks. Reviewed the synthetic credential-URL rejection
   fixture during the pre-publication audit; no real environment values or
   private business records are included in this source change.
+
+## 2026-10-20 — Source test card deployed and verified
+
+- Renewed the authorized Devteam AWS session and deployed source commit
+  `1869d1c3ad2b4b67b45f7f1907fa47c9904bae9a` to the isolated Lexmom runtime.
+  Restarted only `lexmom-dashboard.service`; the shared OS container and PCT
+  runtime were preserved. Actual customized static assets were patched in scope,
+  including the server's existing HTML rather than an older public asset copy.
+- All 201 research tests passed on AWS staging; the actual patched JavaScript
+  passed syntax, manager UI and PCT reconnect checks. Served asset hashes matched;
+  anonymous API access returned 401. Authenticated live extraction and the source
+  Details drawer were verified with two selected-page tests (zero/one unverified
+  observations), using zero search, verification or model operations.
+- Hash checks confirmed all four original prospect tables and the environment
+  file were unchanged. Existing inventory displayed 355 contacts, with 52 currently
+  qualified/verified and 303 held. No real directory/feed was enabled, no campaign
+  sent and no social post published. Sending/publishing switches remain off.
+- Removed only inspected task-owned AWS staging/transfer copies and seven local
+  duplicate build/download files. Retained rollback source/static assets, database
+  backup, live state, source checkpoints, environment and compact evidence.
+  Exact paths, sizes and measured disk space before/after are recorded in
+  `docs/lexmom_sub_manager/SOURCE_CARD_RELEASE_20261020.md`.
