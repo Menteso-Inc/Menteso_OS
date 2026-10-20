@@ -5,6 +5,9 @@ The first working specialist under **Lexmom Sub Manager**. It researches solo, s
 ## Current capability
 
 - Discover firm websites through SerpAPI, or research supplied public firm URLs.
+- Discover lawyer directories with the saved `discover_directories` option, enforce
+  reviewed per-source rights/robots/limits, and research permitted profile candidates.
+  See [directory research and current source holds](../../docs/lexmom_sub_manager/DIRECTORY_RESEARCH_20261020.md).
 - Read bounded public HTML pages, preserve field-level excerpts and retrieval dates, and deduplicate by canonical host.
 - Qualify firms using published identity, location, legal practice and an explicit attorney count or bounded current legal-team roster. Roster counts are labelled separately; unknown or contradictory facts remain `needs_research`.
 - Preserve published contacts and buyer-role matches. Name/role/email association is `unconfirmed` unless a supporting excerpt connects them; mailbox verification is separate.

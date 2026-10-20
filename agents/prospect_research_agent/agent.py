@@ -269,6 +269,7 @@ def _result(request, session, records, pending, budget, status="success", errors
         "status": status, "run_id": session.run_id, "mode": request.mode,
         "profile_fingerprint": _profile_key(request),
         "data": {"firms": records, "pending_urls": pending,
+                 "directory_profiles": list(getattr(session, "directory_profiles", {}).values()),
                  "candidates": getattr(session, "discovery_audit", []), "summary": {
             **{state: counts[state] for state in ("qualified", "needs_research", "excluded")},
             "researched": len(records), "countries": dict(Counter(row.get("country") or "unknown" for row in records)),
@@ -382,6 +383,14 @@ def _run_agent(input_data=None, on_step=None, cancelled=None, session=None, sour
         known, history_warnings = recent_research(session, request)
         errors.extend({"phase": "history", "error": warning} for warning in history_warnings)
         tools.known_domains = known
+        tools.source_access_store = inventory
+        if not hasattr(tools, "directory_profiles"):
+            tools.directory_profiles = {}
+        if request.resume_run_id:
+            from .models import DirectoryProfile
+            tools.directory_profiles.update({row["source_url"]: DirectoryProfile.model_validate(row).model_dump()
+                for row in checkpoint["data"].get("directory_profiles", [])})
+        session.directory_profiles = tools.directory_profiles
         tools.discovery_records = audit
         tools.query_reserver = lambda queries, limit: inventory.reserve_queries(inventory_profile, session.run_id, queries, limit)
         tools.incremental_read = True
@@ -438,13 +447,15 @@ def _run_agent(input_data=None, on_step=None, cancelled=None, session=None, sour
             if domain not in reserved_candidates:
                 budget.consume("candidates")
                 reserved_candidates.add(domain)
-            if request.mode == "live" and source_kind(url) == "directory":
+            if request.mode == "live" and entry["source_kind"] == "directory":
                 try:
                     resolved = langchain_tools["resolve_directory"].invoke({"url": url}) if "resolve_directory" in langchain_tools else None
                 except (BudgetExceeded, RunCancelled):
                     raise
                 except Exception as exc:
                     entry.update(status="needs_research", reason=str(redact(f"Directory resolution failed: {exc}")))
+                    if "directory_" in str(exc):
+                        entry["source_access"] = "blocked" if any(marker in str(exc) for marker in ("blocked", "challenge")) else "review_required"
                     pending.pop(0)
                     continue
                 if not resolved:

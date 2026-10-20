@@ -2040,7 +2040,11 @@ function renderLexmomResults(result, {auditOnly = false} = {}) {
         </div>`}
         ${(result.data?.candidates || []).length ? `<details class="lexmom-evidence"><summary>Discovery decisions (${result.data.candidates.length})</summary>
             <div class="lexmom-table-scroll" role="region" aria-label="Discovery decisions" tabindex="0"><table class="lexmom-table"><thead><tr><th scope="col">Search / source</th><th scope="col">Candidate</th><th scope="col">Outcome</th><th scope="col">Reason</th></tr></thead><tbody>
-            ${result.data.candidates.map(candidate => `<tr><td>${esc(candidate.query || "Supplied website")}${candidate.position ? `<br>Search position ${esc(String(candidate.position))}` : ""}</td><td>${esc(candidate.title || "Source candidate")}<br>${lexmomSourceLink(candidate.url, "View source")}${candidate.resolved_url ? `<br>${lexmomSourceLink(candidate.resolved_url, "Firm website")}` : ""}${candidate.snippet ? `<p>${esc(candidate.snippet)}</p>` : ""}</td><td>${esc((candidate.status || "pending").replaceAll("_", " "))}</td><td>${esc(candidate.reason || "")}${candidate.previous_run_id ? `<br>Saved run: ${esc(candidate.previous_run_id)}` : ""}</td></tr>`).join("")}
+            ${result.data.candidates.map(candidate => `<tr><td>${esc(candidate.query || "Supplied website")}${candidate.position ? `<br>Search position ${esc(String(candidate.position))}` : ""}</td><td>${esc(candidate.title || "Source candidate")}<br>${lexmomSourceLink(candidate.url, "View source")}${candidate.resolved_url ? `<br>${lexmomSourceLink(candidate.resolved_url, "Firm website")}` : ""}${candidate.snippet ? `<p>${esc(candidate.snippet)}</p>` : ""}</td><td>${esc((candidate.status || "pending").replaceAll("_", " "))}${candidate.source_access ? `<br>Collection: ${esc(candidate.source_access.replaceAll("_", " "))}` : ""}</td><td>${esc(candidate.reason || "")}${candidate.terms_url ? `<br>${lexmomSourceLink(candidate.terms_url, "Source terms")}` : ""}${candidate.previous_run_id ? `<br>Saved run: ${esc(candidate.previous_run_id)}` : ""}</td></tr>`).join("")}
+            </tbody></table></div></details>` : ""}
+        ${(result.data?.directory_profiles || []).length ? `<details class="lexmom-evidence"><summary>Directory profile candidates (${result.data.directory_profiles.length}) · awaiting firm research</summary>
+            <div class="lexmom-table-scroll" role="region" aria-label="Directory profile candidates" tabindex="0"><table class="lexmom-table"><thead><tr><th scope="col">Source</th><th scope="col">Published contact</th><th scope="col">Firm website</th><th scope="col">Collected at</th></tr></thead><tbody>
+            ${result.data.directory_profiles.map(profile => `<tr><td>${lexmomSourceLink(profile.source_url, "View profile")}</td><td>${(profile.contacts || []).map(contact => `${esc(contact.name || "Name unresolved")} · ${esc(contact.role || "Role unresolved")}<br>${esc(contact.email || "No published email")}`).join("<br>") || "Contact details unresolved"}</td><td>${profile.official_website ? lexmomSourceLink(profile.official_website, "Research firm") : "Website unresolved"}</td><td>${esc(formatTimestamp(profile.retrieved_at))}</td></tr>`).join("")}
             </tbody></table></div></details>` : ""}
         ${artifacts ? `<details class="lexmom-evidence"><summary>Saved run files</summary><div class="lexmom-exports">${artifacts}</div></details>` : ""}
         ${auditOnly ? "" : firms.length ? `<div class="lexmom-table-scroll" role="region" aria-label="Scrollable firm records" tabindex="0"><table class="lexmom-table">
@@ -2079,7 +2083,18 @@ function renderLexmomResearchWorkspace(snapshot) {
     const table = snapshot.leadTable;
     return `${snapshot.inventoryError ? `<div class="warning-banner">${esc(snapshot.inventoryError)}</div>` : ""}
         ${table ? renderLexmomLeadTable(table) : '<div class="memory-empty">Lead activity is loading. Refresh to view the saved contacts.</div>'}
+        ${renderLexmomDirectorySources(snapshot)}
         ${latest ? `<details class="lexmom-log lexmom-run-history"><summary>Last run details &amp; downloads</summary>${renderLexmomResults(latest, {auditOnly: true})}</details>` : ""}`;
+}
+
+function renderLexmomDirectorySources(snapshot) {
+    if (snapshot.directoryError) return `<div class="warning-banner">${esc(snapshot.directoryError)}</div>`;
+    const sources = snapshot.directorySources || [];
+    if (!sources.length) return "";
+    return `<details class="lexmom-evidence"><summary>Directory sources (${sources.length})</summary>
+        <div class="lexmom-table-scroll" role="region" aria-label="Directory collection rules" tabindex="0"><table class="lexmom-table"><thead><tr><th scope="col">Directory</th><th scope="col">Collection</th><th scope="col">Reason</th><th scope="col">Terms / reviewed</th></tr></thead><tbody>
+        ${sources.map(source => `<tr><th scope="row">${lexmomSourceLink(source.homepage, source.name)}</th><td>${esc((source.state || "review_required").replaceAll("_", " "))}</td><td>${esc(source.reason || "Source review required")}</td><td>${source.terms_url ? lexmomSourceLink(source.terms_url, "Source terms") : "Terms review pending"}<br>${esc(source.reviewed_on || "Not reviewed")}</td></tr>`).join("")}
+        </tbody></table></div></details>`;
 }
 
 function renderLexmomLeadTable(table) {

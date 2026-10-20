@@ -21,6 +21,7 @@
   "size_max": 50,
   "small_firm_max": 10,
   "query_terms": [],
+  "discover_directories": true,
   "seed_urls": [],
   "exclude_domains": [],
   "target_count": 5,

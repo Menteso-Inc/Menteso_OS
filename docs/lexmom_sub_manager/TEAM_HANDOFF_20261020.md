@@ -19,6 +19,12 @@ not instructions to repeat their tests against live recipients.
 
 ## Last verified production checkpoint
 
+The subsequent [directory-discovery source update](DIRECTORY_RESEARCH_20261020.md)
+adds the editable 16-source catalogue, bounded search/profile handling and durable
+source holds. It is not deployed by this handoff. No real source is currently
+configured as permitted for automated commercial collection; tests use synthetic
+permissions. Do not mistake recognized sources for active licensed integrations.
+
 The last live research check was **16 October 2026**, not a fresh check on the
 date of this handoff. It confirmed 53 research-ready contacts across 12 firms:
 45 named buyer-role contacts and eight general firm inboxes. Primary routing was

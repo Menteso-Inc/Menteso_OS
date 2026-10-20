@@ -2,7 +2,7 @@
 
 from shared.self_test import SelfTest
 
-from .models import FirmRecord, DiscoveryDecision
+from .models import FirmRecord, DiscoveryDecision, DirectoryProfile
 
 
 def valid_records(result):
@@ -13,6 +13,8 @@ def valid_records(result):
         FirmRecord.model_validate(row)
     for candidate in result.get("data", {}).get("candidates", []):
         DiscoveryDecision.model_validate(candidate)
+    for profile in result.get("data", {}).get("directory_profiles", []):
+        DirectoryProfile.model_validate(profile)
     return True
 
 

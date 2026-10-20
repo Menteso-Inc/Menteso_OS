@@ -159,13 +159,18 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result["data"]["firms"][0]["domain"], "new.example")
 
     def test_directory_resolves_published_website_before_qualification(self):
+        from .test_directory_sources import permitted_policy, TERMS_TEXT
         listing = "https://lawzana.com/lawyer/alpha"
         self.rows = [{"link": listing, "title": "Alpha Legal law firm", "snippet": "Our team"}]
         self.html[listing] = f"Alpha Legal <a href='{ROOT}'>Visit website</a>"
-        result = self.execute()
+        self.html["https://lawzana.com/terms"] = TERMS_TEXT
+        with patch("agents.prospect_research_agent.tools.load_directory_policy", return_value=permitted_policy("lawzana.com")), patch("agents.prospect_research_agent.tools.time.sleep"):
+            result = self.execute()
         self.assertEqual(result["status"], "success", result["errors"])
         self.assertEqual(result["data"]["firms"][0]["domain"], "alpha.example")
         self.assertEqual(result["data"]["candidates"][0]["resolved_url"], ROOT)
+        self.assertEqual(result["data"]["directory_profiles"][0]["source_url"], listing)
+        self.assertFalse(result["data"]["directory_profiles"][0]["outreach_eligible"])
         self.assertTrue(all("lawzana.com" not in item["source_url"] for item in result["data"]["firms"][0]["evidence"]))
 
     def test_ambiguous_or_unsafe_directory_links_do_not_spend_model_calls(self):

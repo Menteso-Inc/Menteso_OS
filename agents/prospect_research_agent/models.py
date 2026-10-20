@@ -64,14 +64,38 @@ class DiscoveryDecision(Contract):
     reason: str = Field(max_length=2000)
     previous_run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,80}$")
     source_host: str | None = Field(default=None, max_length=253)
+    source_access: Literal["permitted", "review_required", "restricted", "path_disallowed", "blocked"] | None = None
+    directory_name: str | None = Field(default=None, max_length=100)
+    terms_url: str | None = Field(default=None, max_length=2000)
+    terms_reviewed_on: str | None = Field(default=None, max_length=10)
 
-    @field_validator("url", "resolved_url")
+    @field_validator("url", "resolved_url", "terms_url")
     @classmethod
     def public_source(cls, value):
         if value is None:
             return None
         from .tools import validate_public_url
         return validate_public_url(value)
+
+
+class DirectoryProfile(Contract):
+    source_url: str
+    retrieved_at: str
+    contacts: list[ExtractedContact] = Field(default_factory=list, max_length=20)
+    evidence: list[Evidence] = Field(default_factory=list, max_length=60)
+    official_website: str | None = None
+    research_status: Literal["needs_primary_research"] = "needs_primary_research"
+    outreach_eligible: Literal[False] = False
+
+    _source = field_validator("source_url")(web_url)
+
+    @field_validator("official_website")
+    @classmethod
+    def public_website(cls, value):
+        if value is not None:
+            from .tools import validate_public_url
+            return validate_public_url(value)
+        return value
 
 
 class ResearchRequest(Contract):
@@ -89,6 +113,7 @@ class ResearchRequest(Contract):
     small_firm_max: int = Field(default=10, ge=2, le=1000)
     size_unit: Literal["attorneys"] = "attorneys"
     query_terms: list[str] = Field(default_factory=list, max_length=10)
+    discover_directories: bool = False
     seed_urls: list[str] = Field(default_factory=list, max_length=50)
     exclude_domains: list[str] = Field(default_factory=list, max_length=500)
     target_count: int = Field(default=25, ge=1, le=25)

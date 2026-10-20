@@ -213,6 +213,9 @@ class ManagerTests(unittest.TestCase):
             snapshot = get_dashboard_data()
         self.assertEqual(snapshot["lastResult"]["data"]["firms"][0]["name"], "Evidenced Firm")
         self.assertFalse(snapshot["capabilities"]["outreach"])
+        self.assertEqual(len(snapshot["directorySources"]), 16)
+        self.assertEqual(snapshot["directorySources"][0]["name"], "Justia")
+        self.assertEqual(snapshot["directorySources"][0]["state"], "restricted")
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for the frontend check")
     def test_saved_profile_dashboard_evidence_and_safe_exports_render(self):
@@ -270,6 +273,12 @@ assert(!main.innerHTML.includes('Email verification is stale'));
 const drawer = vm.runInContext('renderLexmomLeadDrawer(state.lexmom.snapshot.leadTable.rows[0],state.lexmom.snapshot.leadTable)',context);
 assert(drawer.includes('Email verification is stale'));
 assert(drawer.includes('Close lead details'));
+const directorySources = vm.runInContext(`renderLexmomDirectorySources({directorySources:[{name:'Justia',homepage:'https://lawyers.justia.com/',state:'restricted',reason:'<script>bad</script>',terms_url:'javascript:alert(1)',reviewed_on:'2026-10-20'}]})`, context);
+assert(directorySources.includes('Directory sources (1)'));
+assert(directorySources.includes('restricted'));
+assert(directorySources.includes('2026-10-20'));
+assert(!directorySources.includes('<script>bad</script>'));
+assert(!directorySources.includes('href="javascript:'));
 const unsafeDrawer = vm.runInContext(`renderLexmomLeadDrawer({email:'safe@example.org',name:'<script>bad</script>',website:'javascript:alert(1)',hold_reasons:['<script>bad</script>'],product_assessments:{manage:{reasons:['<img onerror=bad>']}},evidence:[{excerpt:'<svg onload=bad>',source_url:'javascript:alert(1)'}]}, {rules:{}})`,context);
 assert(!unsafeDrawer.includes('<script>bad</script>'));
 assert(!unsafeDrawer.includes('<img onerror='));

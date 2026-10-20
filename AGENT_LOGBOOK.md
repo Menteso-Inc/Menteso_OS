@@ -566,3 +566,37 @@ For every future change, append:
 - Included manager/research/email/social source, shared utilities, dashboard assets, public branded artwork, deployment templates and historical documentation. Added a current source/runtime/configuration map and unfinished-work checklist in `docs/lexmom_sub_manager/TEAM_HANDOFF_20261020.md`; linked it from the root handoff, README and environment guide. Corrected stale manager/research documentation and made the test directory importable for standard unittest discovery.
 - Publication audit checked pending text against known protected environment values and credential patterns. Reviewed three documentation/test URL literals as synthetic examples. Actual credentials, protected IDs, lead/mailbox databases, runtime memory/logs, private verification media and account/mailbox/lead screenshots stay outside Git. A narrow ignore rule preserves private screenshots locally while allowing authored public campaign artwork.
 - Offline validation: 144 Prospect Research, 153 shared/email/social/runtime/dashboard, 18 manager and 100 PCT checks passed (415 total), plus JavaScript syntax and PCT reconnect checks. No provider workload, message, upload, live service restart or data migration was run for publication. The 16 October research/connection snapshots remain dated historical evidence and were not represented as fresh 20 October checks.
+
+## 2026-10-20 — Directory-led Prospect Research source update
+
+- User requested directory discovery before Apollo, including Justia, Avvo,
+  FindLaw, Martindale-Hubbell and similar lawyer-profile platforms, following
+  their access/use rules and avoiding access-block evasion.
+- Added an editable 16-source catalogue, mixed directory/website search queries,
+  unknown-source recognition, dated collection/storage/commercial-use reviews,
+  live full-document terms fingerprint and robots checks, reviewed profile paths,
+  conservative per-source page/delay limits and durable denial/rate-limit holds.
+  The saved profile enables directory discovery within the same search/credit caps.
+- Permitted-source profiles retain explicitly associated contacts and evidence
+  separately from verified leads. One labelled firm website feeds the existing
+  primary research/Launch/Manage qualification and verification pipeline. Added
+  a collapsed directory-source status table and source/terms audit details.
+- Current catalogue: Justia, Avvo and FindLaw are restricted for the proposed
+  commercial collection under the checked published terms; the other 13 require
+  review. No real directory is configured as permitted. An IP block is not the
+  criterion for whether terms apply. There is no bulk all-lawyer dump, permission
+  bypass, automatic approval of an unfamiliar site, proxy rotation or CAPTCHA solving.
+- Added the `source_holds` table without modifying existing firm/contact data.
+  Runtime holds remain private and survive process restarts; automatic retries
+  cannot clear review holds or shorten another worker's pause. Existing cached
+  inventory, target-count and seven-day verification rules remain intact.
+- Offline validation: 171 research checks, 153 shared/email/social/runtime checks
+  and 18 manager/dashboard checks passed (342 total), plus JavaScript syntax and
+  PCT reconnect checks. Tests use synthetic permissions, mock HTTP/providers and
+  temporary state. No research credits, live campaign or social action was used.
+- Scope: source/UI/configuration/documentation only, on the existing handoff
+  branch. No AWS deployment, service restart, production data migration or
+  deployment cleanup was performed. Existing production secrets, data, active
+  processes and disabled send/publish settings were not changed. A future isolated
+  deployment must follow `CODEX_HANDOFF.md`; rollback restores source while
+  preserving newer databases/holds. Details: `DIRECTORY_RESEARCH_20261020.md`.
