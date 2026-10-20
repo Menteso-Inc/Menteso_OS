@@ -1,7 +1,8 @@
 # URL source tests and bulk batches — 20 October 2026
 
 The source test card and bounded reader are deployed on the isolated AWS Lexmom
-service. See [deployment and cleanup evidence](SOURCE_CARD_RELEASE_20261020.md).
+service. See [initial deployment evidence](SOURCE_CARD_RELEASE_20261020.md) and
+[the public-source repair and cleanup receipt](PUBLIC_SOURCE_RELEASE_20261020.md).
 No real directory was enabled or downloaded. Campaign and social write switches
 remain off.
 

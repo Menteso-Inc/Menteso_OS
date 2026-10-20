@@ -147,7 +147,11 @@ data, fixtures and mocked providers; do not replace them with real sends.
 
 1. Recheck current service/connection state and provider quotas before spending
    credits. The handoff does not assert today's live status from an old receipt.
-2. Improve independent Launch discovery; do not confuse multiple contacts at one
+2. The [public-source reader repair](PUBLIC_SOURCE_RELEASE_20261020.md) follows
+   linked information pages and retains sourced people without email. Its two
+   company-site smoke jobs are observations, not new qualified leads. Chrome
+   controls timed out during the final visual check; that check remains pending.
+   Improve independent Launch discovery; do not confuse multiple contacts at one
    firm with multiple companies. Preserve evidence, buyer association, freshness
    and domain/email deduplication.
 3. Complete the email activation worker and five-step lifecycle against the real
