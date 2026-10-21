@@ -30,7 +30,8 @@ from shared.self_debug import run_with_self_debug
 from .scraper import download_wipo_excel
 from .browser import PatentBrowser, BrowserStopRequested
 from .pdf_extractor import extract_contacts_from_pdf
-from .ai_verifier import validate_configuration, result_metadata, enabled as ai_enabled
+from .ai_verifier import (validate_configuration, result_metadata, enabled as ai_enabled,
+                          provider_name as ai_provider, model_name as ai_model)
 from .pipeline import ChunkedPipelineManager, ProgressFile, RESULT_STATUS_PRIORITY
 from .tests import tests
 
@@ -116,7 +117,7 @@ AGENT_CONFIG = {
     "goal": "Extract contact information from WIPO patent filings",
     "status": "active",
     "version": "2.0.0",
-    "requires_llm": False,
+    "requires_llm": True,
     "accepts_upload": True,
     "upload_types": [".xlsx", ".xls"],
     "input_fields": [
@@ -317,6 +318,9 @@ def run_agent(input_data=None, on_step=None):
     def browser_event(event_data):
         if on_step:
             on_step({"type": "browser", **event_data})
+
+    if ai_enabled():
+        step(f"[AI Provider] {ai_provider()} / {ai_model()}")
 
     # --- Step 1: Load memory ---
     step("Loading PCT agent memory...")
