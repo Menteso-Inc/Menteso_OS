@@ -113,7 +113,7 @@ def cache_material():
     config = settings()
     return {**model_identity(config), "context_length": config["num_ctx"],
             "max_output_tokens": config["num_predict"], "thinking": False,
-            "transport_hash": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+            "transport_hash": hashlib.sha256(Path(__file__).read_text(encoding="utf-8").encode("utf-8")).hexdigest()}
 
 
 def _image_budget(data):

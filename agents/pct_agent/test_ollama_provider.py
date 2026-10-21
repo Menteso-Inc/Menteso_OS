@@ -5,7 +5,7 @@ import re
 import struct
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -245,3 +245,12 @@ def test_malformed_model_inventory_fails_closed(monkeypatch, metadata):
     monkeypatch.setattr(local, '_json_request', lambda *args: metadata)
     with pytest.raises(RuntimeError, match='ollama_invalid_model_metadata'):
         REAL_IDENTITY()
+
+
+def test_transport_fingerprint_survives_windows_line_ending_conversion(monkeypatch, tmp_path):
+    expected = local.cache_material()['transport_hash']
+    source = Path(local.__file__).read_text(encoding='utf-8')
+    windows_copy = tmp_path / 'transport.py'
+    windows_copy.write_bytes(source.replace('\n', '\r\n').encode('utf-8'))
+    monkeypatch.setattr(local, '__file__', str(windows_copy))
+    assert local.cache_material()['transport_hash'] == expected
