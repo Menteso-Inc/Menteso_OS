@@ -2,6 +2,29 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## PCT Ollama integration prepared - 21 October 2026
+
+The optional `PCT_AI_PROVIDER=ollama` transport and synthetic teaching examples
+are prepared on `pct-ollama-integration-20261021`. OpenAI remains the default;
+the live local checkout/configuration has not been switched by this work.
+See `agents/pct_agent/AI_VERIFICATION.md` for provider settings and limitations.
+The installed local model is Qwen3.5 4B, with no GPU acceleration detected.
+
+The initial email-only trial matched three selected pages but averaged 169.4
+seconds per page. Offline regression and saved-evidence replay are separate from
+fresh model accuracy. The real synthetic provider-contract check was interrupted
+only to free the model for the user's explicitly requested chat terminal; do not
+record it as passed. Complete that check before local activation, then evaluate
+the user's processed/unprocessed sheets with separate outputs and PDF-verified
+labels. Their exact test filenames remain to be confirmed. Do not restart an
+active PCT job or overwrite previous workbooks/evidence.
+
+The eight added examples teach transcription/ownership through prompts. They
+are synthetic, contain no real sheet answers and do not change model weights.
+Actual fine-tuning has not been performed. Local startup-task support is prepared
+in `scripts/keep-pct-ollama.ps1`, not installed by copying or pulling this source.
+Keep the public PCT route, dashboard keeper, existing environment and tunnel.
+
 ## Agent pipeline continuation — 20 October 2026
 
 Read [the current team handoff](docs/lexmom_sub_manager/TEAM_HANDOFF_20261020.md)

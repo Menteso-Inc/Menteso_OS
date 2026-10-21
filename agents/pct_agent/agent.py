@@ -306,7 +306,8 @@ def run_agent(input_data=None, on_step=None):
     try:
         validate_configuration(check_api=True)
     except (ValueError, OSError) as exc:
-        detail = str(exc) if str(exc).startswith("openai_http_") else "Check the OpenAI key, connection and contact rules"
+        detail = (str(exc) if re.fullmatch(r"(?:openai|ollama|pct_ai)_[a-z0-9_]{1,120}", str(exc))
+                  else "Check the configured AI provider, connection and contact rules")
         return _failure(f"PCT AI verification is unavailable: {detail}")
 
     def step(msg):
@@ -728,7 +729,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
     fatal_error = ""
     interval = bounded_setting("PCT_PIPELINE_MIN_ROW_INTERVAL_SECONDS", 10.0, 1.0, 60.0)
     verification_workers = bounded_setting("PCT_PDF_VERIFICATION_WORKERS", 1, 1, 4, int)
-    api_concurrency = bounded_setting("PCT_PDF_API_CONCURRENCY", 8, 2, 8, int)
+    api_concurrency = bounded_setting("PCT_PDF_API_CONCURRENCY", 8, 1, 8, int)
     pending_limit = max(verification_workers,
                         bounded_setting("PCT_PIPELINE_PENDING_PDFS", 2, 1, 8, int))
 

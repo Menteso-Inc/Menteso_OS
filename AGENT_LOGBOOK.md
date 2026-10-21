@@ -7,6 +7,18 @@ This is the operating register for Menteso agents. Credentials are never stored
 in this document. Every agent must use its own mailbox identity, secret boundary,
 runtime, data directory, and deployment process.
 
+## 2026-10-21 - Optional local Qwen provider prepared; live activation pending
+
+- User requested reducing OpenAI dependency using a local model, retaining the PCT pipeline, testing processed/unprocessed sheets and teaching the model from corrections. Work prepared in isolated `pct-ollama-integration-20261021`; live source/configuration and completed results remain unchanged.
+- Ollama was already installed. Downloaded official Qwen3.5 4B locally; three selected saved-page email checks matched exactly, averaging 169.4 seconds per page on the four-core Xeon / 24 GB RAM / CPU-only server. This is not a full accuracy or throughput benchmark.
+- Added loopback-only Qwen vision transport, model/vision/digest preflight, strict output/page checks, bounded local inference, provider-aware cache/resume identity, longer local timeouts and safe error reporting. Original image rendering, two required readings, contact selection, DNS policy and twelve-column Excel writer are retained; no paid fallback. Existing OpenAI handoff fingerprints retain their original policy calculation.
+- Added eight synthetic prompt-teaching examples for exact characters, punctuation, uncertainty and contact ownership. No model-weight fine-tuning or automatic learning from unverified human/model output. Private workbook/PDF answers are excluded from source.
+- Added offline provider regressions, a real single-slot multiprocess regression, an opt-in synthetic inference/report check and a Windows local-model keeper script. Existing model weights are reused; no dependency changes or paid inference.
+- Validation: 136 scoped tests passed, including the existing PCT suites and actual single-slot spawned-worker test. PowerShell parse/path checks and Git whitespace checks passed. Saved-evidence replay: 100/100 identical contact results and matching workbook values/checked formatting. This reuses recorded AI/OCR/DNS observations and does not establish new model accuracy.
+- User requested a separate interactive Qwen terminal. Opened `Qwen3.5 - Local Chat` in the user's desktop session; stopped only the two Python processes of our isolated synthetic contract test. Its incomplete run is recorded as interrupted, never successful. PCT was idle; its dashboard, keeper, tunnel and outputs were not stopped or changed.
+- Activation/backup: no live source replacement, configuration change, new scheduled task, service restart or bulk test. Consequently no production rollback is required. Source is isolated; local model/trial artifacts are under the operator's profile. Complete the actual provider check and a fresh idle preflight, then back up only the target before activation. Preserve all later data; do not restore a whole tree.
+- External behavior: no WIPO scrape, outbound email, campaign, AWS deployment or GPU purchase. The model installation and direct chat were authorized by the user. Actual model-weight training and representative accuracy acceptance remain outstanding.
+
 ## Safety rules
 
 1. Never reuse one agent's Gmail token by changing only the mailbox address.

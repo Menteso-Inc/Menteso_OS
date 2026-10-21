@@ -1,0 +1,42 @@
+[
+  {
+    "observed": "Applicant Name: Amita Krishnan. Printed email: amita.krishan99@example.com.",
+    "expected": "Email amita.krishan99@example.com, exactly as printed. Do not add the extra n from Krishnan.",
+    "explanation": "A person's name does not determine the spelling of their email. The image is the evidence."
+  },
+  {
+    "observed": "Printed email: office@alpha-ip.example.",
+    "expected": "office@alpha-ip.example. One hyphen, not two; do not replace it with a dot.",
+    "explanation": "Preserve punctuation and repeated-character counts."
+  },
+  {
+    "observed": "Printed email: office@lighting.example. A prior guess says office@lighting.example.com.",
+    "expected": "office@lighting.example. Ignore the prior guess and copy the printed domain.",
+    "explanation": "Never invent a familiar domain or suffix."
+  },
+  {
+    "observed": "The original contact line clearly prints accouting@example.org.",
+    "expected": "accouting@example.org, including the unusual spelling. Do not rewrite it as accounting@example.org.",
+    "explanation": "Transcription is not spelling correction."
+  },
+  {
+    "observed": "The first character of a printed email could be uppercase I, lowercase l, or digit 1; the image does not resolve it.",
+    "expected": "Mark the observation legible=false and describe the ambiguity in uncertainties. Do not present a guessed spelling as verified.",
+    "explanation": "A plausible address is insufficient evidence for an exact character."
+  },
+  {
+    "observed": "One labeled agent block contains Email: patents@example.org; docket@example.net.",
+    "expected": "Two separate email fields, each retaining that block's owner, role, page and exact supporting evidence.",
+    "explanation": "Do not merge two printed addresses or drop the second one."
+  },
+  {
+    "observed": "Section IV-1 Name: Example Patent Counsel LLP. Later signature: Mira Example.",
+    "expected": "The agent contact name is Example Patent Counsel LLP. The signature is not a substitute contact name.",
+    "explanation": "Name selection must follow the labeled contact block."
+  },
+  {
+    "observed": "An applicant has a verified email. No agent contact block is printed.",
+    "expected": "Retain the applicant email under its applicant owner. Emit no invented agent name; the report writer supplies its existing display fallback.",
+    "explanation": "Missing agent information must not erase a verified applicant email."
+  }
+]

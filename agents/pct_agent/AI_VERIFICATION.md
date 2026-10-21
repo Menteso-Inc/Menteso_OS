@@ -81,3 +81,63 @@ unchanged. This handles a pre-existing control character in a phone field that
 otherwise prevented all subsequent workbook checkpoints from being written.
 Tabs, carriage returns, newlines, visible characters, column order and formatting
 are preserved. The regression suite includes this export failure and 100 tests.
+
+## Local Qwen provider - 21 October 2026
+
+`PCT_AI_PROVIDER=openai` remains the repository default. `ollama` uses the local
+Qwen3.5 vision server and `PCT_OLLAMA_MODEL` (default `qwen3.5:4b`); it does not
+require an OpenAI key and never falls back to a paid provider. CAPTCHA handling
+is a separate subsystem and is not switched by this contact-verification setting.
+Existing shared credentials must remain available to unrelated agents.
+
+Only the AI transport changes. The original images, page numbers/order, strict
+contact schema, two independent readings, focused rereads, contact selection,
+DNS checks, journal and exact twelve-column report writer remain in use. Qwen
+requests are serialized within each PDF process. On the current CPU-only server
+use one PDF worker, one API slot and two pending PDFs; both readings still run.
+The shared API bound now accepts one slot when using multiple worker processes.
+
+Ollama preflight checks the loopback server, installed model digest, Qwen3.5
+family and vision capability. Cloud models and redirects are refused. An optional
+`PCT_OLLAMA_MODEL_DIGEST` pin blocks replacement weights. Cache and resume identity
+include the local provider, actual model digest, context settings and transport
+revision. Existing OpenAI handoff fingerprints retain their original calculation;
+switching providers requires a new test run, not reuse of a differently verified
+handoff. Old journals and workbooks are preserved.
+
+The default context is 65,536 tokens with the original 7,000-token output budget.
+A conservative image/text budget rejects oversized requests before inference;
+it does not shrink images or skip pages to fit. The request timeout is 1,800
+seconds, configurable for CPU testing. Missing page acknowledgments, malformed
+JSON, token-limit stops and transport failures cannot export unverified OCR.
+They are errors, not evidence that a contact is absent. Error codes exclude raw
+response bodies. A failed row remains in the normal journal/error report for
+review or a separate retry sheet.
+
+`ollama_teaching_examples.json` adds eight synthetic examples to the existing
+rules when Ollama is selected. They teach exact characters, punctuation, unusual
+domains, uncertainty and contact ownership. They do not contain real test-row
+answers. This is prompt-based teaching, NOT model-weight fine-tuning. Any future
+learned corrections must be source-verified, reviewed and versioned; do not train
+automatically on a human workbook or on Qwen's own predictions. Keep training
+and evaluation filings separate, including duplicate/contact-family leakage.
+Private examples belong in an ignored `PCT_AI_RULES_FILE`, never public Git.
+
+The initial three-page email-only trial passed its three selected transcriptions
+but averaged 169.4 seconds per page on the four-core Xeon without a GPU. It does
+not prove full contact accuracy or production throughput. GPU/full-sheet accuracy
+acceptance remains separate from successful transport integration.
+
+Offline regression checks include `test_ollama_provider.py` alongside the five
+existing PCT suites. The opt-in `scripts/check_pct_ollama.py` performs real local
+inference on a synthetic PDF and writes isolated evidence and both report types.
+It checks the local service is idle and disables DNS only in that test process
+because its addresses use reserved example domains. It does not access WIPO,
+send emails or change production configuration.
+
+`scripts/keep-pct-ollama.ps1` can run in a dedicated Windows startup task with the
+installed executable and model-directory paths supplied explicitly. It binds
+only to 127.0.0.1 and starts a missing Ollama process without killing an existing
+listener. The PCT dashboard keeper and reverse tunnel remain separate. Authorized
+remote dashboard users still depend on this local machine being awake, online,
+and running all three services; installing Ollama does not remove that dependency.

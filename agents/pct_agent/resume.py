@@ -20,6 +20,8 @@ def policy_fingerprint():
                 "enabled": ai.enabled(),
                 "pages": get_env("PCT_AI_MAX_PAGES", default="5"),
                 "dns": get_env("PCT_EMAIL_DNS_CHECK", default="true")}
+    if ai.provider_name() == "ollama":
+        material["local_provider"] = ai.ollama_provider.cache_material()
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
 
 
