@@ -90,11 +90,11 @@ def test_second_read_failure_does_not_return_first_read(monkeypatch):
         ai._read_original_pages([(2, b"a"), (1, b"b")], ai.load_rules(), {})
 
 
-def test_local_requests_keep_both_reads_and_serial_bound(monkeypatch):
+def test_api_concurrency_never_exceeds_existing_two_request_limit(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     lock = threading.Lock()
     activity = {"active": 0, "maximum": 0, "calls": 0}
-    def request(*args, **kwargs):
+    def post(*args, **kwargs):
         with lock:
             activity["active"] += 1
             activity["maximum"] = max(activity["maximum"], activity["active"])
@@ -102,13 +102,18 @@ def test_local_requests_keep_both_reads_and_serial_bound(monkeypatch):
         time.sleep(0.03)
         with lock:
             activity["active"] -= 1
-        return extraction(field()).model_dump_json()
-    monkeypatch.setattr(ai.ollama_provider, "request", request)
+        return SimpleNamespace(status_code=200, json=lambda: {
+            "status": "completed", "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": extraction(field()).model_dump_json()}
+            ]}]
+        })
+    monkeypatch.setenv("PCT_OPENAI_API_KEY", "offline-test-placeholder")
+    monkeypatch.setattr(ai.requests, "post", post)
     with ThreadPoolExecutor(max_workers=2) as callers:
         futures = [callers.submit(ai._read_original_pages, [(1, b"a")], ai.load_rules(), {}) for _ in range(2)]
         for future in futures:
             assert len(future.result()) == 2
-    assert activity == {"active": 0, "maximum": 1, "calls": 4}
+    assert activity == {"active": 0, "maximum": 2, "calls": 4}
 
 
 def test_download_and_verification_overlap_without_crossing_rows():

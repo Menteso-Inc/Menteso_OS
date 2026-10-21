@@ -1,6 +1,6 @@
 """Tier 3 — Manual fallback.
 
-This handler engages the human without any model or paid API call.
+When DIY OCR and OpenAI vision both fail, this tier engages the human.
 
 Two modes:
 
@@ -91,7 +91,7 @@ def wait_for_manual(page, on_step=None, max_seconds=300):
 def _solve_in_place(page, step, max_seconds, image_bytes):
     """Headed-mode behavior — the user solves in the already-visible window."""
     _beep()
-    step("[Solver:Manual] Manual confirmation required — solve the captcha in the browser window")
+    step("[Solver:Manual] Auto-solvers exhausted — solve the captcha in the browser window")
     deadline = time.time() + max_seconds
     last_beep = time.time()
     while time.time() < deadline:
@@ -130,7 +130,7 @@ def _solve_via_popup(page, step, max_seconds, image_bytes):
         return False, image_bytes
 
     _beep()
-    step("[Solver:Manual] Manual confirmation required — opening a Chromium window for you to solve")
+    step("[Solver:Manual] Auto-solvers exhausted — opening a Chromium window for you to solve")
 
     headed_browser = None
     headed_context = None

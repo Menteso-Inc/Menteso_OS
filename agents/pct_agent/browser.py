@@ -905,8 +905,8 @@ class PatentBrowser:
     def _wait_for_content(self, timeout=120, on_step=None):
         """Wait for the patent page to fully load. On confirmed CAPTCHA the
         captcha_solver sub-agent (agents/pct_agent/captcha_solver/) is
-        invoked synchronously — it requests manual confirmation and
-        emits its own UI events. We just
+        invoked synchronously — it walks through DIY OCR, OpenAI vision,
+        and manual fallback tiers and emits its own UI events. We just
         resume polling once it returns.
         """
         step = on_step or (lambda m: None)
