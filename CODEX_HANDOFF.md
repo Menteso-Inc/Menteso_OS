@@ -2,28 +2,48 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
-## PCT Ollama integration prepared - 21 October 2026
+## PCT local Qwen activated - 21 October 2026
 
-The optional `PCT_AI_PROVIDER=ollama` transport and synthetic teaching examples
-are prepared on `pct-ollama-integration-20261021`. OpenAI remains the default;
-the live local checkout/configuration has not been switched by this work.
+The `PCT_AI_PROVIDER=ollama` transport and synthetic teaching examples are
+installed in the live Windows checkout. Its environment selects local
+`qwen3.5:4b`, pinned to the installed digest, with one PDF worker, one API slot
+and two pending PDFs. The repository template still defaults to OpenAI; preserve
+the live environment during teammate deployments. Source is on
+`pct-ollama-integration-20261021`; no GitHub push or merge is implied.
 See `agents/pct_agent/AI_VERIFICATION.md` for provider settings and limitations.
 The installed local model is Qwen3.5 4B, with no GPU acceleration detected.
 
 The initial email-only trial matched three selected pages but averaged 169.4
 seconds per page. Offline regression and saved-evidence replay are separate from
-fresh model accuracy. The real synthetic provider-contract check was interrupted
-only to free the model for the user's explicitly requested chat terminal; do not
-record it as passed. Complete that check before local activation, then evaluate
-the user's processed/unprocessed sheets with separate outputs and PDF-verified
-labels. Their exact test filenames remain to be confirmed. Do not restart an
-active PCT job or overwrite previous workbooks/evidence.
+fresh model accuracy. After the earlier interrupted chat-related check, a new
+real synthetic provider/schema/two-reading/report check passed in 194.33 seconds.
+All 137 scoped regression tests passed; 100 saved-evidence results and checked
+workbook values/formatting also matched the old pipeline. This does not establish
+Qwen accuracy equivalence or the requested 500-1,000 rows/hour. Evaluate the
+user's processed/unprocessed sheets in separate outputs against PDF-verified
+labels; exact test filenames remain to be confirmed. No bulk extraction was
+started. Do not restart an active PCT job or overwrite collected evidence.
 
 The eight added examples teach transcription/ownership through prompts. They
 are synthetic, contain no real sheet answers and do not change model weights.
-Actual fine-tuning has not been performed. Local startup-task support is prepared
-in `scripts/keep-pct-ollama.ps1`, not installed by copying or pulling this source.
-Keep the public PCT route, dashboard keeper, existing environment and tunnel.
+Actual fine-tuning has not been performed. The SYSTEM startup task
+`Menteso PCT Ollama Keeper` is installed/running, using explicit executable/model
+paths with `scripts/keep-pct-ollama.ps1`. It preserves the existing loopback
+listener and can start it after a desktop logout or reboot. Reboot recovery was
+not tested. Pulling source alone does not install this machine task.
+
+Only the idle local dashboard was reloaded; its keeper, model server, tunnel and
+other agents were preserved. Sixty saved input/report/journal hashes matched.
+Public authenticated PCT status/configuration returned HTTP 200 after restoring
+SSH access for the office's changed public IP with one gateway /32 rule. No
+AWS compute resources were added. Future office IP changes can break that
+tunnel again; do not open SSH globally. The live route remains port 29010.
+
+Private scoped backup, original environment, manifests and gateway-rule receipt:
+`C:\ProgramData\Menteso\pct-ollama-activation-20261021`. Roll back only compatible
+target source/configuration after a fresh idle check; retain all newer data.
+Provider changes intentionally invalidate incompatible resume fingerprints.
+CAPTCHA providers are separate and may still use paid services.
 
 ## Agent pipeline continuation — 20 October 2026
 

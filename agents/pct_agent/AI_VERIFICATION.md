@@ -128,6 +128,15 @@ but averaged 169.4 seconds per page on the four-core Xeon without a GPU. It does
 not prove full contact accuracy or production throughput. GPU/full-sheet accuracy
 acceptance remains separate from successful transport integration.
 
+Live Windows activation completed on 21 October with a pinned Qwen3.5 4B digest
+and one verification worker/API slot. A real synthetic document passed the full
+two-reading/provider/schema/report contract in 194.33 seconds; all 137 scoped
+regressions passed. Existing result files were preserved. Neither this synthetic
+test nor replay of old evidence establishes full-sheet model accuracy or the
+requested hourly throughput. No bulk extraction was started during activation.
+The run log identifies the selected provider/model. The SYSTEM Ollama keeper
+task is installed; reboot recovery has not been tested.
+
 Offline regression checks include `test_ollama_provider.py` alongside the five
 existing PCT suites. The opt-in `scripts/check_pct_ollama.py` performs real local
 inference on a synthetic PDF and writes isolated evidence and both report types.

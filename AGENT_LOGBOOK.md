@@ -1,11 +1,21 @@
 # Menteso Agent Operations Logbook
 
-Last updated: 2026-10-20 (Asia/Calcutta)
+Last updated: 2026-10-21 (Asia/Calcutta)
 
 
 This is the operating register for Menteso agents. Credentials are never stored
 in this document. Every agent must use its own mailbox identity, secret boundary,
 runtime, data directory, and deployment process.
+
+## 2026-10-21 - Local Qwen API activated for PCT
+
+- User explicitly reiterated replacing PCT's paid document-verification provider with a local API, while retaining collected data, format and accuracy checks. Installed the scoped provider branch in `C:\sites\Menteso_OS`; set the ignored live environment to Ollama/Qwen3.5 4B with pinned model digest, one PDF worker, one API slot and two pending PDFs. Existing shared keys and unrelated environment values remain intact; no paid fallback is used for document verification. CAPTCHA providers remain separate.
+- Completed a fresh real local synthetic test: exact expected email, strict schema, both required readings, provider evidence and both report headers passed in 194.33 seconds. The earlier interrupted test remains interrupted. All 137 scoped tests passed in 19.66 seconds; saved-evidence replay had 100 identical results and matching checked Excel values/formatting. These checks do not establish full-sheet Qwen accuracy, 100% correctness or 500-1,000 rows/hour. CPU inference is currently slow; no bulk extraction was launched.
+- Fresh all-agent idle checks preceded installation and the dashboard reload. Only the idle local dashboard process was restarted through the existing keeper. Initial PowerShell Stop-Process failed without terminating it; verified the process identity and used the .NET process API, then confirmed the new listener and clean application startup. No active work, existing Ollama server, tunnel keeper or unrelated agent was stopped. All 60 saved input/report/journal hashes checked were unchanged.
+- Installed and started the separate SYSTEM `Menteso PCT Ollama Keeper` startup task. It monitors the existing loopback-only server without killing it and can start a missing server using explicit installed executable/model paths. No model update, external listener, reboot or machine-wide environment change. Reboot recovery remains untested.
+- Public-route verification exposed an independent SSH timeout: the office public IP had changed and was absent from the gateway allowlist. Backed up the gateway security-group settings and added only the current office /32 for SSH. Existing tunnel reconnected without being stopped. Authenticated public login, PCT idle status and updated agent metadata then returned HTTP 200. No gateway code/container restart, new AWS compute resource or broad SSH access.
+- Recovery: private ACL-protected backup `C:\ProgramData\Menteso\pct-ollama-activation-20261021` retains the original target files/environment, before/after hashes, added gateway rule and verification receipts. Roll back only target source/configuration after an idle preflight; retain newer uploads, reports, evidence and journals. Provider changes require compatible resume fingerprints. Remove only the newly added task/rule if those changes are explicitly being rolled back.
+- Added an explicit provider/model run-log entry and corrected the misleading No LLM Required metadata. Eight synthetic prompt examples remain teaching context only, not weight fine-tuning. The processed/unprocessed sheet comparison and representative accuracy acceptance remain outstanding. No outbound email, WIPO scrape, paid inference, model-weight training or GitHub push occurred in this activation.
 
 ## 2026-10-21 - Optional local Qwen provider prepared; live activation pending
 
