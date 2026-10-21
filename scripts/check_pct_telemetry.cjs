@@ -12,13 +12,13 @@ let now = 1000000;
 const state = {isRunning: true, selectedAgent: {module_name: 'pct_agent'},
     captcha: {}, browser: {}, executionLog: [], runMetrics: {totalRows: 100,
     processedRows: 3, errorRows: 3, startedAt: 1000, rowTimestamps: [10000, 20000, 30000]}};
-const context = vm.createContext({state, Date: {now: () => now}, console,
+const context = vm.createContext({state, Date: {now: () => now, parse: Date.parse}, console,
     document: {getElementById: () => null},
     updateRunMetricsPanel: () => {}, updateBrowserPreview: () => {},
     startRunMetricsTicker: () => {}, stopRunMetricsTicker: () => {},
     pushRowCompletionTimestamp: () => {}, renderMain: () => {}, playCaptchaAlertSound: () => {},
     CAPTCHA_PROGRESS_EVENTS: new Set()});
-vm.runInContext(['syncPCTTelemetry', 'computeRunMetricsView', 'formatStopwatch',
+vm.runInContext(['isPCTTelemetryStale', 'syncPCTTelemetry', 'computeRunMetricsView', 'formatStopwatch',
     'applyRunStatusSnapshot', 'resetCaptchaAlert', 'handleBrowserEvent'].map(fn).join('\n'), context);
 function sync(metrics) { context.incoming = metrics; vm.runInContext('syncPCTTelemetry(incoming)', context); }
 function view() { return vm.runInContext('computeRunMetricsView(state.runMetrics)', context); }
@@ -43,7 +43,27 @@ sync({...snapshot, telemetrySequence: 12, captchaActive: false,
 const earlier = view().etaText;
 now += 600000;
 assert.notEqual(view().etaText, earlier, 'A stalled worker must not show a frozen optimistic ETA');
+sync({...snapshot, telemetrySequence: 13, observerUpdatedAt: new Date(now).toISOString()});
+assert.match(view().activityText, /Verifying PDF for row 4/);
+now += 16000;
+assert.equal(view().etaText, '—', 'Expired observer snapshots must not give a live ETA');
+assert.match(view().activityText, /updates delayed/);
+assert.match(view().captchaNote, /last report/);
+assert.equal(view().captchaCount, 2, 'Historical counts are preserved and labelled');
+sync({...snapshot, telemetrySequence: 13, observerUpdatedAt: new Date(now).toISOString()});
+assert.equal(view().etaText, 'Learning', 'A fresh heartbeat recovers with no new events');
+sync({...snapshot, telemetrySequence: 14, observerUpdatedAt: 'bad timestamp'});
+assert.match(view().activityText, /updates delayed/);
+sync({...snapshot, telemetrySequence: 15});
+assert.equal(state.runMetrics.observerUpdatedAt, undefined, 'Native server telemetry replaces observer freshness');
+sync({...snapshot, telemetrySequence: 16, captchaActive: true,
+    observerUpdatedAt: new Date(now - 30000).toISOString()});
+assert.match(state.captcha.message, /status is stale/);
+vm.runInContext('applyRunStatusSnapshot({status:"running",metrics:{captchaCount:0},browser:{}})', context);
+assert.equal(state.runMetrics.captchaCount, 2, 'A failed optional telemetry fetch must preserve the last known totals');
 vm.runInContext('applyRunStatusSnapshot({status:"running",run_id:"new-run",metrics:{},browser:{}})', context);
 assert.equal(state.runMetrics.captchaCount, 0, 'New runs must not inherit old CAPTCHA totals');
 assert.equal(state.runMetrics.telemetrySequence, undefined);
-console.log('PCT telemetry: refresh, SSE/poll duplication, ordering, new run, errors, CAPTCHA and stalled ETA checks passed');
+assert.equal(state.runMetrics.observerUpdatedAt, undefined);
+assert.equal(state.runMetrics.captchaActive, false);
+console.log('PCT telemetry: refresh, SSE/poll duplication, ordering, new run, errors, CAPTCHA, stalled ETA and observer expiry/recovery checks passed');

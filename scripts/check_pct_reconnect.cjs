@@ -30,7 +30,7 @@ async function check(file) {
         addLogLine: () => {}, renderMain: () => {}, updateRunMetricsPanel: () => {},
         updateBrowserPreview: () => {}, pushRowCompletionTimestamp: () => {}});
     vm.runInContext(['loadAgentRunStatus', 'applyRunStatusSnapshot', 'recoverPCTRunAfterStream',
-        'syncPCTTelemetry', 'restorePCTRunTelemetry'].map(fn).join('\n'), context);
+        'isPCTTelemetryStale', 'syncPCTTelemetry', 'restorePCTRunTelemetry'].map(fn).join('\n'), context);
     assert(await vm.runInContext('recoverPCTRunAfterStream("pct_agent")', context));
     assert.strictEqual(state.isRunning, true);
     assert.strictEqual(state.lastResult, null, 'Old stopped report must not remain in the active run');

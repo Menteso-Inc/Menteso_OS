@@ -299,10 +299,17 @@ function applyRunStatusSnapshot(data) {
             state.executionLog = [];
             delete state.runMetrics.telemetrySequence;
             delete state.runMetrics.telemetryVersion;
+            delete state.runMetrics.observerUpdatedAt;
             state.runMetrics.captchaCount = 0;
             state.runMetrics.captchaTotals = {};
+            state.runMetrics.captchaActive = false;
+            state.runMetrics.captchaDetected = 0;
+            state.runMetrics.captchaFailures = 0;
+            state.runMetrics.captchaUnconfirmedCount = 0;
             state.runMetrics.successfulRowTimestamps = [];
             state.runMetrics.verificationRows = [];
+            state.runMetrics.verificationStartedAt = {};
+            state.runMetrics.downloadingRow = null;
             if (state.captcha) resetCaptchaAlert();
         }
         state.lastResult = null;
@@ -326,7 +333,8 @@ function applyRunStatusSnapshot(data) {
         if (Number(metrics.foundRows) >= 0) state.runMetrics.foundRows = Number(metrics.foundRows);
         if (Number(metrics.notFoundRows) >= 0) state.runMetrics.notFoundRows = Number(metrics.notFoundRows);
         if (Number(metrics.errorRows) >= 0) state.runMetrics.errorRows = Number(metrics.errorRows);
-        if (metrics.telemetryVersion !== 1 && Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
+        if (metrics.telemetryVersion !== 1 && state.runMetrics.telemetryVersion !== 1
+                && Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
         syncPCTTelemetry(metrics);
         const newProcessed = state.runMetrics.processedRows || 0;
         const timing = data.browser?.timing;
@@ -380,6 +388,13 @@ function applyRunStatusSnapshot(data) {
     }
 }
 
+function isPCTTelemetryStale(metrics) {
+    if (!Object.prototype.hasOwnProperty.call(metrics, "observerUpdatedAt")) return false;
+    const updatedAt = Date.parse(metrics.observerUpdatedAt);
+    const age = Date.now() - updatedAt;
+    return !Number.isFinite(updatedAt) || age > 15000 || age < -5000;
+}
+
 function syncPCTTelemetry(metrics) {
     const rm = state.runMetrics;
     if (!rm || metrics?.telemetryVersion !== 1) return;
@@ -387,12 +402,15 @@ function syncPCTTelemetry(metrics) {
     for (const key of ["telemetryVersion", "telemetrySequence", "captchaCount", "captchaTotals",
             "captchaDetected", "captchaFailures", "captchaActive", "captchaState",
             "captchaUnconfirmedCount", "verificationRows", "verificationStartedAt",
-            "downloadingRow", "successfulRowTimestamps", "lastActivityAt"]) {
+            "downloadingRow", "successfulRowTimestamps", "lastActivityAt", "observerUpdatedAt"]) {
         if (Object.prototype.hasOwnProperty.call(metrics, key)) rm[key] = metrics[key];
     }
+    if (!Object.prototype.hasOwnProperty.call(metrics, "observerUpdatedAt")) delete rm.observerUpdatedAt;
     if (state.captcha) {
         state.captcha.active = !!rm.captchaActive;
-        state.captcha.message = rm.captchaActive ? "CAPTCHA waiting for confirmation in the browser" : "";
+        state.captcha.message = rm.captchaActive ? (isPCTTelemetryStale(rm)
+            ? "CAPTCHA status is stale; check the browser"
+            : "CAPTCHA waiting for confirmation in the browser") : "";
         state.captcha.resolvedMessage = "";
     }
 }
@@ -406,7 +424,7 @@ async function restorePCTRunTelemetry(data) {
         const res = await fetch(`/api/download/pct-telemetry-${data.run_id}.json`, {cache: "no-store"});
         if (!res.ok) return data;
         const extra = await res.json();
-        if (extra.run_id === data.run_id && extra.telemetryVersion === 1) {
+        if (extra.run_id === data.run_id && extra.telemetryVersion === 1 && extra.observerUpdatedAt) {
             data.metrics = {...data.metrics, ...extra};
         }
     } catch (_) { /* Keep the original status if optional telemetry is unavailable. */ }
@@ -566,6 +584,7 @@ function computeRunMetricsView(rm) {
     if (String(etaText).toLowerCase().includes("calculating")) etaText = "Calc";
     if (String(etaText).toLowerCase().includes("recalibrating")) etaText = "Recal";
     let activityText = "";
+    const telemetryStale = !rm.finishedAt && isPCTTelemetryStale(rm);
     if (rm.telemetryVersion === 1) {
         if (rm.captchaActive) {
             etaText = "Waiting";
@@ -583,7 +602,12 @@ function computeRunMetricsView(rm) {
         }
         if (rm.finishedAt) { etaText = remaining ? "—" : "0"; activityText = "Run ended"; }
     }
-    const captchaNote = rm.telemetryVersion !== 1 ? "CAPTCHA totals unavailable on this connection"
+    if (telemetryStale) {
+        etaText = "—";
+        activityText = "Live activity updates delayed; check the execution log";
+    }
+    const captchaNote = telemetryStale ? "CAPTCHA totals are from the last report; live updates delayed"
+        : rm.telemetryVersion !== 1 ? "CAPTCHA totals unavailable on this connection"
         : `${rm.captchaDetected || 0} challenges detected · ${rm.captchaFailures || 0} failed attempts`
           + (rm.captchaUnconfirmedCount ? ` · ${rm.captchaUnconfirmedCount} clears reported without page confirmation` : "");
 

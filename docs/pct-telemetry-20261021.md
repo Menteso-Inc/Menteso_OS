@@ -68,3 +68,55 @@ must come from their completed results, with failures included in coverage.
   authenticated telemetry was fetched while the same run remained running.
 - A rendered browser visual check was not performed. Reloading the private test
   tab is needed to load the new static JavaScript; reloading does not stop its run.
+
+## 16:45 IST follow-up: rollback and observer recovery
+
+At the user's request, commit `9c15d17` reverted the staged cloud-adapter removal
+commit `c2e1147`. That removal had never been copied to the live Python tree or
+loaded by the running worker. The live CAPTCHA adapter still defaults to GPT-4o;
+the private PDF verifier still uses local Qwen. No paid provider call or automated
+CAPTCHA solve was performed to validate this rollback. The user reported adding
+credits; their availability and subsequent solver success remain unverified.
+
+The optional telemetry observer had exited at 16:22:30 IST with Windows error 5
+while atomically replacing its snapshot. Concurrent HTTP file serving is the
+likely source of the sharing collision, but the exception alone does not prove
+which process held the file. The observer is now a versioned, reusable script at
+`scripts/pct_run_telemetry_observer.py`. It retries sharing/permission collisions,
+retains the last complete snapshot if a lock persists, and continues publishing
+on later cycles. Binary log tailing also waits for a whole newline-terminated
+UTF-8 record. Restarting the observer reconstructs absolute totals from the log.
+
+Only the read-only observer was restarted. The private worker (PID 4272, started
+14:28:12 IST), production dashboard (PID 9744) and comparison watcher (PID 8324)
+remained running. The live `.env`, input workbook and human workbook hashes were
+unchanged during the static copy/check. No result journal was rewritten.
+
+The display now labels observer data older than 15 seconds as delayed, suppresses
+its live ETA/activity claims and retains clearly labelled historical CAPTCHA
+counts. A missing optional telemetry fetch cannot reset known counts to zero.
+Fresh heartbeats recover the display even when no new extraction event occurs.
+New runs clear prior activity and freshness state.
+
+At 16:45:18 IST, authenticated HTTP verification saw a snapshot 0.28 seconds old,
+sequence 1398, matching an independent count of the original events: 68 CAPTCHA
+detections, 66 failures, two reported manual clearances and zero automatic
+clearances. Both manual clearances remain unconfirmed under the stronger staged
+page-validation rule. PDF verification was active on row 20. The test had 19
+completed rows, all errors; rows 4 and 5 had each exhausted two 1800-second local
+model calls. A credit top-up does not resolve those local inference timeouts.
+
+Validation: four focused observer tests passed (transient/persistent lock,
+partial UTF-8 and final-snapshot recovery); JavaScript syntax, telemetry expiry,
+recovery, duplicate/order/new-run tests and reconnect checks passed. The live
+JavaScript bytes match the source hash, and the served HTML matches after the
+server's normal CRLF normalization. The initial HTML raw-byte assertion failed
+only because of that normalization; a read-only verification then passed.
+
+Display rollback files are in `ui-backup-20261021-v2`; verification evidence is in
+`ui_deployment_receipt_v2.json` in the private test output folder. The observer's
+old error log is preserved, and its current logs use the `telemetry-observer-v2`
+prefix. The private launcher imports the versioned script from this worktree.
+Only static assets were copied live; Python confirmation/reducer changes remain
+staged for a future safe activation. No service restart, AWS deployment, push,
+email, model switch or browser automation was performed for this follow-up.
