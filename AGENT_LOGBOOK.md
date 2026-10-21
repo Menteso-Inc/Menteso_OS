@@ -2,6 +2,22 @@
 
 Last updated: 2026-10-21 (Asia/Calcutta)
 
+## 2026-10-21 — PCT cloud removal prepared; restart approval pending
+
+- Owner requested removing GPT-4o from PCT. Prepared a local-only PDF verifier
+  and manual CAPTCHA handling, with no OpenAI key lookup, HTTP endpoint or
+  legacy paid fallback in the PCT runtime. Automatic Qwen CAPTCHA integration
+  was declined and was not implemented.
+- 157 offline checks passed. Source changes are staged in the isolated worktree;
+  no live environment, running process, source workbook or collected result was
+  changed. Other agents' provider credentials are untouched.
+- Asked for checkpoint/restart/resume authorization because of the standing
+  instruction not to interrupt the worker. No reply means no restart authority.
+  Details and activation boundary: `docs/pct-local-only-20261021.md`.
+- The live Qwen test separately showed two 1,800-second timeouts for row 4. At
+  15:47 IST ten rows had errors, zero successful extractions. Cloud removal
+  does not fix that performance problem or prove extraction accuracy.
+
 ## 2026-10-21 — Private PCT test telemetry and CAPTCHA confirmation
 
 - Investigated the active blind 100-row test without stopping it. First three

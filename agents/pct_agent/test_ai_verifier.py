@@ -390,9 +390,10 @@ def test_quota_failure_is_reported_before_a_scrape_starts(monkeypatch):
     assert "credit_balance_exhausted" in result["error"]
 
 
-def test_machine_error_does_not_expose_raw_response():
-    class Response:
-        status_code = 429
-        def json(self):
-            return {"error": {"code": "credit_balance_exhausted", "message": "private request content"}}
-    assert ai._api_error(Response()) == "openai_http_429_credit_balance_exhausted"
+def test_legacy_cloud_settings_cannot_select_a_cloud_model(monkeypatch):
+    monkeypatch.setenv('PCT_AI_MODEL', 'gpt-4o')
+    monkeypatch.setenv('PCT_OPENAI_API_KEY', 'offline-ignored-placeholder')
+    assert ai.model_name() == 'qwen3.5:4b'
+    monkeypatch.setenv('PCT_AI_PROVIDER', 'openai')
+    with pytest.raises(ValueError, match='pct_ai_local_provider_required'):
+        ai.validate_configuration()

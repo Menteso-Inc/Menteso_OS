@@ -5,10 +5,7 @@ agent because only the PCT browser pipeline calls into it today. It is
 *not* exposed as its own card on the dashboard — its status surfaces via
 the PCT agent's run log.
 
-Tiers (configurable via CAPTCHA_SOLVER_TIERS env var):
-    diy     → winocr + image preprocessing      (free, fast, Windows-only)
-    openai  → GPT-4o vision via OpenAI API      (~$0.001-0.003 per solve)
-    manual  → host-machine beep + human solves  (always available)
+CAPTCHA handling requires manual confirmation. No model API is used.
 
 Public API:
     solve_captcha(page, on_step=None, max_seconds=None) -> bool
@@ -27,9 +24,6 @@ from shared.memory import load_memory, save_learning
 from .detector import classify_captcha
 from .manual_fallback import wait_for_manual
 from .sample_store import save_sample
-from .solver_diy import solve_wipo_text
-from .solver_openai import solve_via_openai_vision
-from .solver_recaptcha_audio import solve_recaptcha_audio
 from .tests import tests
 
 
@@ -38,36 +32,9 @@ from .tests import tests
 # to AGENTS_DIR via pathlib, so this works without touching shared/memory.py.
 AGENT_NAME = "pct_agent/captcha_solver"
 
-# Default tier sequence per captcha type. The orchestrator picks the right
-# sequence based on classify_captcha() and the user-configurable
-# CAPTCHA_SOLVER_TIERS env var (which can override).
-DEFAULT_TIERS_BY_TYPE = {
-    "wipo_text":        ("diy", "vision", "manual"),
-    "wipo_image_grid":  ("vision", "manual"),
-    "recaptcha_v2":     ("audio", "manual"),
-    "hcaptcha":         ("manual",),
-    "turnstile":        ("manual",),
-    "unknown":          ("vision", "manual"),
-}
-# Tier name "openai" is kept as an alias for "vision" so old .env files
-# don't break — both route to the universal vision solver.
-TIER_ALIASES = {"openai": "vision"}
-
-
 def _enabled_tiers(captcha_type):
-    """Resolve which tiers to run for this captcha type.
-
-    - If CAPTCHA_SOLVER_TIERS env var is set, that wins (operator override).
-    - Otherwise use the per-type default. This avoids running the OCR
-      tier against an image-grid challenge (wasted time) or the vision
-      tier against a real reCAPTCHA iframe (can't see inside it).
-    """
-    raw = (get_env("CAPTCHA_SOLVER_TIERS") or "").strip()
-    if raw:
-        tiers = tuple(t.strip().lower() for t in raw.split(",") if t.strip())
-        if tiers:
-            return tuple(TIER_ALIASES.get(t, t) for t in tiers)
-    return DEFAULT_TIERS_BY_TYPE.get(captcha_type, DEFAULT_TIERS_BY_TYPE["unknown"])
+    """Legacy configuration must not silently re-enable paid API calls."""
+    return ("manual",)
 
 
 def _max_seconds(override=None):
@@ -104,33 +71,10 @@ def _emit(on_step, message, event=None, **extra):
 
 
 def _run_tier(tier, page, captcha_type, on_step, deadline):
-    """Dispatch to the right tier. Returns (success, image_bytes, answer).
-
-    Per-tier max_seconds caps are deliberately tight: a successful solve
-    clears the captcha form in 1-3 seconds. Anything past that is wasted
-    time on a failed attempt, slowing the whole agent down.
-    """
+    """Manual confirmation only. Returns (success, image_bytes, answer)."""
     remaining = max(0, int(deadline - time.time()))
     if remaining <= 0:
         return False, None, None
-
-    if tier == "diy":
-        # OCR + fill + click + verify. Should resolve in ~2-3s when correct.
-        return solve_wipo_text(page, on_step=on_step, max_seconds=min(12, remaining))
-
-    if tier in ("vision", "openai"):
-        # GPT-4o vision: ~3-5s API call + click + verify.
-        return solve_via_openai_vision(
-            page, captcha_type, on_step=on_step, max_seconds=min(25, remaining),
-        )
-
-    if tier == "audio":
-        success, audio_bytes, transcript = solve_recaptcha_audio(
-            page, on_step=on_step, max_seconds=min(90, remaining),
-        )
-        # audio_bytes returned in place of image_bytes — sample_store doesn't
-        # care about format, it just stores whatever bytes we hand it.
-        return success, audio_bytes, transcript
 
     if tier == "manual":
         success, image_bytes = wait_for_manual(
@@ -138,17 +82,15 @@ def _run_tier(tier, page, captcha_type, on_step, deadline):
         )
         return success, image_bytes, None
 
-    _emit(on_step, f"[Solver] Unknown tier '{tier}' in CAPTCHA_SOLVER_TIERS — skipping")
+    _emit(on_step, f"[Solver] Automatic tier '{tier}' is disabled; manual confirmation required")
     return False, None, None
 
 
 def solve_captcha(page, on_step=None, max_seconds=None, source_url=""):
     """Resolve a captcha on the given Playwright page.
 
-    Walks through enabled tiers in declared order. Saves a sample after
-    every attempt (image + metadata) for future training. Persists a
-    learning entry in the agent's memory so future runs can self-modify
-    their tier order.
+    Requests manual confirmation and records the outcome for diagnostics.
+    Old automatic-tier environment settings cannot enable a model call.
 
     Returns True if the challenge was cleared, False otherwise.
     """
@@ -358,7 +300,7 @@ def run_agent(input_data=None, on_step=None):
             outcome = "solved" if result else "failed"
             payload = {
                 "outcome": outcome,
-                "tier_used": "auto",
+                "tier_used": "manual",
                 "captcha_type": detected,
                 "elapsed_seconds": elapsed,
                 "max_seconds": max_seconds,

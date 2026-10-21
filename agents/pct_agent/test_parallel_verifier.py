@@ -28,25 +28,23 @@ def offline_verify(path, on_step, context):
         time.sleep(.02)
     calls = []
     lock = threading.Lock()
-    def post(*args, **kwargs):
+    def local_request(pages, instruction, context, schema):
         with lock:
             call = len(calls)
-            calls.append(kwargs['json'])
+            calls.append({'model': ai.model_name(), 'pages': [p[0] for p in pages]})
         start = time.monotonic()
         time.sleep(.15)
         end = time.monotonic()
         (base / f'api-{index}-{call}.json').write_text(json.dumps([start, end]))
-        return SimpleNamespace(status_code=200, json=lambda: {
-            'status': 'completed', 'output': [{'type': 'message', 'content': [
-                {'type': 'output_text', 'text': extraction(field(f'row{index}@example.org')).model_dump_json()}
-            ]}]
-        })
-    ai.requests.post = post
+        return extraction(field(f'row{index}@example.org')).model_dump_json()
+    ai.ollama_provider.request = local_request
+    ai.ollama_provider.model_identity = lambda config=None: {
+        'provider': 'ollama', 'model': ai.model_name(), 'digest': 'a' * 64}
     ai._high_res_ocr_emails = lambda *args: []
     ai.policy.email_domain_status = lambda *args: 'mx'
     result = extract_contacts_from_pdf(path, on_step=on_step, context=context)
     assert len(calls) == 2, 'Both original image readings must run'
-    assert calls[0]['model'] == calls[1]['model'] == 'gpt-4o'
+    assert calls[0]['model'] == calls[1]['model'] == 'qwen3.5:4b'
     if index == 1:
         time.sleep(.7)  # Force completion order to differ from source order.
     return result
@@ -62,8 +60,7 @@ def failing_verify(path, on_step, context):
 def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeypatch, api_slots):
     monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))
     monkeypatch.setenv('PCT_AI_EVIDENCE_DIR', str(tmp_path / 'evidence'))
-    monkeypatch.setenv('PCT_OPENAI_API_KEY', 'offline-test-placeholder')
-    monkeypatch.setenv('PCT_AI_MODEL', 'gpt-4o')
+    monkeypatch.setenv('PCT_AI_PROVIDER', 'ollama')
     with parallel_verifier.ProcessVerifier(4, api_slots, offline_verify) as pool:
         futures = []
         for index, row in enumerate(source_rows(4), 1):

@@ -43,24 +43,22 @@ def test_local_configuration_needs_no_openai_key(monkeypatch):
     ai.validate_configuration(check_api=True)
     assert ai.model_name() == 'qwen3.5:4b'
     monkeypatch.setenv('PCT_AI_PROVIDER', 'openai')
-    with pytest.raises(ValueError, match='OPENAI_API_KEY'):
+    with pytest.raises(ValueError, match='pct_ai_local_provider_required'):
         ai.validate_configuration()
 
 
-def test_default_provider_preserves_openai(monkeypatch):
+def test_default_provider_is_local_and_rejects_cloud(monkeypatch):
     monkeypatch.delenv('PCT_AI_PROVIDER')
     monkeypatch.delenv('PCT_AI_MODEL', raising=False)
-    assert ai.provider_name() == 'openai'
-    assert ai.model_name() == 'gpt-4o'
+    assert ai.provider_name() == 'ollama'
+    assert ai.model_name() == 'qwen3.5:4b'
     monkeypatch.setenv('PCT_AI_PROVIDER', 'unexpected')
-    with pytest.raises(ValueError, match='pct_ai_invalid_provider'):
+    with pytest.raises(ValueError, match='pct_ai_local_provider_required'):
         ai.validate_configuration()
 
 
 def test_local_teaching_preserves_contact_rules_and_uses_only_synthetic_addresses(monkeypatch):
-    monkeypatch.setenv('PCT_AI_PROVIDER', 'openai')
-    baseline = ai.load_rules()
-    monkeypatch.setenv('PCT_AI_PROVIDER', 'ollama')
+    baseline = ai.ContactRules.model_validate_json(ai.RULES_PATH.read_text(encoding='utf-8-sig'))
     taught = ai.load_rules()
     assert taught.model_dump(exclude={'examples'}) == baseline.model_dump(exclude={'examples'})
     assert taught.examples[:len(baseline.examples)] == baseline.examples
@@ -173,7 +171,10 @@ def test_local_model_identity_and_context_invalidate_cache_and_handoff(monkeypat
         'provider': 'ollama', 'model': 'qwen3.5:4b', 'digest': 'b' * 64})
     assert (ai.verification_revision(), resume.policy_fingerprint()) != original
     monkeypatch.setenv('PCT_AI_PROVIDER', 'openai')
-    assert (ai.verification_revision(), resume.policy_fingerprint()) != original
+    with pytest.raises(ValueError, match='pct_ai_local_provider_required'):
+        ai.verification_revision()
+    with pytest.raises(ValueError, match='pct_ai_local_provider_required'):
+        resume.policy_fingerprint()
 
 
 def test_provider_preflight_blocks_before_browser(monkeypatch):
