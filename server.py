@@ -136,6 +136,9 @@ def _update_live_status(name: str, event):
         "updatedAt": _now_iso() if "_now_iso" in globals() else datetime.now(timezone.utc).isoformat(),
     })
     snapshot["updatedAt"] = _now_iso() if "_now_iso" in globals() else datetime.now(timezone.utc).isoformat()
+    if name == "pct_agent":
+        from agents.pct_agent.telemetry import observe
+        observe(snapshot.setdefault("metrics", {}), event)
 
     if not isinstance(event, dict):
         message = str(event)
@@ -2654,6 +2657,12 @@ def _start_agent_run(name: str, input_data: dict | None = None):
             msg_queue.put(None)
             return
         _update_live_status(name, message)
+        if name == "pct_agent" and isinstance(message, dict) and message.get("type") == "browser":
+            from agents.pct_agent.telemetry import public_metrics
+            # Absolute, versioned totals prevent SSE and polling from counting
+            # the same CAPTCHA twice, even when responses arrive out of order.
+            message = {**message, "run_id": RUN_LIVE_STATUS[name].get("run_id"),
+                       "telemetry": public_metrics(RUN_LIVE_STATUS[name]["metrics"])}
         try:
             safe_event = _database_safe_agent_event(name, message)
             if safe_event is None:

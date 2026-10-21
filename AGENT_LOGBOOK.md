@@ -2,6 +2,23 @@
 
 Last updated: 2026-10-21 (Asia/Calcutta)
 
+## 2026-10-21 — Private PCT test telemetry and CAPTCHA confirmation
+
+- Investigated the active blind 100-row test without stopping it. First three
+  errors occurred during WIPO page loading; local Qwen had not processed those
+  rows. CAPTCHA vision still uses GPT-4o and returned exhausted-credit errors.
+- Added cumulative CAPTCHA and activity telemetry, refresh-safe UI accounting,
+  and ETA samples that exclude failed downloads. A read-only event observer
+  supplies the already-running test through its authenticated output route.
+  Only two local static assets were activated; no worker, production service,
+  environment, input sheet, result or AWS asset was changed or restarted.
+- Prepared stronger manual-confirmation checks and distinct failure events in
+  the isolated worktree. Those Python fixes are not loaded by the active worker.
+- 147 offline PCT tests plus JavaScript syntax, reconnect and telemetry checks
+  passed. Static HTTP hash and unchanged-input/environment guards passed.
+  Real accuracy and throughput are pending; no 100% accuracy claim is made.
+  See `docs/pct-telemetry-20261021.md` for activation boundaries and rollback.
+
 
 This is the operating register for Menteso agents. Credentials are never stored
 in this document. Every agent must use its own mailbox identity, secret boundary,

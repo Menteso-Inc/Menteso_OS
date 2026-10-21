@@ -261,6 +261,7 @@ async function loadAgentRunStatus(name) {
         const res = await fetch(`/api/agents/${name}/run-status`);
         if (!res.ok) throw new Error(`Run status request failed (${res.status})`);
         const data = await res.json();
+        if (name === "pct_agent") await restorePCTRunTelemetry(data);
         state.agentRunStatus = data.status || "idle";
         applyRunStatusSnapshot(data);
         if (name === "pct_agent" && data.status === "running") {
@@ -296,6 +297,13 @@ function applyRunStatusSnapshot(data) {
         if (data.run_id && state.pctRunId !== data.run_id) {
             state.pctRunId = data.run_id;
             state.executionLog = [];
+            delete state.runMetrics.telemetrySequence;
+            delete state.runMetrics.telemetryVersion;
+            state.runMetrics.captchaCount = 0;
+            state.runMetrics.captchaTotals = {};
+            state.runMetrics.successfulRowTimestamps = [];
+            state.runMetrics.verificationRows = [];
+            if (state.captcha) resetCaptchaAlert();
         }
         state.lastResult = null;
         state.isRunning = true;
@@ -318,7 +326,8 @@ function applyRunStatusSnapshot(data) {
         if (Number(metrics.foundRows) >= 0) state.runMetrics.foundRows = Number(metrics.foundRows);
         if (Number(metrics.notFoundRows) >= 0) state.runMetrics.notFoundRows = Number(metrics.notFoundRows);
         if (Number(metrics.errorRows) >= 0) state.runMetrics.errorRows = Number(metrics.errorRows);
-        if (Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
+        if (metrics.telemetryVersion !== 1 && Number(metrics.captchaCount) >= 0) state.runMetrics.captchaCount = Number(metrics.captchaCount);
+        syncPCTTelemetry(metrics);
         const newProcessed = state.runMetrics.processedRows || 0;
         const timing = data.browser?.timing;
         if (state.selectedAgent?.module_name === "pct_agent" && timing?.startedAt) {
@@ -369,6 +378,39 @@ function applyRunStatusSnapshot(data) {
             terminal.scrollTop = terminal.scrollHeight;
         }
     }
+}
+
+function syncPCTTelemetry(metrics) {
+    const rm = state.runMetrics;
+    if (!rm || metrics?.telemetryVersion !== 1) return;
+    if (Number(metrics.telemetrySequence) < (rm.telemetrySequence || 0)) return;
+    for (const key of ["telemetryVersion", "telemetrySequence", "captchaCount", "captchaTotals",
+            "captchaDetected", "captchaFailures", "captchaActive", "captchaState",
+            "captchaUnconfirmedCount", "verificationRows", "verificationStartedAt",
+            "downloadingRow", "successfulRowTimestamps", "lastActivityAt"]) {
+        if (Object.prototype.hasOwnProperty.call(metrics, key)) rm[key] = metrics[key];
+    }
+    if (state.captcha) {
+        state.captcha.active = !!rm.captchaActive;
+        state.captcha.message = rm.captchaActive ? "CAPTCHA waiting for confirmation in the browser" : "";
+        state.captcha.resolvedMessage = "";
+    }
+}
+
+async function restorePCTRunTelemetry(data) {
+    // A running pre-update worker cannot load new Python code. An optional
+    // observer replays its own durable event log into a run-bound snapshot.
+    // The download route is authenticated; a missing observer is harmless.
+    if (data.metrics?.telemetryVersion === 1 || !/^[a-zA-Z0-9_-]{1,120}$/.test(data.run_id || "")) return data;
+    try {
+        const res = await fetch(`/api/download/pct-telemetry-${data.run_id}.json`, {cache: "no-store"});
+        if (!res.ok) return data;
+        const extra = await res.json();
+        if (extra.run_id === data.run_id && extra.telemetryVersion === 1) {
+            data.metrics = {...data.metrics, ...extra};
+        }
+    } catch (_) { /* Keep the original status if optional telemetry is unavailable. */ }
+    return data;
 }
 
 function resetCaptchaAlert() {
@@ -480,7 +522,7 @@ function computeRunMetricsView(rm) {
     // 15s" skew that made the cumulative ETA say 16 hours. On mode change
     // the window is cleared so old-rate samples don't pollute the new
     // estimate.
-    const samples = rm.rowTimestamps || [];
+    const samples = rm.telemetryVersion === 1 ? (rm.successfulRowTimestamps || []) : (rm.rowTimestamps || []);
     const MIN_SAMPLES_FOR_ETA = 5;
     let ratePerMin = 0;
     let etaText = "—";
@@ -495,7 +537,7 @@ function computeRunMetricsView(rm) {
     if (samples.length >= MIN_SAMPLES_FOR_ETA) {
         const first = samples[0];
         const last = samples[samples.length - 1];
-        const windowMs = Math.max(1, last - first);
+        const windowMs = Math.max(1, last - first, !rm.finishedAt && state.isRunning ? now - first : 0);
         const rowsInWindow = samples.length - 1; // intervals, not points
         ratePerMin = (rowsInWindow / windowMs) * 60_000;
         if (remaining > 0 && ratePerMin > 0) {
@@ -523,6 +565,27 @@ function computeRunMetricsView(rm) {
 
     if (String(etaText).toLowerCase().includes("calculating")) etaText = "Calc";
     if (String(etaText).toLowerCase().includes("recalibrating")) etaText = "Recal";
+    let activityText = "";
+    if (rm.telemetryVersion === 1) {
+        if (rm.captchaActive) {
+            etaText = "Waiting";
+            activityText = "CAPTCHA needs confirmation in the browser";
+        } else if (rm.verificationRows?.length) {
+            const row = rm.verificationRows[0];
+            const since = rm.verificationStartedAt?.[String(row)];
+            activityText = `Verifying PDF for row ${row}` + (since ? ` · ${formatStopwatch(now - since)}` : "");
+        } else if (rm.downloadingRow) {
+            activityText = `Downloading row ${rm.downloadingRow}`;
+        }
+        if (remaining > 0 && samples.length < MIN_SAMPLES_FOR_ETA && !rm.captchaActive) {
+            etaText = "Learning";
+            activityText += `${activityText ? " · " : ""}ETA needs ${MIN_SAMPLES_FOR_ETA - samples.length} more successful rows`;
+        }
+        if (rm.finishedAt) { etaText = remaining ? "—" : "0"; activityText = "Run ended"; }
+    }
+    const captchaNote = rm.telemetryVersion !== 1 ? "CAPTCHA totals unavailable on this connection"
+        : `${rm.captchaDetected || 0} challenges detected · ${rm.captchaFailures || 0} failed attempts`
+          + (rm.captchaUnconfirmedCount ? ` · ${rm.captchaUnconfirmedCount} clears reported without page confirmation` : "");
 
     // Auto-solved vs manual breakdown
     const totals = rm.captchaTotals || {};
@@ -545,6 +608,8 @@ function computeRunMetricsView(rm) {
     return {
         elapsedText: formatStopwatch(elapsedMs),
         etaText,
+        activityText,
+        captchaNote,
         ratePerMin: ratePerMin.toFixed(1),
         processed,
         degraded,
@@ -598,6 +663,7 @@ function renderRunMetricsPanel() {
                     <div class="run-metrics-label">ETA</div>
                     <div class="run-metrics-eta-value" id="rm-eta">${v.etaText}</div>
                     <div class="run-metrics-sub"><span id="rm-remaining">${v.remaining}</span> rows left</div>
+                    <div class="run-metrics-sub" id="rm-activity">${v.activityText}</div>
                 </div>
                 <div class="run-metrics-block">
                     <div class="run-metrics-label">PROGRESS</div>
@@ -610,7 +676,7 @@ function renderRunMetricsPanel() {
                     </div>
                 </div>
                 <div class="run-metrics-block">
-                    <div class="run-metrics-label">CAPTCHAS SOLVED</div>
+                    <div class="run-metrics-label">CAPTCHA CLEARS REPORTED</div>
                     <div class="run-metrics-eta-value" id="rm-captcha-count">${v.captchaCount}</div>
                     <div class="run-metrics-tier-row">
                         <span class="rm-tier-badge rm-tier-auto" title="GPT-4o Vision / OCR / Whisper"
@@ -621,6 +687,7 @@ function renderRunMetricsPanel() {
                 </div>
             </div>
             <div class="run-metrics-tiers-detail" id="rm-tiers-detail">
+                <span class="rm-tier-empty">${v.captchaNote}</span>
                 ${renderTierBreakdown(v.tiers)}
                 ${renderFastModeSlider()}
             </div>
@@ -740,7 +807,7 @@ function renderTierBreakdown(tiers) {
         );
     }
     if (parts.length === 0) {
-        return `<span class="rm-tier-empty">No captchas hit yet</span>`;
+        return "";
     }
     return parts.join("");
 }
@@ -756,6 +823,7 @@ function updateRunMetricsPanel() {
     setText("rm-elapsed", v.elapsedText);
     setText("rm-rate", v.ratePerMin);
     setText("rm-eta", v.etaText);
+    setText("rm-activity", v.activityText);
     setText("rm-remaining", String(v.remaining));
     setText("rm-processed", String(v.processed));
     setText("rm-total", String(v.total));
@@ -772,6 +840,7 @@ function updateRunMetricsPanel() {
     const tiersEl = document.getElementById("rm-tiers-detail");
     if (tiersEl) {
         tiersEl.innerHTML =
+            `<span class="rm-tier-empty">${v.captchaNote}</span>` +
             renderTierBreakdown(v.tiers) +
             renderFastModeSlider();
     }
@@ -1128,14 +1197,16 @@ const CAPTCHA_PROGRESS_EVENTS = new Set([
 ]);
 
 function handleBrowserEvent(data) {
+    if (data.run_id && state.pctRunId && data.run_id !== state.pctRunId) return;
     Object.assign(state.browser, data);
+    syncPCTTelemetry(data.telemetry);
 
     // --- Run metrics: tier-attribution & row-progress accounting ---
     if (state.runMetrics) {
         if (typeof data.total === "number" && data.total > 0) {
             state.runMetrics.totalRows = data.total;
         }
-        if (data.event === "solver_succeeded") {
+        if (data.event === "solver_succeeded" && state.runMetrics.telemetryVersion !== 1) {
             const tier = (data.tier || "other").toLowerCase();
             const totals = state.runMetrics.captchaTotals;
             if (totals[tier] === undefined) totals[tier] = 0;
@@ -1169,9 +1240,13 @@ function handleBrowserEvent(data) {
             playCaptchaAlertSound();
             renderMain();
         }
+    } else if (data.event === "captcha_failed" || (data.event === "captcha_cleared" && (data.message || "").includes("All tiers exhausted"))) {
+        state.captcha.active = false;
+        state.captcha.resolvedMessage = "";
+        renderMain();
     } else if (data.event === "captcha_cleared") {
         state.captcha.active = false;
-        state.captcha.resolvedMessage = data.message || "CAPTCHA cleared - resuming from the same row";
+        state.captcha.resolvedMessage = "CAPTCHA handler finished; checking the patent page";
         renderMain();
     } else if (state.captcha.active && CAPTCHA_PROGRESS_EVENTS.has(data.event)) {
         // Safety net: a stale banner can happen if the captcha-cleared event

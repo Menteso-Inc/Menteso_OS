@@ -938,6 +938,9 @@ class PatentBrowser:
                     solver_attempted = True
                     if not self._invoke_solver(step, deadline):
                         return False
+                    # Human confirmation may consume the original page-load
+                    # budget. Give the confirmed page time to finish loading.
+                    deadline = max(deadline, time.time() + min(timeout, 10))
                     # Solver finished. Let the loop poll again and confirm
                     # content; reset streak so any future captcha gets its
                     # own debounce.
