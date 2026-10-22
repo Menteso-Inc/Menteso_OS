@@ -22,6 +22,8 @@ def policy_fingerprint():
                 "dns": get_env("PCT_EMAIL_DNS_CHECK", default="true")}
     if ai.provider_name() == "ollama":
         material["local_provider"] = ai.ollama_provider.cache_material()
+        if get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") == "source_regions":
+            material["local_document_revision"] = ai.verification_revision()
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
 
 

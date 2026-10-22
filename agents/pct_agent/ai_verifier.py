@@ -110,6 +110,16 @@ def verification_revision():
                            "rules": load_rules().model_dump()}
     if provider_name() == "ollama":
         material["local_provider"] = ollama_provider.cache_material()
+        mode = get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages")
+        material["local_document_mode"] = mode
+        if mode == "source_regions":
+            from . import local_evidence
+            material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
+            material["secondary_ocr_enabled"] = get_env("PCT_OLLAMA_SECONDARY_OCR",default="false")
+            if material["secondary_ocr_enabled"] == "true":
+                from . import secondary_ocr
+                material["secondary_ocr"] = secondary_ocr.cache_material()
+                material["secondary_ocr_hash"] = hashlib.sha256(Path(secondary_ocr.__file__).read_bytes()).hexdigest()
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()[:20]
 
 
@@ -118,6 +128,8 @@ def validate_configuration(check_api=False):
         return
     load_rules()
     if provider_name() == "ollama":
+        if get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") not in {"full_pages", "source_regions"}:
+            raise ValueError("ollama_invalid_document_mode")
         ollama_provider.validate_configuration(check_api=check_api)
         return
     if not (get_env("PCT_OPENAI_API_KEY") or get_env("OPENAI_API_KEY")):
@@ -488,6 +500,9 @@ def _read_original_pages(pages, rules, context, on_step=None):
 
 
 def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
+    if provider_name() == "ollama" and get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") == "source_regions":
+        from .local_evidence import verify
+        return verify(pdf_path, ocr_result, on_step=on_step, context=context)
     evidence_dir = None
     try:
         rules = load_rules()
