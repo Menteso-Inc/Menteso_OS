@@ -64,7 +64,7 @@ def test_local_teaching_preserves_contact_rules_and_uses_only_synthetic_addresse
     taught = ai.load_rules()
     assert taught.model_dump(exclude={'examples'}) == baseline.model_dump(exclude={'examples'})
     assert taught.examples[:len(baseline.examples)] == baseline.examples
-    assert len(taught.examples) == len(baseline.examples) + 8
+    assert len(taught.examples) == len(baseline.examples) + 9
     additions = json.dumps([example.model_dump() for example in taught.examples[len(baseline.examples):]])
     addresses = re.findall(r'[\w.-]+@([\w.-]+\.[a-z]+)', additions)
     assert addresses and all(domain.endswith('.example') or domain in {

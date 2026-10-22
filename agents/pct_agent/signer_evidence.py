@@ -5,11 +5,11 @@ The local path reads only matching, explicitly labelled signature values.
 """
 import re
 
-SIGNATURE = re.compile(r'\bsignature\s+(?:of|du|de|des)\b|\bassinatura\b|\bunterschrift\b|\bfirma\s+del\b', re.I)
-PERSON_LABEL = re.compile(r'^(?:name of signatory|nom du signataire|nome do signat[aá]rio|nombre del firmante)\s*:?$', re.I)
-NAME_LABEL = re.compile(r'^(?:name|nom|nome|nombre)(?:\s*\([^)]*\))?\s*:?$', re.I)
-CAPACITY = re.compile(r'^(?:capacity|qualit[eé]|qualidade|capacidad)\b', re.I)
-STOP = re.compile(r'for receiving office|for international bureau|r[eé]serv[eé].*office|vom anmeldeamt|reservado.*oficina', re.I)
+SIGNATURE = re.compile(r'\bsignature\s+(?:of|du|de|des)\b|\bassinatura\b|\bunterschrift\b|\bfirma\s+del\b|出願人.*署名', re.I)
+PERSON_LABEL = re.compile(r'^(?:name of signatory|nom du signataire|nome do signat[aá]rio|nombre del firmante|name der unterzeichnenden person|署名者の氏名)\s*:?$', re.I)
+NAME_LABEL = re.compile(r'^(?:name|nom|nome|nombre|名称|氏名)(?:\s*\([^)]*\))?\s*:?$', re.I)
+CAPACITY = re.compile(r'^(?:capacity|qualit[eé]|qualidade|capacidad|calidad|eigenschaft)\b|^権限', re.I)
+STOP = re.compile(r'for receiving office|for international bureau|r[eé]serv[eé].*office|vom anmeldeamt|reservado.*oficina|受理官庁記入欄', re.I)
 
 
 def labelled_values(scan):
@@ -44,6 +44,8 @@ def labelled_values(scan):
                 found.append({'kind': kind, 'ids': [line['id'] for line in values],
                               'section': heading['text'], 'page': page['page'],
                               'block_id': f"signature-p{page['page']}-{heading['id']}",
+                              'bounds': {'page': page['page'], 'rect': [max(label['rect'][2]+8, page['width']*.38),
+                                         label['rect'][1]-3, page['width']-1, max(end-1, max(v['rect'][3] for v in values)+2)]},
                               'text': ' '.join(line['text'] for line in values)})
     return found
 

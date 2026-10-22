@@ -1,5 +1,47 @@
 # Menteso Agent Operations Logbook
 
+## 2026-10-22 - PCT person greetings and management categories prepared
+
+- The user clarified that human names usually identify people from bibliography
+  or signatures, while Cat is a management label. Inspected the 672-row human
+  workbook: 596 Slf, 58 Corp, 18 Ind; 108 repeated-email occurrences beyond the
+  first, with no Repeated category. Existing duplicate criteria remain separate
+  and unchanged pending the user's exact definition.
+- Report Name now uses verified applicant/representative people or a printed
+  signatory linked to the selected owner. Contact owner, agent identity, main
+  email, additional emails, phone and country remain separate. Added bounded
+  multilingual signature cells, independent OCR agreement with original-image
+  Qwen fallback, and a publication-checked capture of the already-open WIPO
+  bibliography. Its narrow fallback rejects ambiguous names/inventor selection;
+  actual live bibliography coverage has not been measured.
+- Slf/Corp/Ind are assigned from supported recipient/contact roles. A company
+  signatory remains Corp when acting for the corporate applicant. Shared company
+  applicant/agent blocks can identify its representative without reassigning the
+  email. No human answers are supplied to source extraction or model training.
+  Synthetic prompt examples were updated; model weights were not trained.
+- Development comparison on the previously analyzed 100-row sample: retained
+  83 saved verified contact rows and 17 access failures; freshly checked person
+  crops against the original PDFs. Exact Name agreement improved from 0/80 to
+  56/80 (70%), or 56/68 (82.35%) on available PDFs with reference person names.
+  Six accent/format-only differences bring normalized agreement to 62/80.
+  Cat agrees on 83/83 processed rows (83/100 including access failures). Email
+  remains 81/83 returned rows (97.59%), 81/100 overall. Country remains 79/100;
+  reference phones are blank, so phone accuracy cannot be scored. Management
+  category is reported separately from extraction accuracy. This is not a fresh
+  blind sample or an independently adjudicated 100% accuracy claim.
+- One final fresh original-PDF verification completed in 34.484 seconds and
+  matched the expected email/phone/owner/person/category. The earlier 83-document
+  person check pass took 924.984 seconds, plus targeted final checks; neither
+  measures full browser/download throughput. 254 scoped tests passed. All 1,326
+  report cell styles and all values outside Cat/Name matched the prior reports;
+  original human/input hashes are unchanged. Private results are in the Downloads
+  blind-test folder under repair-20261022/person-category-review.
+- Source was prepared in pct-person-category-20261022 from combined 7a80e21,
+  preserving teammate changes. Runtime activation is pending the separate idle
+  guard and source-only release receipt; no active job may be stopped. Keep the
+  Ollama document provider, GPT-4o CAPTCHA adapter, environment, tunnel, original
+  outputs and unrelated agents unchanged.
+
 Last updated: 2026-10-21 (Asia/Calcutta)
 
 ## 2026-10-21 — Private PCT test telemetry and CAPTCHA confirmation

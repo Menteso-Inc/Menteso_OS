@@ -12,12 +12,14 @@ def file_hash(path):
 
 
 def policy_fingerprint():
-    from . import signer_evidence
+    from . import signer_evidence, recipient, bibliography
     # Scheduling changes can retain these results only when the contact rules,
     # model, evidence coverage and acceptance policy are unchanged.
     policy_hash = hashlib.sha256(Path(policy.__file__).read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     material = {"engine": ai.ENGINE_VERSION, "policy": policy_hash,
                 "signer_evidence": file_hash(signer_evidence.__file__),
+                "recipient": file_hash(recipient.__file__),
+                "bibliography": file_hash(bibliography.__file__),
                 "rules": ai.load_rules().model_dump(), "model": ai.model_name(),
                 "enabled": ai.enabled(),
                 "pages": get_env("PCT_AI_MAX_PAGES", default="5"),

@@ -510,8 +510,12 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
     if bounds is not None and kind in {'name','phone'} and os.getenv('PCT_OLLAMA_FIELD_OCR_GATE')=='true':
         from . import field_ocr
         try:
-            field_check=field_ocr.recognize(Image.open(io.BytesIO(data)))
+            source_image=Image.open(io.BytesIO(data))
+            field_check=(field_ocr.recognize(source_image, remove_rules=True) if bounds.get('signature_cell')
+                         else field_ocr.recognize(source_image))
             accepted=field_ocr.accepted_value(kind,field_check)
+            if not accepted and bounds.get('signature_cell') and bounds.get('source_ocr_engine')=='windows_en':
+                accepted=field_ocr.agrees_with_source(source,field_check)
             if accepted:
                 # Preserve original formatting when it agrees; a complete-field
                 # recovery is retained verbatim from the independently read crop.
@@ -585,7 +589,10 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
     digest=hashlib.sha256(Path(pdf_path).read_bytes()).hexdigest()
     revision=ai.verification_revision()
     base=Path(get_env('PCT_AI_EVIDENCE_DIR') or ai.ROOT/'outputs'/'pct-work-sheets'/'ai-evidence')
-    folder=base/f'{digest[:24]}-{revision}'
+    context_suffix=''
+    if (context or {}).get('_bibliography'):
+        context_suffix='-'+hashlib.sha256(json.dumps(context['_bibliography'],sort_keys=True).encode()).hexdigest()[:12]
+    folder=base/f'{digest[:24]}-{revision}{context_suffix}'
     folder.mkdir(parents=True,exist_ok=True)
     record={'created_at':datetime.now(timezone.utc).isoformat(),'provider':'ollama','method':VERSION,
             'pdf_sha256':digest,'verification_revision':revision,'calls':[],'checks':[]}
@@ -677,6 +684,17 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         record['extraction']=extraction.model_dump()
         record['unresolved_emails']=unresolved_emails
         result=ai.select_contacts(extraction,rules,record['pages_scanned'])
+        from .recipient import enrich_local
+        try:
+            result=enrich_local(pdf_path,scan,extraction,result,folder,record,step)
+            from .bibliography import apply as apply_bibliography
+            result=apply_bibliography(result,context)
+            if (context or {}).get('_bibliography'):
+                record['bibliography']=context['_bibliography']
+        except Exception as exc:
+            # An optional greeting failure must not discard verified contacts.
+            record['recipient_review_error']=type(exc).__name__
+            step('[Recipient] Printed person could not be confirmed; verified contacts retained')
         if preferred_email_unconfirmed(result,unresolved_emails):
             raise RuntimeError('ollama_preferred_email_unconfirmed')
         result['email_checks']={}

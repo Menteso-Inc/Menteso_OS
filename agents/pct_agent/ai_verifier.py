@@ -102,11 +102,13 @@ def model_name():
 
 
 def verification_revision():
-    from . import signer_evidence
+    from . import signer_evidence, recipient, bibliography
     material = {"engine": ENGINE_VERSION, "model": model_name(),
                            "verifier_hash": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                            "policy_hash": hashlib.sha256(Path(policy.__file__).read_bytes()).hexdigest(),
                            "signer_hash": hashlib.sha256(Path(signer_evidence.__file__).read_bytes()).hexdigest(),
+                           "recipient_hash": hashlib.sha256(Path(recipient.__file__).read_bytes()).hexdigest(),
+                           "bibliography_hash": hashlib.sha256(Path(bibliography.__file__).read_bytes()).hexdigest(),
                            "dns_check": get_env("PCT_EMAIL_DNS_CHECK", default="true"),
                            "max_pages": get_env("PCT_AI_MAX_PAGES", default="5"),
                            "rules": load_rules().model_dump()}
@@ -685,4 +687,5 @@ def result_metadata(contacts):
                                           "agent_name", "country", "category", "contact_role", "contact_block_id",
                                           "display_name", "name_is_placeholder", "contact_owner", "selection_reason",
                                           "field_evidence", "agent_name_evidence", "email_checks",
-                                          "additional_emails", "signer_selection") if key in contacts}
+                                          "additional_emails", "signer_selection", "recipient_role",
+                                          "recipient_evidence", "recipient_status", "category_basis") if key in contacts}

@@ -16,6 +16,28 @@ def test_email_is_never_accepted_by_the_ocr_gate():
     assert field_ocr.bounds_for(scan,block,'email') is None
 
 
+def test_signature_table_rule_removal_preserves_glyphs_and_partial_strokes():
+    image=Image.new('RGB',(180,80),'white');draw=ImageDraw.Draw(image)
+    draw.line((10,0,10,79),fill='black',width=2)
+    draw.rectangle((20,10,130,24),fill='black')
+    draw.line((140,5,140,70),fill='black',width=2)
+    cleaned=field_ocr.remove_table_rules(image)
+    assert cleaned.getpixel((10,30))==(255,255,255)
+    assert cleaned.getpixel((20,10))==(0,0,0)
+    assert cleaned.getpixel((140,30))==(0,0,0)
+    assert image.getpixel((10,30))==(0,0,0)
+
+
+def test_whole_page_windows_agreement_still_requires_exact_complete_confident_rapidocr():
+    value=reading('Alex Green');value['coverage']='every_nonborder_ink_band'
+    assert field_ocr.agrees_with_source('Alex Green',value)=='Alex Green'
+    assert field_ocr.agrees_with_source('Alex Greer',value) is None
+    value['rapidocr'][0]['score']=float('nan')
+    assert field_ocr.agrees_with_source('Alex Green',value) is None
+    value['rapidocr'][0]['score']=.999;value['coverage']='unconfirmed'
+    assert field_ocr.agrees_with_source('Alex Green',value) is None
+
+
 def test_disagreement_confidence_and_clipping_all_require_vision():
     assert field_ocr.accepted_value('name',reading(second='Examples GmbH')) is None
     assert field_ocr.accepted_value('name',reading(score=.99)) is None

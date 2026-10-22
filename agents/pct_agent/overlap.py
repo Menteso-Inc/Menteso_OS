@@ -171,6 +171,9 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                 if stop_requested() and not pdf_path:
                     break
                 if pdf_path:
+                    bibliography = getattr(browser, 'last_bibliography', None)
+                    if bibliography:
+                        row['_bibliography'] = dict(bibliography)
                     future = (worker.submit(pdf_path, row) if process_worker is not None
                               else worker.submit(verify_row, pdf_path, row))
                     pending[future] = (row, url)

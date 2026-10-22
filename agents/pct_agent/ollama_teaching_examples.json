@@ -38,5 +38,10 @@
     "observed": "An applicant has a verified email. No agent contact block is printed.",
     "expected": "Retain the applicant email under its applicant owner. Emit no invented agent name; the report writer supplies its existing display fallback.",
     "explanation": "Missing agent information must not erase a verified applicant email."
+  },
+  {
+    "observed": "Applicant Name: Example Manufacturing Ltd. Signature Name: Example Manufacturing Ltd. Name of signatory: Alex Sample. Capacity: Applicant.",
+    "expected": "Keep Example Manufacturing Ltd as applicant/contact owner and its email unchanged. The separately verified greeting can be Alex Sample; the assigned category remains Corp.",
+    "explanation": "A signatory is a person acting for a company, not evidence that the applicant itself is an individual."
   }
 ]

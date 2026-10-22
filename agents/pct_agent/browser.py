@@ -833,6 +833,7 @@ class PatentBrowser:
         """
         step = on_step or self.on_step or (lambda m: None)
         self.last_failure_reason = ""
+        self.last_bibliography = {}
         if self.access_denied:
             self.last_failure_reason = "wipo_access_denied"
             step("[Browser] WIPO access denied; remote requests paused for this session")
@@ -878,6 +879,13 @@ class PatentBrowser:
             self.last_failure_reason = "load_timeout"
             step("[Browser] Page did not load after retries")
             return None
+
+        # Read the existing bibliography before leaving it; no extra request.
+        try:
+            from .bibliography import capture
+            self.last_bibliography = capture(page, doc_id)
+        except Exception:
+            self.last_bibliography = {}
 
         # --- Step 3: Click Documents tab ---
         try:

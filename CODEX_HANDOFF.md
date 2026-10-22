@@ -4,6 +4,16 @@ Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely befo
 
 ## PCT combined release - 22 October 2026
 
+The subsequent person/category change separates the report's greeting Name
+from contact-owner and agent-name evidence. Preserve that separation: a person
+may sign for a company without personally owning its generic mailbox. Names
+come from verified applicant/agent identities or an owner-linked printed
+signatory; never infer them from email strings or an arbitrary inventor.
+Category is an assigned management label. Existing duplicate handling stays
+separate; the reference workbook contains repeated emails without Repeated
+labels, so an email alone is insufficient. Read the latest logbook for the
+measured comparison and activation status before claiming this is deployed.
+
 This release combines the teammate's `04bf7e9` research/responsive dashboard
 changes with local Qwen source-region verification, OCR fallback, telemetry and
 signing-agent selection. Preserve both histories when deploying. The public

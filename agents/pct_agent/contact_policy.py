@@ -440,7 +440,8 @@ def select(extraction, rules, page_numbers, empty):
             result['additional_emails'].append({'email': field.value.strip(), 'role': field.role,
                 'owner': field.entity, 'block_id': field.block_id, 'page': field.page,
                 'section': field.section, 'evidence': field.evidence})
-    return result
+    from .recipient import apply
+    return apply(result, extraction, rules)
 
 
 def result_emails(result):

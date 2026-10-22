@@ -82,11 +82,34 @@ def line_regions(image):
     return regions
 
 
-def recognize(image):
+def remove_table_rules(image):
+    """Remove only complete thin form rules; retain the original evidence crop."""
+    import numpy as np
+    pixels=np.array(image.convert('RGB'))
+    ink=np.asarray(image.convert('L'))<180
+    # Text has whitespace above/below it in a complete field. Only uninterrupted
+    # rules spanning the entire crop qualify; groups wider than 3 px are kept.
+    for axis in (0, 1):
+        positions=np.flatnonzero(ink.mean(axis=axis)>.98)
+        groups=[]
+        for pos in positions:
+            if not groups or pos>groups[-1][-1]+1:groups.append([])
+            groups[-1].append(int(pos))
+        for group in groups:
+            if len(group)<=3:
+                if axis==0:pixels[:,group,:]=255
+                else:pixels[group,:,:]=255
+    from PIL import Image
+    return Image.fromarray(pixels)
+
+
+def recognize(image, remove_rules=False):
     global _ENGINE
     import winocr
     from rapidocr import RapidOCR
     started = time.monotonic()
+    if remove_rules:
+        image=remove_table_rules(image)
     windows = winocr.recognize_pil_sync(image, 'en')
     regions=line_regions(image)
     if not regions:
@@ -118,6 +141,22 @@ def recognize(image):
     return {'windows': win_lines, 'rapidocr': rapid, 'width': image.width, 'height': image.height,
             'seconds': round(time.monotonic() - started, 4),
             'coverage':'every_nonborder_ink_band','ink_regions':regions}
+
+
+def agrees_with_source(source, reading):
+    """Windows whole-page OCR can corroborate a complete RapidOCR cell reading."""
+    rapid=reading.get('rapidocr', [])
+    if reading.get('coverage')!='every_nonborder_ink_band' or not rapid:
+        return None
+    if any(not .995<=line.get('score',0)<=1 for line in rapid):
+        return None
+    for line in rapid:
+        x0,y0,x1,y1=line['rect']
+        if min(x0,y0)<=2 or x1>=reading['width']-2 or y1>=reading['height']-2:
+            return None
+    text=' '.join(line['text'] for line in rapid).strip()
+    norm=lambda value:' '.join(value.split()).casefold()
+    return text if text and norm(text)==norm(source) else None
 
 
 def accepted_value(kind, reading):

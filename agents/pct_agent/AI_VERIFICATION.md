@@ -28,7 +28,34 @@ After role priority selects agent contacts, an independently verified signing or
 
 The final report column, `Additional Email`, retains other verified applicant/agent addresses as `Agent email (owner): address` or `Applicant email (owner): address`. It excludes duplicate main addresses, patent-office and inventor-only contacts. Original columns A-L keep their order. Both normal rows and resume handoffs carry the structured additional-email ownership evidence. In the local source-region path, signer image checks run only when distinct verified agent-email choices exist and role priority selected agents.
 
-Cat uses source-supported Slf/Corp/Ind. The legal company suffix of an applicant can support Corp; a corporate suffix on an agent does not establish whether the business is a legal practice. Unresolved classification remains blank. No Info means neither reading found usable wanted contact information in the reviewed complete document; uncertainty stays in review evidence.
+The report's Name is a greeting person, stored separately from `agent_name` and
+`contact_owner`. Prefer a selected applicant individual or an associated named
+representative; otherwise read an explicit signatory whose signature block names
+that owner. A shared verified email can link a representative to the applicant
+for greeting purposes without changing contact ownership or phone selection.
+Different or ambiguous signing owners cannot supply the greeting. Printed
+surname-first names are reordered; titles and trailing registration numbers are
+excluded. Source accents are retained. Never infer a name from an email address
+or select an inventor solely because they are listed.
+
+The browser captures the already-loaded WIPO bibliography before opening
+Documents, checks the publication identity and passes it with that row only.
+A single explicitly named bibliography agent can supply a missing greeting;
+ambiguous lists and address layouts stay unresolved. There is no extra WIPO
+navigation. Saved-PDF tests do not establish the live bibliography fallback's
+coverage. Local signatures use two independent OCR readings where they agree
+at the existing confidence threshold; disagreements retain the original-image
+Qwen checks. Complete thin table rules may be removed for signature OCR only;
+the original evidence crop is retained. These additional person checks do not
+change the email acceptance rules or the CAPTCHA provider.
+
+Cat is an assigned management label, not literal PDF text: Slf for a verified
+representative, Corp for a corporate applicant contact, and Ind for an individual
+applicant contact. A company's individual signatory does not change Corp to Ind.
+Unknown classification remains blank. Compare category consistency separately
+from contact extraction accuracy. No Info means neither reading found usable
+wanted contact information in the reviewed complete document; uncertainty stays
+in review evidence.
 
 Repeated marks later duplicate patent IDs or matching verified contact tuples (same owner, role, email set and phone set) within one input/run. Every patent row is retained. Matching applicant name alone does not mean Repeated. Original category and repeated_of row remain in metadata. This operational interpretation was stated to the user; refine it if they clarify a different duplicate criterion.
 

@@ -33,7 +33,7 @@ def select(*fields):
 
 
 def agent_fields():
-    return [contact("name", "Peter Counsel"), contact("email", "peterl01@example.org"),
+    return [contact("name", "Peter Counsel", entity_type="individual"), contact("email", "peterl01@example.org"),
             contact("phone", "+49 30 555 0101"), contact("country", "Germany")]
 
 
@@ -93,13 +93,15 @@ def test_country_is_never_inferred_from_application_or_phone():
     assert ai._country_code("Republic of Korea") == "KR"
 
 
-def test_unknown_entity_type_does_not_guess_category():
-    assert select(contact("email", "peter@example.org", entity_type="unknown"))["category"] == ""
+def test_management_category_uses_verified_agent_role():
+    assert select(contact("email", "peter@example.org", entity_type="unknown"))["category"] == "Slf"
 
 
 @pytest.mark.parametrize("entity_type,category", [("law_firm", "Slf"), ("company", "Corp"), ("individual", "Ind")])
 def test_category_spellings_match_reference(entity_type, category):
-    assert select(contact("email", "peter@example.org", entity_type=entity_type))["category"] == category
+    role = 'agent' if category == 'Slf' else 'applicant'
+    assert select(contact("email", "peter@example.org", entity_type=entity_type,
+                          role=role, section='IV Agent' if role=='agent' else 'II Applicant'))["category"] == category
 
 
 def test_shuffled_wipo_columns_preserve_applicant(tmp_path):
