@@ -6,6 +6,15 @@ from agents.pct_agent import agent, ai_verifier as ai
 from agents.pct_agent.pipeline import _make_result
 
 
+def test_country_spacing_repair_requires_exact_known_characters():
+    assert ai.policy.country_code('Deut schland')=='DE'
+    assert ai.policy.country_code('United King dom')=='GB'
+    assert ai.policy.country_code('Ch ina')=='CN'
+    assert ai.policy.country_code('Chlna')==''
+    assert ai.policy.country_code('1 Example Road Germany')==''
+    assert ai.policy.country_code('Germany France')==''
+
+
 def contact(kind, value, **kwargs):
     data = {"kind": kind, "value": value, "entity": "Peter Counsel", "role": "agent",
             "page": 2, "evidence": kind + ": " + value, "legible": True,

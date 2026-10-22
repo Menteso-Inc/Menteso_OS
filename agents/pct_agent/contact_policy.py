@@ -20,7 +20,16 @@ def country_code(value):
     try:
         return pycountry.countries.lookup(aliases.get(value.strip().casefold(), value.strip())).alpha_2
     except LookupError:
-        return ''
+        # OCR can insert whitespace inside a country word. Accept only an
+        # exact character match to one known country after spacing/formatting
+        # normalization; never guess from a phone prefix or a fuzzy spelling.
+        needle=words(value)
+        candidates={code for label,code in aliases.items() if needle and words(label)==needle}
+        for country in pycountry.countries:
+            if needle and any(words(getattr(country,key,''))==needle
+                              for key in ('name','official_name','common_name')):
+                candidates.add(country.alpha_2)
+        return next(iter(candidates)) if len(candidates)==1 else ''
 
 
 def address_country(address):

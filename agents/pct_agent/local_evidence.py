@@ -30,11 +30,11 @@ EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ
 QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
 FIELD_LABELS = {
     'name':re.compile(r'^(?:(?:Name|Nom|Nombre)\b|姓名|名称)',re.I),
-    'address':re.compile(r'^(?:(?:Address|Anschrift|Adresse|Direcci[oó]n)\b|地址|通信地址|あて名)',re.I),
+    'address':re.compile(r'^(?:(?:Address|Anschrif[ti]|Adresse|Direcci[oó]n)\b|地址|通信地址|あて名)',re.I),
     'phone':re.compile(r'^(?:(?:Telephone|Telefonnr\.?|Telefon|Phone|Tel\.?)(?:\s|$|:)|电话|電話)',re.I),
     'email':re.compile(r'^(?:E.?mail|Courriel|Correo|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
-FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrift|Adresse|Nationality|Residence|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
+FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Nationality|Residence|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
 SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
 
 

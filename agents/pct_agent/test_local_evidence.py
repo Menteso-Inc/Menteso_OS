@@ -151,6 +151,12 @@ def test_state_of_nationality_is_not_part_of_the_contact_address():
     assert block['address']==[7,8] and block['country']==[8]
 
 
+def test_ocr_german_address_label_does_not_extend_contact_name():
+    scan=form();scan['lines'][5]['text']='Anschrifi'
+    block=local.table_blocks(scan)[0]
+    assert block['name']==[5] and block['address']==[7,8] and block['country']==[8]
+
+
 def test_german_box_prefix_confirms_role_but_inventor_does_not():
     lines=[line(1,'Feld Nr. 11 ANMELDER',40,20),
            line(2,'Feld Nr. IV ANWALT ODER GEMEINSAMER VERTRETER',40,200),
