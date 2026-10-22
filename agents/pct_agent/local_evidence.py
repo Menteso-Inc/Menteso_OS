@@ -27,7 +27,7 @@ _LOCK = threading.Lock()
 ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|unterschrift|signatur|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
-QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
+QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
 FIELD_LABELS = {
     'name':re.compile(r'^(?:(?:Name|Nom|Nombre)\b|姓名|名称)',re.I),
     'address':re.compile(r'^(?:(?:Address|Anschrift|Adresse|Direcci[oó]n)\b|地址|通信地址|あて名)',re.I),
@@ -363,12 +363,13 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
     second,second_meta=read_crop(enlarged,kind,on_step)
     next_values=exact_values(kind,second.get('text','')) if second.get('legible') is True else []
     trace.update(second_visual=second,alternate_ocr=ocr);trace['calls'].append(second_meta)
-    if observed and key(observed)==key(next_values) and key(observed)==key(exact_values(kind,ocr)):
+    alternate=alternate_ocr_values(kind,ocr)
+    if observed and key(observed)==key(next_values) and key(observed)==key(alternate):
         return observed,trace
-    if next_values and key(next_values)==key(original) and key(next_values)==key(exact_values(kind,ocr)):
+    if next_values and key(next_values)==key(original) and key(next_values)==key(alternate):
         trace['resolution']='Second original-image reading agrees with both OCR readings'
         return original,trace
-    if next_values and key(next_values)==key(exact_values(kind,ocr)):
+    if next_values and key(next_values)==key(alternate):
         # An OCR/vision pair supports a candidate, but the earlier read differs.
         # One bounded fresh image read can establish the same two-vision-plus-
         # OCR agreement used above, without guessing from an expected answer.
@@ -382,6 +383,16 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
             return next_values,trace
     trace['withheld']='Independent source readings disagree'
     return [],trace
+
+
+def alternate_ocr_values(kind,text):
+    if kind=='email':
+        # OCR can split the printed @ or domain dot from adjacent characters.
+        # Join only separator whitespace in this one-field crop. Character
+        # substitutions remain forbidden, and independent vision agreement
+        # is still required by verify_value before any value can be exported.
+        text=re.sub(r'(?<=\S)\s+(?=[.@])|(?<=[.@])\s+(?=\S)','',text)
+    return exact_values(kind,text)
 
 
 def verify(pdf_path,ocr_result,on_step=None,context=None):
@@ -415,7 +426,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             record['layout_method']='explicit_table_labels'
             step('[AI Verification] Explicit contact labels mapped; visually verifying original values')
         record['blocks']=blocks
-        lookup={l['id']:l for l in scan['lines']};fields=[];issues=[]
+        lookup={l['id']:l for l in scan['lines']};fields=[];issues=[];unresolved_emails=[]
         assigned={i for block in blocks for i in block['email']}
         candidates={l['id'] for l in scan['lines'] if '@' in l['text']}
         if not candidates.issubset(assigned):
@@ -443,7 +454,10 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 if kind in {'email','phone','name'}:
                     values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step)
                     record['checks'].append(trace)
-                    if not values:issues.append(f'{kind} withheld: source readings disagree');continue
+                    if not values:
+                        issues.append(f'{kind} withheld: source readings disagree')
+                        if kind=='email':unresolved_emails.append({'role':role,'block_id':block_id})
+                        continue
                 else:
                     values=[source]
                 if kind=='name' and values:entity=values[0]
@@ -455,7 +469,11 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             for n,field in enumerate(fields):
                 if field.block_id==block_id:fields[n]=field.model_copy(update={'entity':entity})
         extraction=ai.VisualExtraction(fields=fields,reviewed_pages=record['pages_scanned'],uncertainties=issues)
+        record['extraction']=extraction.model_dump()
+        record['unresolved_emails']=unresolved_emails
         result=ai.select_contacts(extraction,rules,record['pages_scanned'])
+        if preferred_email_unconfirmed(result,unresolved_emails):
+            raise RuntimeError('ollama_preferred_email_unconfirmed')
         result['email_checks']={}
         for email in list(result['emails']):
             status=policy.email_domain_status(email)
@@ -493,3 +511,10 @@ def redundant_additional_agent(block,lookup,fields):
     for field in fields:
         if field.role=='agent':kinds.setdefault(field.block_id,set()).add(field.kind)
     return any('name' in values and bool(values & {'email','phone'}) for values in kinds.values())
+
+
+def preferred_email_unconfirmed(result,unresolved):
+    # The established policy prefers an applicant email when one is printed.
+    # Failure to verify it must not silently promote a different agent email.
+    return bool(result.get('emails') and result.get('contact_role')=='agent'
+                and any(item['role']=='applicant' for item in unresolved))

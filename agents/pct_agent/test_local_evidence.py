@@ -158,6 +158,32 @@ def test_german_box_prefix_confirms_role_but_inventor_does_not():
     assert [l['id'] for l in local.role_headings(lines,600)]==[1,2]
 
 
+def test_german_narrative_does_not_cut_off_real_agent_block():
+    scan=form();scan['lines'][0]['text']='Anwalt oder gemeinsamer Vertreter'
+    scan['lines'].insert(1,line(50,'Anmelder vor den zuständigen inter-',50,115))
+    blocks=local.table_blocks(scan)
+    assert len(blocks)==1 and blocks[0]['role']=='agent' and blocks[0]['email']==[16]
+
+
+def test_wrapped_ocr_domain_needs_two_matching_image_reads(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'ip-office@example.org','legible':True}]*2,'ip-office@example\n.org')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'ip—office@example . org',10,10)},'email',tmp_path)
+    assert values==['ip-office@example.org'] and len(trace['calls'])==2
+
+
+def test_ocr_separator_join_cannot_correct_letters_or_extra_at():
+    assert local.alternate_ocr_values('email','il1 @ example . org')==['il1@example.org']
+    assert local.alternate_ocr_values('email','a@b @ example.org')==[]
+    assert local.alternate_ocr_values('email','il1@example.org')!=['i11@example.org']
+
+
+def test_uncertain_applicant_email_cannot_promote_agent_email():
+    unresolved=[{'role':'applicant','block_id':'a'}]
+    assert local.preferred_email_unconfirmed({'emails':['agent@example.org'],'contact_role':'agent'},unresolved)
+    assert not local.preferred_email_unconfirmed({'emails':['applicant@example.org'],'contact_role':'applicant'},unresolved)
+    assert not local.preferred_email_unconfirmed({'emails':['agent@example.org'],'contact_role':'agent'},[])
+
+
 def test_illegible_email_never_exports_ocr(monkeypatch,tmp_path):
     setup_crop(monkeypatch,[{'text':'a@example.org','legible':False}]*2,'a@example.org')
     values,_=local.verify_value('source.pdf',[1],{1:line(1,'a@example.org',10,10)},'email',tmp_path)
