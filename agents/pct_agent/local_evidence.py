@@ -24,7 +24,7 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-ROLE_HEADING = re.compile(r'^(?:(?:Box|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
+ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|unterschrift|signatur|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
 QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
@@ -34,7 +34,7 @@ FIELD_LABELS = {
     'phone':re.compile(r'^(?:(?:Telephone|Telefonnr\.?|Telefon|Phone|Tel\.?)(?:\s|$|:)|电话|電話)',re.I),
     'email':re.compile(r'^(?:E.?mail|Courriel|Correo|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
-FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrift|Adresse|Nationality|Residence|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
+FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrift|Adresse|Nationality|Residence|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
 SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
 
 
@@ -360,6 +360,9 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
     trace.update(second_visual=second,alternate_ocr=ocr);trace['calls'].append(second_meta)
     if observed and key(observed)==key(next_values) and key(observed)==key(exact_values(kind,ocr)):
         return observed,trace
+    if next_values and key(next_values)==key(original) and key(next_values)==key(exact_values(kind,ocr)):
+        trace['resolution']='Second original-image reading agrees with both OCR readings'
+        return original,trace
     trace['withheld']='Independent source readings disagree'
     return [],trace
 

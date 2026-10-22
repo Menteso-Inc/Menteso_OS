@@ -183,6 +183,7 @@ def test_stop_drains_downloaded_rows_without_starting_more():
 @pytest.mark.parametrize("reason,expected,attempts", [
     ("nav_failed", "error", 2), ("download_failed", "error", 2),
     ("pdf_lookup_unconfirmed", "error", 2), ("no_pdf_row", "not_found", 1),
+    ("wipo_access_denied", "error", 1),
 ])
 def test_failed_downloads_are_retried_and_never_reported_as_missing_contacts(monkeypatch, reason, expected, attempts):
     clock = [0.0]

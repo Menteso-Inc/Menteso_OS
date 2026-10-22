@@ -115,6 +115,33 @@ def test_disputed_spelling_needs_two_visual_reads_and_alternate_ocr(monkeypatch,
     assert values==['l1I@example.org'] and len(trace['calls'])==2
 
 
+def test_second_image_read_agreeing_with_both_ocr_reads_resolves_initial_visual_error(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'lll@example.org','legible':True},
+                           {'text':'l1I@example.org','legible':True}],'l1I@example.org')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'l1I@example.org',10,10)},'email',tmp_path)
+    assert values==['l1I@example.org'] and trace.get('resolution')
+
+
+def test_one_agreeing_ocr_signal_cannot_override_disagreeing_image_reads(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'lll@example.org','legible':True},
+                           {'text':'l1I@example.org','legible':True}],'different@example.org')
+    values,_=local.verify_value('source.pdf',[1],{1:line(1,'l1I@example.org',10,10)},'email',tmp_path)
+    assert values==[]
+
+
+def test_state_of_nationality_is_not_part_of_the_contact_address():
+    scan=form();scan['lines'][8]['text']='State of nationality'
+    block=local.table_blocks(scan)[0]
+    assert block['address']==[7,8] and block['country']==[8]
+
+
+def test_german_box_prefix_confirms_role_but_inventor_does_not():
+    lines=[line(1,'Feld Nr. 11 ANMELDER',40,20),
+           line(2,'Feld Nr. IV ANWALT ODER GEMEINSAMER VERTRETER',40,200),
+           line(3,'Feld Nr. III WEITERE ANMELDER UND/ODER ERFINDER',40,400)]
+    assert [l['id'] for l in local.role_headings(lines,600)]==[1,2]
+
+
 def test_illegible_email_never_exports_ocr(monkeypatch,tmp_path):
     setup_crop(monkeypatch,[{'text':'a@example.org','legible':False}]*2,'a@example.org')
     values,_=local.verify_value('source.pdf',[1],{1:line(1,'a@example.org',10,10)},'email',tmp_path)

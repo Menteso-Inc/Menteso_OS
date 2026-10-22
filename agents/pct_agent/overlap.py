@@ -159,7 +159,7 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                     if pdf_path:
                         interval = max(min_interval, interval * 0.75)
                         break
-                    if failure == "no_pdf_row":
+                    if failure in {"no_pdf_row", "wipo_access_denied"}:
                         break
                     interval = min(60.0, max(10.0, interval * 2))
                     if attempt == 0 and not stop_requested():
