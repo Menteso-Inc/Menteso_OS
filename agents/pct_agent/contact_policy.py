@@ -13,7 +13,7 @@ def words(value):
 
 
 def country_code(value):
-    aliases = {'österreich': 'AT', 'osterreich': 'AT', 'deutschland': 'DE',
+    aliases = {'brasil': 'BR', 'österreich': 'AT', 'osterreich': 'AT', 'deutschland': 'DE',
                'schweiz': 'CH', 'suisse': 'CH', 'italia': 'IT', 'españa': 'ES',
                'republic of korea': 'KR', 'south korea': 'KR', 'uk': 'GB',
                'p.r. china': 'CN', 'united states of america': 'US'}
@@ -40,7 +40,7 @@ def country_code(value):
 
 def address_country(address):
     """Match a printed country at the end of a confirmed address, never a phone/office."""
-    candidates = [('Österreich', 'AT'), ('Deutschland', 'DE'), ('Schweiz', 'CH'),
+    candidates = [('Brasil', 'BR'), ('Österreich', 'AT'), ('Deutschland', 'DE'), ('Schweiz', 'CH'),
                   ('Suisse', 'CH'), ('Italia', 'IT'), ('España', 'ES')]
     for country in pycountry.countries:
         for key in ('name', 'official_name', 'common_name'):
@@ -116,8 +116,8 @@ def agree(first, second, ocr_emails=None):
 
 
 FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
-AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandatario|대리인|代理|^IV\b', re.I)
-APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|申请人|出願人|출원인|^II\b', re.I)
+AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|^IV\b', re.I)
+APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|^II\b', re.I)
 
 
 EMAIL_RE = re.compile(

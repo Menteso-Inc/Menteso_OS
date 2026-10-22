@@ -170,6 +170,36 @@ def test_spanish_combined_inventor_section_ends_preceding_applicant_block():
     assert local.table_blocks(scan) is None
 
 
+def test_portuguese_form_maps_email_separately_from_address_and_fax():
+    scan=form();scan['lines'][0]['text']='Requerente'
+    scan['lines'][1]['text']='Requerente para'
+    scan['lines'][3]['text']='Nome'
+    scan['lines'][5]['text']='Endereço'
+    scan['lines'][7]['text']='Brasil'
+    scan['lines'][8]['text']='Nacionalidade (nome do Estado)'
+    scan['lines'][10]['text']='No. de telefone'
+    scan['lines'][12]['text']='No. de fax'
+    scan['lines'][14]['text']='Endereço de correio electrónico'
+    block=local.table_blocks(scan)[0]
+    assert block['email']==[16] and block['phone']==[12] and block['address']==[7,8]
+    assert block['country']==[8] and local.policy.country_code('Brasil')=='BR'
+    assert local.policy.address_country('Rio de Janeiro Brasil')=='BR'
+
+
+def test_portuguese_agent_heading_and_combined_inventor_boundary():
+    scan=form();scan['lines'][0]['text']='Mandatário ou representante comun;'
+    scan['lines'][18]['text']='Requerente e/ou inventor'
+    scan['lines'].append(line(70,'nome do(s) requerente(s) perante as',50,110))
+    blocks=local.table_blocks(scan)
+    assert len(blocks)==1 and blocks[0]['role']=='agent' and blocks[0]['name']==[5]
+    assert local.policy.AGENT_SECTION.search('Mandatário')
+
+
+def test_portuguese_wrapped_signature_is_not_an_agent_heading():
+    lines=[line(1,'Assinatura do requerente,',50,100),line(2,'mandatário ou do representante',50,112)]
+    assert local.role_headings(lines,600)==[]
+
+
 def test_second_ocr_cannot_erase_an_email_region():
     primary=form();alternate=form()
     assert local.preserves_email_regions(primary,alternate)

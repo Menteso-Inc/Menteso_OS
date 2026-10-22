@@ -24,18 +24,18 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandatario|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
-EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
+ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|代理人|代理机构)', re.I)
+EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|assinatura|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
 QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|para|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
 FIELD_LABELS = {
-    'name':re.compile(r'^(?:(?:Name|Nom|Nombre)(?=\s|:|$|\()|姓名|名称)',re.I),
-    'address':re.compile(r'^(?:(?:Address|Anschrif[ti]|Adresse)\b|Direcci[oóö]n\s*:?\s*$|地址|通信地址|あて名)',re.I),
-    'phone':re.compile(r'^(?:(?:(?:N[o°]\.?\s*)?de\s+)?t[eé]l[eé]phone|No\.\s+de\s+tel[eé]fono|Telephone|Telefonnr\.?|Telefon|Phone|Tel\.?)(?:\s|$|:)|电话|電話',re.I),
-    'email':re.compile(r'^(?:E.?mail|Courriel|Courrier\s+[eé]lectronique|Correo(?:\s+electr[oóö]nico)?|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
+    'name':re.compile(r'^(?:(?:Name|Nom|Nombre)(?=\s|:|$|\()|Nome(?:\s*\([^)]*\))?\s*:?\s*$|姓名|名称)',re.I),
+    'address':re.compile(r'^(?:(?:Address|Anschrif[ti]|Adresse)\b|(?:Direcci[oóö]n|Endere[çc]o)\s*:?\s*$|地址|通信地址|あて名)',re.I),
+    'phone':re.compile(r'^(?:(?:(?:N[o°]\.?\s*)?de\s+)?t[eé]l[eé]phone|No\.\s+de\s+(?:tel[eé]fono|telefone)|Telephone|Telefonnr\.?|Telefon|Phone|Tel\.?)(?:\s|$|:)|电话|電話',re.I),
+    'email':re.compile(r'^(?:E.?mail|Courriel|Courrier\s+[eé]lectronique|Correo(?:\s+electr[oóö]nico)?|Endere[çc]o\s+de\s+correio\s+electr[oó]nico|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
-FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Direcci[oóö]n|Nationality|Nationalit[eé]|Nacionalidad|Residence|Domicil[ei]o?|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|de\s+t[eé]l[eé]phone|E.?mail|Courriel|Courrier|Correo|Autori[sz]|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
-SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|Solicitante|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandatario|Representative|Inventor|Erfinder|Inventeur|Signature|Firma|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS|DESIGNACIONES|Revendication|Reivindicaci[oó]n)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
+FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Endere[çc]o|Direcci[oóö]n|Nationality|Nationalit[eé]|Nacionalidad|Residence|Domicil[ei]o?|Domic[íi]lio|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|de\s+t[eé]l[eé]phone|E.?mail|Courriel|Courrier|Correo|Autori[sz]|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
+SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|Solicitante|Requerente|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Inventor|Erfinder|Inventeur|Signature|Assinatura|Firma|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS|DESIGNACIONES|DESIGNA[ÇC][ÕO]ES|Revendication|Reivindicaci[oó]n)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
 
 
 def role_headings(lines,width):
@@ -76,10 +76,10 @@ def confirmed_combined_applicants(lines,width):
 def qualified_role(text):
     if QUALIFIED_ROLE.search(text):return True
     # Spanish/French references to applicants inside prose are not headings.
-    if re.match(r'^(?:Solicitante|D[eé]posant)\b',text,re.I):
-        if re.fullmatch(r'Solicitante (?:y/o|ylo) inventor|D[eé]posant et/ou inventeur',text,re.I):
+    if re.match(r'^(?:Solicitante|D[eé]posant|Requerente)\b',text,re.I):
+        if re.fullmatch(r'Solicitante (?:y/o|ylo) inventor|D[eé]posant et/ou inventeur|Requerente e/ou inventor',text,re.I):
             return False  # This excluded role still ends the preceding block.
-        return not bool(re.fullmatch(r'(?:Solicitante|D[eé]posant)(?:s|\(s\))?\s*:?',text,re.I))
+        return not bool(re.fullmatch(r'(?:Solicitante|D[eé]posant|Requerente)(?:s|\(s\))?\s*:?',text,re.I))
     return False
 
 
