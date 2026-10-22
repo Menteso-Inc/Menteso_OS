@@ -452,12 +452,17 @@ def map_blocks(lines,on_step=None):
     return answer['blocks'],meta
 
 
-def crop(pdf,line_ids,lookup,scale=4,padding=5):
+def crop(pdf,line_ids,lookup,scale=4,padding=5,bounds=None):
     lines=[lookup[i] for i in line_ids]
     pages={l['page'] for l in lines}
     if len(pages)!=1:raise RuntimeError('ollama_cross_page_crop')
     rect=fitz.Rect(min(l['rect'][0] for l in lines)-padding,min(l['rect'][1] for l in lines)-padding,
                    max(l['rect'][2] for l in lines)+padding,max(l['rect'][3] for l in lines)+padding)
+    if bounds is not None:
+        if bounds['page'] not in pages:raise RuntimeError('ollama_cross_page_crop')
+        rect=fitz.Rect(bounds['rect'])
+        if any(not rect.contains(fitz.Rect(l['rect'])) for l in lines):
+            raise RuntimeError('ollama_incomplete_field_bounds')
     with fitz.open(pdf) as doc:
         page=doc[next(iter(pages))-1];rect &= page.rect
         if rect.is_empty:raise RuntimeError('ollama_empty_crop')
@@ -492,25 +497,43 @@ def exact_values(kind,text):
     return [text.strip()] if text.strip() else []
 
 
-def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
+def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
     """No spelling supplied to vision. Disputes require a new crop and OCR."""
     source=' '.join(lookup[i]['text'] for i in ids)
     if kind=='name' and re.fullmatch(r'\s*(?:Name|Nom|Nombre|Name of signatory)\s*:?\s*',source,re.I):
         return [],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
                    'withheld':'Field label is not a contact name'}
-    data=crop(pdf,ids,lookup)
+    data=crop(pdf,ids,lookup,bounds=bounds)
     label=f"{kind}-{'-'.join(map(str,ids))}"
     (evidence_dir/(label+'.png')).write_bytes(data)
+    field_check=None
+    if bounds is not None and kind in {'name','phone'} and os.getenv('PCT_OLLAMA_FIELD_OCR_GATE')=='true':
+        from . import field_ocr
+        try:
+            field_check=field_ocr.recognize(Image.open(io.BytesIO(data)))
+            accepted=field_ocr.accepted_value(kind,field_check)
+            if accepted:
+                # Preserve original formatting when it agrees; a complete-field
+                # recovery is retained verbatim from the independently read crop.
+                value=source if ' '.join(source.split()).casefold()==' '.join(accepted.split()).casefold() else accepted
+                if on_step:on_step(f'[Field OCR] {kind}: whole-field agreement ({field_check["seconds"]}s); vision call avoided')
+                return [value],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                    'bounds':bounds,'field_ocr':field_check,'accepted':value,
+                    'resolution':'Two independent whole-field OCR readings agree'}
+        except Exception as exc:
+            field_check={'error':type(exc).__name__,'fallback':'original vision verifier'}
     reading,meta=read_crop(data,kind,on_step)
     observed=exact_values(kind,reading.get('text','')) if reading.get('legible') is True else []
     original=exact_values(kind,source)
     key=lambda values:{policy.value_key(kind,v) for v in values}
     trace={'kind':kind,'source_ids':ids,'ocr':source,'visual':reading,'calls':[meta]}
+    if bounds is not None:trace['bounds']=bounds
+    if field_check is not None:trace['field_ocr']=field_check
     if observed and key(observed)==key(original):
         return original,trace
     # A disagreement is never "fixed" from model knowledge or a human answer.
     import winocr
-    enlarged=crop(pdf,ids,lookup,scale=5,padding=9)
+    enlarged=crop(pdf,ids,lookup,scale=5,padding=9,bounds=bounds)
     if os.getenv('PCT_OLLAMA_SECONDARY_OCR')=='true':
         from .secondary_ocr import recognize
         ocr=recognize(Image.open(io.BytesIO(enlarged))).get('text','')
@@ -532,7 +555,7 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
         # An OCR/vision pair supports a candidate, but the earlier read differs.
         # One bounded fresh image read can establish the same two-vision-plus-
         # OCR agreement used above, without guessing from an expected answer.
-        confirmation=crop(pdf,ids,lookup,scale=3.5,padding=3)
+        confirmation=crop(pdf,ids,lookup,scale=3.5,padding=3,bounds=bounds)
         (evidence_dir/(label+'-confirmation.png')).write_bytes(confirmation)
         third,third_meta=read_crop(confirmation,kind,on_step)
         third_values=exact_values(kind,third.get('text','')) if third.get('legible') is True else []
@@ -628,7 +651,11 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 if not ids:continue
                 source=' '.join(lookup[i]['text'] for i in ids)
                 if kind in {'email','phone','name'}:
-                    values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step)
+                    bounds=None
+                    if record['layout_method']=='explicit_table_labels' and os.getenv('PCT_OLLAMA_FIELD_OCR_GATE')=='true':
+                        from .field_ocr import bounds_for
+                        bounds=bounds_for(scan,block,kind)
+                    values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step,bounds=bounds)
                     record['checks'].append(trace)
                     if not values:
                         issues.append(f'{kind} withheld: source readings disagree')

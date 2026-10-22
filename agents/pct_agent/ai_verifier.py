@@ -115,6 +115,10 @@ def verification_revision():
         if mode == "source_regions":
             from . import local_evidence
             material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
+            material["field_ocr_gate"] = get_env("PCT_OLLAMA_FIELD_OCR_GATE",default="false")
+            if material["field_ocr_gate"] == "true":
+                from . import field_ocr
+                material["field_ocr_hash"] = hashlib.sha256(Path(field_ocr.__file__).read_bytes()).hexdigest()
             material["secondary_ocr_enabled"] = get_env("PCT_OLLAMA_SECONDARY_OCR",default="false")
             if material["secondary_ocr_enabled"] == "true":
                 from . import secondary_ocr
