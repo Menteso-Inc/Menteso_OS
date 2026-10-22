@@ -671,6 +671,8 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             # Keep all fields tied to the same visually confirmed owner label.
             for n,field in enumerate(fields):
                 if field.block_id==block_id:fields[n]=field.model_copy(update={'entity':entity})
+        from .signer_evidence import verify_local
+        fields.extend(verify_local(pdf_path,scan,fields,folder,record,step))
         extraction=ai.VisualExtraction(fields=fields,reviewed_pages=record['pages_scanned'],uncertainties=issues)
         record['extraction']=extraction.model_dump()
         record['unresolved_emails']=unresolved_emails
@@ -678,12 +680,12 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         if preferred_email_unconfirmed(result,unresolved_emails):
             raise RuntimeError('ollama_preferred_email_unconfirmed')
         result['email_checks']={}
-        for email in list(result['emails']):
+        for email in policy.result_emails(result):
             status=policy.email_domain_status(email)
             result['email_checks'][email]={'source':'original_crop_and_ocr_agreement','domain':status,'mailbox':'not_tested'}
             if status not in {'mx','implicit_mx'}:
-                result['emails'].remove(email);issues.append('Email withheld: domain mail routing '+status)
-        if result['status']=='found' and not result['emails'] and not result['phones']:
+                policy.withhold_email(result,email);issues.append('Email withheld: domain mail routing '+status)
+        if result['status']=='found' and not policy.result_emails(result) and not result['phones']:
             result.update(status='not_found',ai_status='needs_review',category='')
         if not fields or issues:
             result['reason']='; '.join(dict.fromkeys([result.get('reason','')]+issues)).strip('; ')
@@ -720,4 +722,5 @@ def preferred_email_unconfirmed(result,unresolved):
     # The established policy prefers an applicant email when one is printed.
     # Failure to verify it must not silently promote a different agent email.
     return bool(result.get('emails') and result.get('contact_role')=='agent'
+                and result.get('signer_selection',{}).get('status')!='confirmed'
                 and any(item['role']=='applicant' for item in unresolved))

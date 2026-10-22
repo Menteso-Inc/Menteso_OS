@@ -34,6 +34,7 @@ from .ai_verifier import (validate_configuration, result_metadata, enabled as ai
                           provider_name as ai_provider, model_name as ai_model)
 from .pipeline import ChunkedPipelineManager, ProgressFile, RESULT_STATUS_PRIORITY
 from .tests import tests
+from .contact_policy import format_additional_emails
 
 # Pipeline config
 # Lowered threshold so even small runs benefit from chunked processing.
@@ -847,7 +848,7 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
 WORK_REPORT_HEADERS = [
     "Publication No", "Title", "Application No.", "Applicant",
     "Url", "Cat", "Phone No.", "Email", "Agent Name", "Country",
-    "Researcher", "Priorty Date",
+    "Researcher", "Priorty Date", "Additional Email",
 ]
 
 
@@ -901,14 +902,21 @@ def generate_work_report(results, on_step=None, gazette=None, kind="worked", tar
                   r.get("applicant", ""), r.get("url", ""), r.get("category", ""),
                   "; ".join(r.get("phones", [])), "; ".join(r.get("emails", [])),
                   r.get("display_name", r.get("agent_name", "")), r.get("country", ""),
-                  r.get("researcher", ""), r.get("priority_date", "")]
+                  r.get("researcher", ""), r.get("priority_date", ""),
+                  format_additional_emails(r)]
         for column, value in enumerate(values, 1):
             # XML 1.0 cannot store these non-printing control characters.
             # Clean only the exported cell; preserve source/evidence/journal data.
             if isinstance(value, str):
                 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
                 value = ILLEGAL_CHARACTERS_RE.sub("", value)
-            ws.cell(row=i, column=column, value=value)
+            cell = ws.cell(row=i, column=column, value=value)
+            if column == len(WORK_REPORT_HEADERS):
+                from openpyxl.styles import Alignment
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
+                if isinstance(value, str):
+                    cell.data_type = 's'
+    ws.column_dimensions['M'].width = 65
 
     # PCT output files are local-only. The database may store metadata and
     # a local path, but the report sheet itself stays in this folder.

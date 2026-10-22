@@ -135,10 +135,10 @@ def test_enrichment_and_export_preserve_source_and_contact_ownership(tmp_path, m
     result.update(ai.result_metadata(verified))
     path, _ = agent.write_pct_reports([result])
     wb = openpyxl.load_workbook(path)
-    assert wb.active.max_column == 12
+    assert wb.active.max_column == 13
     assert [c.value for c in wb.active[2]] == [
         row["id"], row["title"], row["appl_no"], row["applicant"], args[1], "Slf",
-        "+49 30 555 0101", "peterl01@example.org", "Peter Counsel", "DE", "Aneeq", row["priority_date"]]
+        "+49 30 555 0101", "peterl01@example.org", "Peter Counsel", "DE", "Aneeq", row["priority_date"], None]
 
 
 def test_aneeq_input_layout_preserves_employee_metadata():

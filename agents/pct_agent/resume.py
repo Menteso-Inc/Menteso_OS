@@ -12,10 +12,12 @@ def file_hash(path):
 
 
 def policy_fingerprint():
+    from . import signer_evidence
     # Scheduling changes can retain these results only when the contact rules,
     # model, evidence coverage and acceptance policy are unchanged.
     policy_hash = hashlib.sha256(Path(policy.__file__).read_text(encoding="utf-8").encode("utf-8")).hexdigest()
     material = {"engine": ai.ENGINE_VERSION, "policy": policy_hash,
+                "signer_evidence": file_hash(signer_evidence.__file__),
                 "rules": ai.load_rules().model_dump(), "model": ai.model_name(),
                 "enabled": ai.enabled(),
                 "pages": get_env("PCT_AI_MAX_PAGES", default="5"),
@@ -49,5 +51,12 @@ def load_handoff(path, input_file, rows):
             raise ValueError(f"Resume handoff source mismatch at row {index}")
         if not all(isinstance(result.get(key, []), list) for key in ("emails", "phones")):
             raise ValueError("Resume handoff has malformed contact fields")
+        additional = result.get('additional_emails', [])
+        if not isinstance(additional, list) or any(
+                not isinstance(item, dict) or item.get('role') not in {'agent', 'applicant'}
+                or not isinstance(item.get('owner'), str)
+                or not isinstance(item.get('email'), str)
+                or not policy._valid_email_syntax(item['email']) for item in additional):
+            raise ValueError('Resume handoff has malformed additional emails')
         seen.add(index)
     return sorted(results, key=lambda result: result["row"])

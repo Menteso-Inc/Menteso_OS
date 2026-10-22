@@ -54,7 +54,7 @@ class ContactRules(StrictModel):
 
 
 class ContactField(StrictModel):
-    kind: Literal["email", "phone", "name", "fax", "address", "country"]
+    kind: Literal["email", "phone", "name", "fax", "address", "country", "signer_name", "signer_entity"]
     value: str
     entity: str
     role: Role
@@ -102,9 +102,11 @@ def model_name():
 
 
 def verification_revision():
+    from . import signer_evidence
     material = {"engine": ENGINE_VERSION, "model": model_name(),
                            "verifier_hash": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                            "policy_hash": hashlib.sha256(Path(policy.__file__).read_bytes()).hexdigest(),
+                           "signer_hash": hashlib.sha256(Path(signer_evidence.__file__).read_bytes()).hexdigest(),
                            "dns_check": get_env("PCT_EMAIL_DNS_CHECK", default="true"),
                            "max_pages": get_env("PCT_AI_MAX_PAGES", default="5"),
                            "rules": load_rules().model_dump()}
@@ -169,6 +171,9 @@ def _render_pages(pdf_path):
         # Include the contact page, first page, then other pages up to the limit.
         order = ([1] if len(doc) > 1 else []) + [0] + list(range(2, min(len(doc), max_pages)))
         order = order[:max_pages]
+        # Signature identities commonly appear on the final or penultimate page.
+        # Keep the existing contact-page budget and append these selection pages.
+        order = list(dict.fromkeys(order + list(range(max(0, len(doc) - 2), len(doc)))))
         for index in order:
             page = doc[index]
             scale = min(300 / 72, 2800 / max(page.rect.width, page.rect.height))
@@ -232,7 +237,10 @@ def _request(pages, rules, context):
         "Transcribe email and phone exactly; inspect 1/l/I, 0/O and rn/m. Never guess a correction or domain. "
         "Fax/Telefax/Facsimile must be kind=fax, never phone. Registration numbers are not phone numbers. "
         "Use the name in the contact block's Name field as entity and kind=name. For a firm named in IV-1 "
-        "use the firm, NOT the individual signing later. Do not extract signature blocks as contacts. "
+        "retain the firm as the contact owner. Separately record printed signing identity as kind=signer_entity "
+        "for its explicitly named organisation and kind=signer_name for the printed signer name, role=other, "
+        "block_id beginning signature-, with the actual signature heading as section. "
+        "Signature observations are selection evidence only: do not invent email, affiliation or contact blocks from a signature. "
         "If no name is printed, use entity='[unnamed contact]' and omit kind=name; never invent a name. "
         "Use unique block_id per visible contact block and repeat entity, role and entity_type within it. "
         "section must quote its labeled heading INCLUDING its number such as II or IV-1 or IV-2. "
@@ -530,8 +538,11 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
         page_numbers = [p for p, _ in pages]
         first_groups, first_issues = policy.valid_fields(extraction, rules, page_numbers)
         second_groups, second_issues = policy.valid_fields(second, rules, page_numbers)
-        first_valid = extraction.model_copy(update={"fields": [f for fs in first_groups.values() for f in fs]})
-        second_valid = second.model_copy(update={"fields": [f for fs in second_groups.values() for f in fs]})
+        from .signer_evidence import signature_fields
+        first_valid = extraction.model_copy(update={"fields": [f for fs in first_groups.values() for f in fs]
+                                                    + signature_fields(extraction, page_numbers)})
+        second_valid = second.model_copy(update={"fields": [f for fs in second_groups.values() for f in fs]
+                                                   + signature_fields(second, page_numbers)})
         original_ocr_emails = [str(value) for value in ocr_result.get('emails', [])]
         email_pages = {field.page for field in first_valid.fields + second_valid.fields
                        if field.kind == 'email'}
@@ -613,7 +624,8 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                     'Email withheld: focused third reading unavailable (' + type(exc).__name__ + ')'
                 )
         result = select_contacts(confirmed, rules, page_numbers)
-        if result.get('contact_role') == 'agent' and _unresolved_applicant_email(
+        if (result.get('contact_role') == 'agent'
+                and result.get('signer_selection', {}).get('status') != 'confirmed') and _unresolved_applicant_email(
                 first_valid, second_valid, confirmed):
             result = _empty_contacts(
                 reason='Applicant email was unresolved; agent fallback withheld under applicant-priority rule'
@@ -627,14 +639,14 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                 result.update(ai_status='needs_review', category='')
         result['email_checks'] = {}
         if str(get_env('PCT_EMAIL_DNS_CHECK', default='true')).lower() in {'true', '1', 'yes'}:
-            for email in list(result['emails']):
+            for email in policy.result_emails(result):
                 status = policy.email_domain_status(email)
                 result['email_checks'][email] = {'source': 'independent_verification',
                                                  'domain': status, 'mailbox': 'not_tested'}
                 if status not in {'mx', 'implicit_mx'}:
-                    result['emails'].remove(email)
+                    policy.withhold_email(result, email)
                     result['reason'] += '; Email withheld: domain mail routing ' + status
-            if result['status'] == 'found' and not result['emails'] and not result['phones']:
+            if result['status'] == 'found' and not policy.result_emails(result) and not result['phones']:
                 result.update(status='not_found', ai_status='needs_review', category='')
         if total_pages > len(pages) and result["status"] != "found":
             result["ai_status"] = "needs_review"
@@ -672,4 +684,5 @@ def result_metadata(contacts):
     return {key: contacts[key] for key in ("ai_status", "reason", "evidence_file", "verification_revision",
                                           "agent_name", "country", "category", "contact_role", "contact_block_id",
                                           "display_name", "name_is_placeholder", "contact_owner", "selection_reason",
-                                          "field_evidence", "agent_name_evidence", "email_checks") if key in contacts}
+                                          "field_evidence", "agent_name_evidence", "email_checks",
+                                          "additional_emails", "signer_selection") if key in contacts}

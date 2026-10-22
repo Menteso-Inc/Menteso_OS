@@ -343,7 +343,7 @@ def test_upload_entry_point_uses_single_browser_and_preserves_source_cells(tmp_p
     assert len(browsers) == 1 and browsers[0].closed
     cells = workbook_contents(result["output_file"])["values"][1]
     assert cells[:4] == ("WO/2026/001", "Original title", "US2026/001", "Original Applicant Ltd.")
-    assert cells[10:] == ("Aneeq", "Original date")
+    assert cells[10:] == ("Aneeq", "Original date", None)
 
 
 def handoff_fixture(tmp_path, rows, saved):

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "include_roles": [
     "applicant",
     "agent"
@@ -15,11 +15,13 @@
   ],
   "instructions": [
     "Preserve WIPO source applicant and patent fields exactly. Extract applicant and agent blocks independently; never assume email or phone belongs to an agent.",
-    "Use the printed Name field in each labeled contact block. Ignore signing individuals in signature sections. Never substitute an applicant name into Agent Name.",
+    "Use the printed Name field in each labeled contact block. Record signing individuals and explicitly named signing organisations separately as signature evidence; do not substitute a signer into the contact block's owner name. Never infer an employer from an email or a surname.",
     "Read email and phone characters exactly. Fax and registration numbers are excluded. Missing or unclear fields are not guessed.",
     "Quote complete visible evidence per field; keep country in the printed language. A country or address problem must not invalidate a separately verified email or phone.",
     "Return each visibly printed email as its own field, even when several emails share one printed line. Never combine addresses into one value or repair malformed text.",
-    "Retain multiple owners and shared contact details as separate blocks. Prefer a verified applicant email when contacts differ; if the applicant has no email, use the independently verified agent email block. When contacts are shared, applicant for same address and agent for different addresses. Ambiguous owner-dependent fields require review, but a single independently verified email may be retained.",
+    "Retain multiple owners and shared contact details as separate blocks. After the applicant-versus-agent policy selects agent contacts, prefer the unique agent block explicitly linked to the printed signing organisation or the exact printed signer name. Keep its email, phone and country together. Ambiguous or absent signer links fall back to the existing applicant/primary-agent rules; never choose by email spelling or presumed seniority.",
+    "Preserve role priority: prefer a verified applicant email when contacts differ; if the applicant has no email, use the independently verified agent email block. When contacts are shared, applicant for same address and agent for different addresses. Ambiguous owner-dependent fields require review, but a single independently verified email may be retained.",
+    "Preserve other verified applicant/agent emails with their printed owner and role for the Additional Email report column; omit duplicates of the selected main email. Exclude patent-office and inventor-only contacts.",
     "Agent Name is independently sourced from an actual agent block; Sir/Ma'am is only a display fallback for missing name, never a real identity.",
     "Category must describe source-supported business role; do not assume every incorporated agent is Corp. Unknown classification stays blank.",
     "Examples teach rules only; never copy example contacts into a filing."
