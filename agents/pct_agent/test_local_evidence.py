@@ -62,6 +62,24 @@ def test_japanese_contact_heading_with_printed_english_name():
     assert local.policy.APPLICANT_SECTION.search('出願人')
 
 
+def test_value_agent_does_not_terminate_primary_agent_block():
+    scan=form();scan['lines'][0]['text']='Agent or common representative; or'
+    scan['lines'] += [line(97,'Agent',250,110),line(98,"Applicant's or agent's file reference",50,60)]
+    block=local.table_blocks(scan)[0]
+    assert block['section']==1 and block['email']==[16] and block['name']==[5]
+
+
+def test_wrapped_signature_not_a_contact_heading():
+    lines=[line(1,'Signature of applicant, agent or',50,100),line(2,'common representative',50,112)]
+    assert local.role_headings(lines,600)==[]
+
+
+def test_primary_agent_number_preserved_from_margin():
+    heading=line(2,'Agent or common representative',90,100)
+    margin=line(1,'IV-I',55,100,width=20)
+    assert local.source_section(heading,[heading,margin])=='IV-I Agent or common representative'
+
+
 def test_mapper_rejects_invented_source_ids(monkeypatch):
     block={'role':'applicant','section':1,'name':[999],'email':[],'phone':[],
            'address':[],'country':[],'entity_type':'unknown'}
@@ -109,6 +127,12 @@ def test_vision_prompt_does_not_contain_expected_email(monkeypatch):
     monkeypatch.setattr(local,'chat',fake)
     local.read_crop(b'original pixels','email')
     assert captured[1]['images'] and 'candidate' not in json.dumps(captured).lower()
+
+
+def test_email_must_not_be_a_valid_suffix_of_a_malformed_address():
+    assert local.exact_values('email','a@b@example.org')==[]
+    assert local.exact_values('email','a@example.org; b@example.net')==['a@example.org','b@example.net']
+    assert local.exact_values('email','Name <a@example.org>')==['a@example.org']
 
 
 def test_failure_saves_evidence_and_no_raw_contact_fallback(monkeypatch,tmp_path):

@@ -229,7 +229,7 @@ def unique_contact(blocks):
     # Keep one complete block, never assemble fields across different owners.
     return sorted(blocks, key=lambda fs: (-sum(bool(values(fs, kind)) for kind in ('email', 'phone')),
                   min(f.page for f in fs),
-                  0 if any(re.search(r'IV\s*[-.]?\s*1\b', f.section, re.I) for f in fs) else 1,
+                  0 if any(re.search(r'IV\s*[-.]?\s*[1I]\b', f.section, re.I) for f in fs) else 1,
                   0 if fs[0].entity_type == 'law_firm' else 1, fs[0].block_id))[0]
 
 
@@ -239,7 +239,7 @@ def primary_contact(blocks, role):
         return None
     if role == 'agent':
         primary = [fields for fields in blocks if any(
-            re.search(r'IV\s*[-.]?\s*1(?:\D|$)', field.section, re.I) for field in fields
+            re.search(r'IV\s*[-.]?\s*[1I](?:\D|$)', field.section, re.I) for field in fields
         )]
         return primary[0] if len(primary) == 1 else None
     if role == 'applicant':

@@ -24,10 +24,10 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-ROLE_HEADING = re.compile(r'^(?:(?:Box|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
+ROLE_HEADING = re.compile(r'^(?:(?:Box|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|unterschrift|signatur|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
-QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur)\b|書類記号|指定国|使用|承認',re.I)
+QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
 FIELD_LABELS = {
     'name':re.compile(r'^(?:(?:Name|Nom|Nombre)\b|姓名|名称)',re.I),
     'address':re.compile(r'^(?:(?:Address|Anschrift|Adresse|Direcci[oó]n)\b|地址|通信地址|あて名)',re.I),
@@ -35,7 +35,27 @@ FIELD_LABELS = {
     'email':re.compile(r'^(?:E.?mail|Courriel|Correo|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
 FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrift|Adresse|Nationality|Residence|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
-SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|Agent|Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
+SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
+
+
+def role_headings(lines,width):
+    result=[]
+    for line in lines:
+        if (line['rect'][0]>width*.34 or len(line['text'])>=100 or not ROLE_HEADING.search(line['text'])
+            or EXCLUDED_HEADING.search(line['text']) or QUALIFIED_ROLE.search(line['text'])):continue
+        # A wrapped "common representative" after "Signature of applicant,
+        # agent or" belongs to the signature section, not a new contact block.
+        if any(EXCLUDED_HEADING.search(other['text']) and abs(other['rect'][0]-line['rect'][0])<15
+               and 0<line['rect'][1]-other['rect'][1]<35 for other in lines):continue
+        result.append(line)
+    return result
+
+
+def source_section(heading,lines):
+    margin=[l for l in lines if l['page']==heading['page'] and l['rect'][2]<heading['rect'][0]
+            and abs(l['rect'][1]-heading['rect'][1])<5
+            and re.fullmatch(r'[IVXⅠⅡⅢⅣ]+(?:\s*[-.]\s*[0-9I]+)*',l['text'])]
+    return ' '.join([*(l['text'] for l in margin),heading['text']])
 
 
 def atomic_json(path, value):
@@ -94,8 +114,7 @@ def compact_regions(scan):
     selected = []
     for page in scan['pages']:
         lines = [l for l in scan['lines'] if l['page']==page['page']]
-        headings = [l for l in lines if len(l['text'])<100 and ROLE_HEADING.search(l['text'])
-                    and not EXCLUDED_HEADING.search(l['text']) and not QUALIFIED_ROLE.search(l['text'])]
+        headings=role_headings(lines,page['width'])
         ranges = []
         anchors = [l for l in lines if '@' in l['text'] or
                    (len(l['text'])<45 and EMAIL_LABEL.search(l['text']))]
@@ -121,12 +140,10 @@ def table_blocks(scan):
     blocks=[]; covered=set()
     for page in scan['pages']:
         lines=[l for l in scan['lines'] if l['page']==page['page']]
-        headings=[l for l in lines if l['rect'][0]<page['width']*.5 and len(l['text'])<100
-                  and ROLE_HEADING.search(l['text']) and not EXCLUDED_HEADING.search(l['text'])
-                  and not QUALIFIED_ROLE.search(l['text'])]
+        headings=role_headings(lines,page['width'])
         for heading in headings:
             y=heading['rect'][1]
-            stops=[l['rect'][1] for l in lines if l['rect'][1]>y+8 and l['rect'][0]<page['width']*.5
+            stops=[l['rect'][1] for l in lines if l['rect'][1]>y+8 and abs(l['rect'][0]-heading['rect'][0])<15
                    and len(l['text'])<100 and SECTION_STOP.search(l['text'])
                    and not QUALIFIED_ROLE.search(l['text'])]
             bottom=min(stops) if stops else page['height']
@@ -196,7 +213,10 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
              'format':schema,'keep_alive':'30m','options':{'num_ctx':8192,
              'num_thread':config['num_thread'],'num_predict':max_tokens,'temperature':0,'seed':42}}
     # Conservative refusal, never silently truncate original text or images.
-    if sum(len(m.get('content','')) for m in messages)>24000:
+    budget=sum(len(m.get('content','').encode('utf-8')) for m in messages)+max_tokens+512
+    budget+=sum(ollama_provider._image_budget(base64.b64decode(data))
+                for message in messages for data in message.get('images',[]))
+    if budget>8192:
         raise RuntimeError('ollama_compact_context_capacity')
     started=time.monotonic();parts=[];final=None;first=None
     with _LOCK, requests.Session() as session:
@@ -247,8 +267,10 @@ def map_blocks(lines,on_step=None):
             "name=printed Name field, NOT inventor or signer. Exclude signature and office blocks. "
             "email/phone=values only, phone excludes fax. country=address country, not nationality. "
             "Keep owners separate. Empty arrays for missing. law_firm only if explicitly supported; else unknown.")
-    headings=[l['id'] for l in lines if ROLE_HEADING.search(l['text']) and len(l['text'])<100
-              and not EXCLUDED_HEADING.search(l['text']) and not QUALIFIED_ROLE.search(l['text'])]
+    headings=[]
+    for number in sorted({l['page'] for l in lines}):
+        page_lines=[l for l in lines if l['page']==number]
+        headings.extend(l['id'] for l in role_headings(page_lines,600))
     if not headings:raise RuntimeError('ollama_source_role_unconfirmed')
     schema=json.loads(json.dumps(LAYOUT_SCHEMA))
     schema['properties']['blocks']['items']['properties']['section']={'type':'integer','enum':headings}
@@ -300,7 +322,16 @@ def read_crop(data,kind,on_step=None):
 
 
 def exact_values(kind,text):
-    if kind=='email':return [v for v in policy.EMAIL_RE.findall(text) if policy._valid_email_syntax(v)]
+    if kind=='email':
+        values=[]
+        token_chars=set(".!#$%&'*+/=?^_`{|}~@-")
+        for match in policy.EMAIL_RE.finditer(text):
+            before=text[match.start()-1] if match.start() else ''
+            after=text[match.end()] if match.end()<len(text) else ''
+            if ((before and (before.isalnum() or before in token_chars))
+                or (after and (after.isalnum() or after in token_chars))):continue
+            if policy._valid_email_syntax(match.group()):values.append(match.group())
+        return values
     return [text.strip()] if text.strip() else []
 
 
@@ -365,9 +396,17 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             step('[AI Verification] Explicit contact labels mapped; visually verifying original values')
         record['blocks']=blocks
         lookup={l['id']:l for l in scan['lines']};fields=[];issues=[]
+        assigned={i for block in blocks for i in block['email']}
+        candidates={l['id'] for l in scan['lines'] if '@' in l['text']}
+        if not candidates.issubset(assigned):
+            raise RuntimeError('ollama_unassigned_email_region')
         rules=ai.load_rules()
         for index,block in enumerate(blocks):
-            section=lookup[block['section']]['text'];role=block['role']
+            # Applicant identity without reachable details is already present
+            # in the input metadata; it cannot determine the exported contact.
+            if block['role']=='applicant' and not block['email'] and not block['phone']:
+                continue
+            section=source_section(lookup[block['section']],scan['lines']);role=block['role']
             pattern=policy.AGENT_SECTION if role=='agent' else policy.APPLICANT_SECTION
             if not pattern.search(section) or EXCLUDED_HEADING.search(section):
                 issues.append('Contact withheld: source heading does not establish role');continue
