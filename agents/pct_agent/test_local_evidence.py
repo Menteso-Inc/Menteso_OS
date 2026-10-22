@@ -199,10 +199,62 @@ def test_german_narrative_does_not_cut_off_real_agent_block():
     assert len(blocks)==1 and blocks[0]['role']=='agent' and blocks[0]['email']==[16]
 
 
+def test_german_additional_attorney_remains_a_separate_contact_block():
+    scan=form();scan['lines'][0]['text']='Anwalt oder gemeinsamer Vertreter'
+    second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
+    second[0]['text']='Weitere(r) Anwalt/Anwälte'
+    scan['lines']+=second;scan['pages'].append({'page':2,'width':600,'height':800})
+    blocks=local.table_blocks(scan)
+    assert [(b['role'],b['name'],b['email']) for b in blocks]==[
+        ('agent',[5],[16]),('agent',[105],[116])]
+
+
+def test_at_sign_company_name_is_not_assumed_to_be_an_email():
+    scan=form();scan['lines'][4]['text']='RESEARCH@CREATE LTD'
+    regions=local.non_email_name_regions(scan)
+    assert len(regions)==1 and regions[0]['line_id']==5 and regions[0]['label_id']==4
+    assert local.required_email_ids(scan)=={16}
+    scan['lines'][4]['text']='office@example.org Ltd'
+    assert not local.non_email_name_regions(scan)
+    assert local.required_email_ids(scan)=={5,16}
+
+
+def test_company_word_in_email_field_cannot_exempt_it():
+    scan=form();scan['lines'][15]['text']='RESEARCH@CREATE LTD'
+    assert not local.non_email_name_regions(scan)
+    assert 16 in local.required_email_ids(scan)
+
+
+def test_at_sign_company_name_needs_image_confirmation(monkeypatch,tmp_path):
+    from agents.pct_agent import ai_verifier as ai
+    scan=form();scan['lines'][4]['text']='RESEARCH@CREATE LTD'
+    source=tmp_path/'source.pdf';source.write_bytes(b'original')
+    monkeypatch.setenv('PCT_AI_EVIDENCE_DIR',str(tmp_path/'evidence'))
+    monkeypatch.setattr(ai,'verification_revision',lambda:'offline-test')
+    monkeypatch.setattr(local,'scan_pdf',lambda path:scan)
+    monkeypatch.setattr(local,'verify_value',lambda *a,**kw:([],{'withheld':'unclear name'}))
+    result=local.verify(source,{})
+    assert result['status']=='error' and not result['emails']
+    assert 'ollama_at_sign_name_unconfirmed' in result['reason']
+
+
 def test_wrapped_ocr_domain_needs_two_matching_image_reads(monkeypatch,tmp_path):
     setup_crop(monkeypatch,[{'text':'ip-office@example.org','legible':True}]*2,'ip-office@example\n.org')
     values,trace=local.verify_value('source.pdf',[1],{1:line(1,'ip—office@example . org',10,10)},'email',tmp_path)
     assert values==['ip-office@example.org'] and len(trace['calls'])==2
+
+
+def test_two_image_reads_can_confirm_original_ocr_with_separator_spacing(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'patents.group@example.org','legible':True}]*2,'patents.group@example1.org')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'patents . group@example . org',10,10)},'email',tmp_path)
+    assert values==['patents.group@example.org'] and len(trace['calls'])==2 and trace.get('resolution')
+
+
+def test_separator_spacing_cannot_hide_disagreement_between_image_reads(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'patents.group@example.org','legible':True},
+                           {'text':'patents.groups@example.org','legible':True}],'different@example.org')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'patents . group@example . org',10,10)},'email',tmp_path)
+    assert values==[] and 'withheld' in trace
 
 
 def test_ocr_separator_join_cannot_correct_letters_or_extra_at():

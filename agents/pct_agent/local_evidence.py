@@ -24,7 +24,7 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
+ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Representative|Common representative|Vertreter|Solicitante)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|unterschrift|signatur|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
 QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
@@ -35,7 +35,7 @@ FIELD_LABELS = {
     'email':re.compile(r'^(?:E.?mail|Courriel|Correo|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
 FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Nationality|Residence|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|E.?mail|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
-SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
+SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Representative|Inventor|Erfinder|Inventeur|Signature|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
 
 
 def role_headings(lines,width):
@@ -160,8 +160,24 @@ def excluded_inventor_regions(scan):
     return regions
 
 
+def non_email_name_regions(scan):
+    """Potential at-sign branding, subject to a blind name-image check later."""
+    regions=[]
+    for line in scan['lines']:
+        if '@' not in line['text'] or alternate_ocr_values('email',line['text']):continue
+        if not re.search(r'\b(?:Ltd|Limited|Inc|LLC|GmbH|Corp|Corporation|Company)\.?$',line['text'],re.I):continue
+        page=next(p for p in scan['pages'] if p['page']==line['page'])
+        labels=[l for l in scan['lines'] if l['page']==line['page'] and l['rect'][0]<page['width']*.34
+                and FIELD_LABELS['name'].search(l['text']) and abs(l['rect'][1]-line['rect'][1])<4
+                and line['rect'][0]>l['rect'][2]+8]
+        if len(labels)==1:regions.append({'line_id':line['id'],'label_id':labels[0]['id'],
+                                         'reason':'At-sign in a printed company Name field; image confirmation required'})
+    return regions
+
+
 def required_email_ids(scan):
     excluded={i for region in excluded_inventor_regions(scan) for i in region['email_ids']}
+    excluded.update(region['line_id'] for region in non_email_name_regions(scan))
     return {l['id'] for l in scan['lines'] if '@' in l['text']} - excluded
 
 
@@ -398,6 +414,10 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
     next_values=exact_values(kind,second.get('text','')) if second.get('legible') is True else []
     trace.update(second_visual=second,alternate_ocr=ocr);trace['calls'].append(second_meta)
     alternate=alternate_ocr_values(kind,ocr)
+    formatted_original=alternate_ocr_values(kind,source)
+    if observed and key(observed)==key(next_values) and key(observed)==key(formatted_original):
+        trace['resolution']='Two original-image readings agree with original OCR after separator-whitespace normalization'
+        return observed,trace
     if observed and key(observed)==key(next_values) and key(observed)==key(alternate):
         return observed,trace
     if next_values and key(next_values)==key(original) and key(next_values)==key(alternate):
@@ -449,6 +469,14 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         record['pages_scanned']=[p['page'] for p in scan['pages']]
         record['ocr_seconds']=scan['seconds']
         record['excluded_contact_regions']=excluded_inventor_regions(scan)
+        record['non_email_name_regions']=non_email_name_regions(scan)
+        lookup={l['id']:l for l in scan['lines']}
+        for region in record['non_email_name_regions']:
+            values,trace=verify_value(pdf_path,[region['line_id']],lookup,'name',folder,step)
+            record['checks'].append(trace)
+            if not values or any(alternate_ocr_values('email',value) for value in values):
+                raise RuntimeError('ollama_at_sign_name_unconfirmed')
+            region['image_confirmed']=True
         step(f"[AI Verification] OCR scanned all {len(scan['pages'])} pages in {scan['seconds']}s; checking source contact regions with local Qwen")
         lines=compact_regions(scan)
         if not lines:raise RuntimeError('ollama_no_confirmed_contact_region')

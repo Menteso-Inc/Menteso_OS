@@ -56,6 +56,10 @@ class BrowserStopRequested(RuntimeError):
     """Raised when the current browser run is force-stopped."""
 
 
+class BrowserAccessDenied(RuntimeError):
+    """Leave the denied row pending until remote access is restored."""
+
+
 # High-confidence markers only. Generic strings like "captcha", "challenge",
 # or "please select" appear in normal WIPO page markup (dropdown placeholders,
 # JS variable names, CSS classes) and used to trigger false-positive banners.
