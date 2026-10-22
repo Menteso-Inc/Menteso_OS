@@ -152,8 +152,16 @@ def compact_regions(scan):
                    (len(l['text'])<45 and EMAIL_LABEL.search(l['text']))]
         for line in anchors:
             y = line['rect'][1]
-            preceding = [h['rect'][1] for h in headings if 0 <= y-h['rect'][1] <= 300]
-            ranges.append((max(preceding)-4 if preceding else max(0,y-230), line['rect'][3]+6))
+            preceding = [h for h in headings if 0 <= y-h['rect'][1] <= 300]
+            if preceding:
+                heading=max(preceding,key=lambda h:h['rect'][1])
+                # Legacy forms put email above the name/address in a second
+                # column. Ending at email drops the owner's actual values.
+                following=[h['rect'][1] for h in headings if h['rect'][1]>heading['rect'][1]+8]
+                bottom=min(following) if following else min(page['height'],heading['rect'][1]+350)
+                ranges.append((heading['rect'][1]-4,bottom-2))
+            else:
+                ranges.append((max(0,y-230),line['rect'][3]+6))
         for heading in headings:
             y = heading['rect'][1]
             # Include names of real agents even if they have no email.

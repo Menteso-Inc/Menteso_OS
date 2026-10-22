@@ -325,6 +325,16 @@ def test_german_narrative_does_not_cut_off_real_agent_block():
     assert len(blocks)==1 and blocks[0]['role']=='agent' and blocks[0]['email']==[16]
 
 
+def test_legacy_email_column_does_not_truncate_owner_below_email():
+    lines=[line(1,'ANMELDER',120,300),line(2,'E-Mail-Adresse:',385,320),
+           line(3,'mail@example.org',385,335),line(4,'Example GmbH',65,355),
+           line(5,'Street 33',65,368),line(6,'Deutschland',65,395),
+           line(7,'ANWALT',120,560)]
+    scan={'pages':[{'page':1,'width':600,'height':800}],'lines':lines}
+    kept={l['id'] for l in local.compact_regions(scan)}
+    assert {1,2,3,4,5,6}.issubset(kept)
+
+
 def test_german_additional_attorney_remains_a_separate_contact_block():
     scan=form();scan['lines'][0]['text']='Anwalt oder gemeinsamer Vertreter'
     second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
