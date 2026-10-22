@@ -95,6 +95,20 @@ def get_dashboard_data():
         leads = lead_table(inventory, lead_activity)
     except (ValueError, OSError, sqlite3.Error):
         leads = lead_table(inventory, {}, available=False)
+    directory_sources, directory_error = [], ""
+    try:
+        from agents.prospect_research_agent.directory_sources import access_decision, load_directory_policy
+        directory_policy = load_directory_policy()
+        for rule in directory_policy.sources:
+            sample = rule.homepage.rstrip("/") + (rule.profile_path_prefixes[0] if rule.profile_path_prefixes else "/")
+            decision = access_decision(sample, directory_policy)
+            hold = store.source_hold(rule.host) if defaults and not inventory_error else None
+            directory_sources.append({"name": rule.name, "homepage": rule.homepage,
+                "state": "blocked" if hold else decision["source_access"],
+                "reason": hold or decision["reason"], "terms_url": rule.terms_url,
+                "reviewed_on": rule.reviewed_on.isoformat() if rule.reviewed_on else None})
+    except (ValueError, OSError, sqlite3.Error):
+        directory_error = "Directory source rules need attention; profile collection is held."
     return {
         "status": "ready", "message": RESEARCH_MESSAGE, "executionEnabled": True,
         "schedule": "On demand", "capabilities": dict(CAPABILITIES),
@@ -103,6 +117,7 @@ def get_dashboard_data():
         "defaults": defaults, "profileError": profile_error,
         "prospectInventory": inventory, "inventoryError": inventory_error,
         "leadTable": leads,
+        "directorySources": directory_sources, "directoryError": directory_error,
         "businessSummary": business_summary(STATE_FILE.parent.parent),
         "workflowAgents": [{"id": "prospect_research_agent", "name": "Prospect Research", "enabled": True},
                            {"id":"email_campaign_agent","name":"Email Campaign","enabled":False},

@@ -20,12 +20,14 @@ import ssl
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 from shared import config as _config  # Loads the project-root .env once.
-from .discovery import domain, source_kind, score_candidate, select_candidates
+from .discovery import domain, search_geographies, source_kind, score_candidate, select_candidates
+from .directory_sources import DIRECTORY_HINT, access_decision, discovery_queries, load_directory_policy, profile_observation, terms_digest
 
 
 USER_AGENT = "MentesoProspectResearch/1.0"
@@ -280,6 +282,114 @@ class SourceTools:
         self._request_deadline: float | None = None
         self.free_allowance_checks = []
         self.query_reserver = None
+        self.directory_policy = load_directory_policy()
+        self._directory_hosts = set()
+        self._directory_terms_checked = set()
+        self._directory_pages = {}
+        self._source_holds = {}
+        self.source_access_store = None
+        self.directory_profiles = {}
+
+    def _directory_host(self, url):
+        rule = self.directory_policy.find(url)
+        host = domain(url)
+        return rule.host if rule else host if host in self._directory_hosts else None
+
+    def collection_url(self, url):
+        """Allow only explicitly reviewed API pagination queries, never URL secrets."""
+        rule = self.directory_policy.find(url)
+        recipe = rule.reader_for(url) if rule else None
+        if not recipe or recipe.format != "json":
+            return normalize_source_url(url)
+        safe = validate_public_url(url, allow_query=True)
+        parts = urlsplit(safe)
+        try:
+            pairs = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True, max_num_fields=8) if parts.query else []
+        except ValueError:
+            raise SourceError("unsafe_url: invalid API pagination query") from None
+        if (len({key for key, _ in pairs}) != len(pairs) or
+                any(key not in recipe.query_keys or len(value) > 200 or not value for key, value in pairs)):
+            raise SourceError("unsafe_url: API query is outside the reviewed pagination keys; never paste credentials in a URL")
+        for key, value in pairs:
+            if key in {"page", "offset", "limit", "per_page", "page_size"}:
+                maximum = 100 if key in {"limit", "per_page", "page_size"} else 100_000_000
+                if not value.isascii() or not value.isdigit() or not 0 <= int(value) <= maximum:
+                    raise SourceError("unsafe_url: numeric pagination value is outside the bounded API reader")
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(sorted(pairs)), ""))
+
+    def _assert_source_available(self, url):
+        host = self._directory_host(url)
+        if not host:
+            return
+        hold = self._source_holds.get(host)
+        reason = hold[0] if hold and (hold[1] is None or hold[1] > time.time()) else None
+        if not reason and self.source_access_store is not None:
+            reason = self.source_access_store.source_hold(host)
+        if reason:
+            raise SourceError("directory_blocked: " + reason)
+
+    def _hold_directory(self, url, reason, retry_at=None):
+        host = self._directory_host(url)
+        if host:
+            self._source_holds[host] = (reason, retry_at)
+            if self.source_access_store is not None:
+                self.source_access_store.hold_source(host, reason, retry_at)
+
+    def _observe_directory_response(self, url, response):
+        if not self._directory_host(url) or response.status not in {401, 403, 429, 451}:
+            return
+        retry_at = None
+        reason = f"HTTP {response.status}; directory access stopped pending review"
+        if response.status == 429:
+            wait = 86400.0
+            raw = response.headers.get("retry-after", "")
+            try:
+                wait = max(wait, float(raw)) if raw.isdigit() else max(wait, parsedate_to_datetime(raw).timestamp() - time.time())
+            except (ValueError, TypeError, OverflowError):
+                pass
+            # An extreme/malformed Retry-After requires review rather than
+            # silently shortening the server's requested pause.
+            retry_at = time.time() + wait if math.isfinite(wait) and wait <= 365 * 86400 else None
+            reason = "HTTP 429; directory paused for at least 24 hours and the supplied Retry-After interval"
+        self._hold_directory(url, reason, retry_at)
+
+    def _check_directory_terms(self, url):
+        """Check the reviewed policy page before profile collection, once per run."""
+        if not self._directory_host(url):
+            return None
+        decision = access_decision(url, self.directory_policy)
+        if decision["source_access"] != "permitted":
+            raise SourceError("directory_" + decision["source_access"] + ": " + decision["reason"])
+        self._assert_source_available(url)
+        rule = self.directory_policy.find(url)
+        if rule.host not in self._directory_terms_checked:
+            try:
+                self._confirm_directory_terms(rule)
+            except SourceError:
+                self._hold_directory(url, "Directory terms changed or could not be verified; review required")
+                raise
+            self._directory_terms_checked.add(rule.host)
+        return rule
+
+    def _confirm_directory_terms(self, rule):
+        terms_url = rule.terms_url
+        policy = self._robots_policy(terms_url)
+        if not policy.can_fetch(USER_AGENT, terms_url):
+            raise SourceError("directory_terms_unavailable: robots blocks the reviewed terms document")
+        self._wait_for_source(terms_url, policy, rule.min_interval_seconds)
+        response = self._fetch(terms_url, host=urlsplit(terms_url).hostname, policy=policy)
+        self._last_fetch[_origin(response.url)] = time.monotonic()
+        if response.status != 200:
+            raise SourceError("directory_terms_unavailable: collection is held")
+        if not any(kind in response.headers.get("content-type", "text/html") for kind in ("text/html", "text/plain")):
+            raise SourceError("directory_terms_unavailable: unsupported terms content")
+        document = response.body.decode("utf-8", errors="replace")
+        parser = _PublicHTML()
+        parser.feed(document)
+        # Cover the full bounded document, beyond the ordinary 60k extraction.
+        text = " ".join(parser.parts) if "html" in response.headers.get("content-type", "text/html") else document
+        if terms_digest(text) != rule.reviewed_terms_sha256:
+            raise SourceError("directory_terms_changed: review the current terms before further collection")
 
     def _timeout(self) -> float:
         self.budget.check()
@@ -368,17 +478,33 @@ class SourceTools:
             self._request_deadline = previous_deadline
 
     def _fetch_redirects(self, url: str, *, host: str, provider: bool, headers: dict | None, max_bytes: int, policy: RobotFileParser | None) -> HTTPResult:
+        directory = self.directory_policy.find(url) if not provider else None
+        profile_request = bool(directory and url != directory.terms_url and urlsplit(url).path != "/robots.txt")
         current = url
         request_headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity", "Accept": "text/html,text/plain,application/json"}
         request_headers.update(headers or {})
         for redirect_index in range(MAX_REDIRECTS + 1):
-            current = validate_public_url(current, allow_query=True) if provider else normalize_source_url(current)
+            current = validate_public_url(current, allow_query=True) if provider else self.collection_url(current)
             current_host = urlsplit(current).hostname
             same_site = current_host == host or (
                 not provider and domain(current) == domain("https://" + host)
             )
             if not same_site:
                 raise SourceError("blocked_redirect: destination leaves the approved host")
+            recipe = directory.reader_for(current) if directory else None
+            if profile_request:
+                request_headers.pop("Authorization", None)
+                request_headers.pop("X-API-Key", None)
+            if profile_request and recipe and recipe.auth_env:
+                parts = urlsplit(current)
+                if parts.scheme != "https" or parts.hostname != urlsplit(directory.homepage).hostname:
+                    raise SourceError("blocked_redirect: authenticated feed must stay on its exact HTTPS homepage host")
+                credential = os.getenv(recipe.auth_env, "")
+                if not credential or re.search(r"[\x00-\x20\x7f]", credential):
+                    raise SourceError("source_auth_missing: configure the dedicated source credential in .env")
+                request_headers[recipe.auth_header] = ("Bearer " if recipe.auth_header == "Authorization" else "") + credential
+            if profile_request and access_decision(current, self.directory_policy)["source_access"] != "permitted":
+                raise SourceError("blocked_redirect: destination leaves the reviewed directory profile paths")
             if urlsplit(url).scheme == "https" and urlsplit(current).scheme != "https":
                 raise SourceError("blocked_redirect: insecure transport downgrade")
             if policy is not None and _origin(current) != _origin(url):
@@ -386,6 +512,10 @@ class SourceTools:
                 policy = self._robots_policy(current)
             if policy is not None and not policy.can_fetch(USER_AGENT, current):
                 raise SourceError("robots_disallowed: redirect destination is blocked by source policy")
+            if not provider:
+                self._assert_source_available(current)
+                if directory:
+                    self._wait_for_source(current, policy, directory.min_interval_seconds)
             self.budget.check()
             addresses = self._resolve_public_ips(current_host)
             if not provider:
@@ -395,6 +525,9 @@ class SourceTools:
             except (OSError, ValueError, http.client.HTTPException):
                 # Never include an exception string: provider URLs contain keys.
                 raise SourceError("network_failed: source request failed or timed out") from None
+            if not provider:
+                self._last_fetch[_origin(current)] = time.monotonic()
+                self._observe_directory_response(current, response)
             if response.status not in {301, 302, 303, 307, 308}:
                 return response
             if provider:
@@ -439,8 +572,13 @@ class SourceTools:
         defaults = [policy.products[product].query_terms[index] for index in range(max(len(policy.products[product].query_terms) for product in products))
                     for product in products if index < len(policy.products[product].query_terms)]
         terms = self.request.query_terms or defaults
-        countries = self.request.countries or [""]
-        queries = [" ".join(value for value in (term, country) if value) for country in countries for term in terms]
+        countries = search_geographies(self.request)
+        prioritised = bool(getattr(self.request, "priority_countries", []))
+        pairs = ((term, country) for term in terms for country in countries) if prioritised else (
+            (term, country) for country in countries for term in terms)
+        queries = [" ".join(value for value in (term, country) if value) for term, country in pairs]
+        if getattr(self.request, "discover_directories", False):
+            queries = discovery_queries(queries, countries, self.directory_policy, round_robin=prioritised)
         if self.query_reserver:
             queries = self.query_reserver(queries, self.request.max_queries)
         if self._query_count >= self.request.max_queries:
@@ -514,7 +652,14 @@ class SourceTools:
                     except ValueError:
                         pass
                     continue
-                row.update(url=url, source_kind=source_kind(url), score=score_candidate(url, title, snippet))
+                row.update(url=url, source_kind=source_kind(url, title, snippet), score=score_candidate(url, title, snippet))
+                if row["source_kind"] == "directory":
+                    self._directory_hosts.add(domain(url))
+                    row.update(access_decision(url, self.directory_policy))
+                    try:
+                        self._assert_source_available(url)
+                    except SourceError as exc:
+                        row.update(source_access="blocked", reason=str(exc))
                 if urlsplit(url).path.lower().endswith((".pdf", "/pdf", ".doc", ".docx")):
                     row["reason"] = "Search result is a document, not a firm website"
                     continue
@@ -560,27 +705,41 @@ class SourceTools:
         self._robots[origin] = policy
         return policy
 
-    def _read_page(self, url: str, host: str) -> dict:
-        policy = self._robots_policy(url)
-        if not policy.can_fetch(USER_AGENT, url):
-            raise SourceError("robots_disallowed: public source policy blocks this page")
-        delay = policy.crawl_delay(USER_AGENT) or 0
-        rate = policy.request_rate(USER_AGENT)
+    def _wait_for_source(self, url, policy, minimum=0):
+        delay = (policy.crawl_delay(USER_AGENT) or 0) if policy else 0
+        rate = policy.request_rate(USER_AGENT) if policy else None
         if rate and rate.requests > 0:
             delay = max(delay, rate.seconds / rate.requests)
         origin = _origin(url)
-        wait = max(0, delay - (time.monotonic() - self._last_fetch.get(origin, 0)))
+        wait = max(0, max(delay, minimum) - (time.monotonic() - self._last_fetch.get(origin, 0)))
         if wait:
             if wait >= self._timeout():
                 raise SourceError("robots_delay_exceeds_budget: source cannot be fetched within the deadline")
             time.sleep(wait)
+
+    def _read_page(self, url: str, host: str, *, include_document=False) -> dict:
+        directory = self._check_directory_terms(url)
+        if directory and self._directory_pages.get(directory.host, 0) >= directory.max_profile_pages_per_run:
+            raise SourceError("directory_page_limit: reviewed source page allowance reached")
+        policy = self._robots_policy(url)
+        if not policy.can_fetch(USER_AGENT, url):
+            raise SourceError("robots_disallowed: public source policy blocks this page")
+        self._wait_for_source(url, policy, directory.min_interval_seconds if directory else 0)
+        if directory:
+            self._directory_pages[directory.host] = self._directory_pages.get(directory.host, 0) + 1
         response = self._fetch(url, host=host, policy=policy)
-        self._last_fetch[origin] = time.monotonic()
+        self._last_fetch[_origin(response.url)] = time.monotonic()
         if response.status != 200:
             raise SourceError(f"page_unavailable: HTTP {response.status}")
         if not policy.can_fetch(USER_AGENT, response.url):
             raise SourceError("robots_disallowed: redirected page is blocked by source policy")
         content_type = response.headers.get("content-type", "text/html")
+        recipe = directory.reader_for(response.url) if directory else None
+        if include_document and recipe and recipe.format == "json":
+            if "application/json" not in content_type and "+json" not in content_type:
+                raise SourceError("layout_changed: reviewed API did not return JSON")
+            return {"url": response.url, "retrieved_at": utc_now(),
+                    "document": response.body.decode("utf-8", errors="strict")}
         if "text/html" not in content_type and "text/plain" not in content_type:
             raise SourceError("unsupported_content: expected public HTML or plain text")
         charset = re.search(r"charset=([\w-]+)", content_type, re.I)
@@ -593,6 +752,13 @@ class SourceTools:
         parser = _PublicHTML()
         parser.feed(document)
         text = parser.text() if "text/html" in content_type else document[:60_000]
+        if not directory and DIRECTORY_HINT.search(" ".join(parser.titles + parser.headings[:1])):
+            self._directory_hosts.add(domain(url))
+            raise SourceError("directory_review_required: newly identified directory; no contact details extracted before policy review")
+        if directory and (response.headers.get("cf-mitigated") == "challenge" or re.search(
+                r"verify (?:that )?you are (?:a )?human|checking your browser|access denied|^just a moment", text, re.I)):
+            self._hold_directory(url, "Directory presented a challenge/access-denied page; review required")
+            raise SourceError("directory_challenge: collection stopped; no bypass attempted")
         self._published_emails.update(email.lower() for email in EMAIL_PATTERN.findall(text))
         links = []
         for href in parser.links:
@@ -620,9 +786,12 @@ class SourceTools:
             try:link=normalize_source_url(urljoin(response.url,anchor['href']))
             except SourceError:continue
             if domain(link)==domain(response.url) and link in links:profile_links.append(link)
-        return {"url": response.url, "text": text, "retrieved_at": utc_now(), "links": links, "profile_links":list(dict.fromkeys(profile_links)),"website_links": external,
+        page = {"url": response.url, "text": text, "retrieved_at": utc_now(), "links": links, "profile_links":list(dict.fromkeys(profile_links)),"website_links": external,
                 "headings": parser.headings[:5], "titles": parser.titles[:3], "structured_data": parser.structured_parts,
                 "contact_blocks": parser.contact_blocks, "contact_headings": parser.contact_headings[:100], "footer_blocks": parser.footer_blocks}
+        if include_document:
+            page["document"] = document
+        return page
 
     def read_firm(self, url: str, strategy: str = "standard") -> list[dict]:
         """Read the root and bounded linked public information pages on one host."""
@@ -717,13 +886,16 @@ class SourceTools:
         if self.request.mode == "fixture":
             return None
         url = validate_public_url(url)
-        if source_kind(url) != "directory":
+        if not self._directory_host(url):
             return None
+        self._check_directory_terms(url)
         page = self._read_page(url, urlsplit(url).hostname)
         targets = {domain(item["url"]): item["url"] for item in page.get("website_links", [])}
+        resolved = next(iter(targets.values())) if len(targets) == 1 else None
+        self.directory_profiles[url] = profile_observation(page, resolved, self.directory_policy.find(url).host)
         if len(targets) != 1:
             return None
-        return next(iter(targets.values()))
+        return resolved
 
     def verify_email(self, email: str) -> dict:
         """Check only an already published contact; mailbox status grants no consent."""

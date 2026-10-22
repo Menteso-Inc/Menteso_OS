@@ -5,14 +5,30 @@ The first working specialist under **Lexmom Sub Manager**. It researches solo, s
 ## Current capability
 
 - Discover firm websites through SerpAPI, or research supplied public firm URLs.
+- Discover lawyer directories with the saved `discover_directories` option, enforce
+  reviewed per-source rights/robots/limits, and research permitted profile candidates.
+  See [directory research and current source holds](../../docs/lexmom_sub_manager/DIRECTORY_RESEARCH_20261020.md).
 - Read bounded public HTML pages, preserve field-level excerpts and retrieval dates, and deduplicate by canonical host.
 - Qualify firms using published identity, location, legal practice and an explicit attorney count or bounded current legal-team roster. Roster counts are labelled separately; unknown or contradictory facts remain `needs_research`.
 - Preserve published contacts and buyer-role matches. Name/role/email association is `unconfirmed` unless a supporting excerpt connects them; mailbox verification is separate.
 - Optionally verify a published email through Hunter. Catch-all, pending, unknown, and dated verification remain visible. Research never grants outreach eligibility.
 - Run automatic output checks, try up to three adjusted strategies, checkpoint work, support cancellation/resume, and update private versioned learning.
 - Export the complete JSON dataset and show it through the manager's research dashboard.
+- Test a supplied website or reviewed directory/JSON feed from the left-hand URL
+  card. Source-specific layouts, bounded pagination, 50-record batches, saved
+  progress and monthly scope reuse keep imported observations separate from
+  qualified leads. See [source tests and limits](../../docs/lexmom_sub_manager/SOURCE_IMPORT_20261020.md).
 
 The initial size defaults are solo=1 attorney, small=2-10, and mid-size=11-50. These are configurable campaign boundaries, not universal firm classifications. `small_firm_max`, `size_min`, and `size_max` can change them. Country filters accept recognized names or ISO codes; an empty list does not restrict country. The first version expects readable public HTML and explicit evidence. Javascript-only pages or missing size information may require further research.
+
+The saved Lexmom profile uses `countries: []` and `priority_countries: []`:
+worldwide discovery with no fixed two-country preference. Directory search themes
+include international sources and solicitor/advocate terminology. Existing query
+rotation and limits still apply. Explicit country filters and optional search
+priorities remain available for a future targeted run; priorities do not change
+qualification rules or the saved-inventory key. The user reports US product hosting;
+assess hosting needs separately for each firm rather than excluding entire markets
+or inferring acceptance/compliance from its country. No residency assurance is inferred.
 
 The current saved profile uses a 50-contact inventory goal, separate from the
 qualified-firm target. It counts only unique, sourced, research-ready contacts

@@ -631,3 +631,148 @@ For every future change, append:
 - Live preflight found all agents idle. The configured shared OpenAI key then returned HTTP 429 `credit_balance_exhausted`; no dedicated PCT key is set and no inherited-key mismatch was found. No bulk run, service restart, model downgrade, billing change or notification occurred. The existing completion-email setting was restored because the extraction never started.
 - Resume after API access is restored: recheck the actual key, run the idle check, activate the prepared settings through the local keeper, and launch the preserved input once. The user authorized extraction, not outbound messages; suppress completion email for this run. Do not repeatedly retry the exhausted-credit error.
 - Rollback: remove the newly added minimum-interval setting to restore the previous ten-second default, preserving every unrelated environment value. The other performance settings were already at their existing maximums.
+
+## 2026-10-20 — Directory-led Prospect Research source update
+
+- User requested directory discovery before Apollo, including Justia, Avvo,
+  FindLaw, Martindale-Hubbell and similar lawyer-profile platforms, following
+  their access/use rules and avoiding access-block evasion.
+- Added an editable 16-source catalogue, mixed directory/website search queries,
+  unknown-source recognition, dated collection/storage/commercial-use reviews,
+  live full-document terms fingerprint and robots checks, reviewed profile paths,
+  conservative per-source page/delay limits and durable denial/rate-limit holds.
+  The saved profile enables directory discovery within the same search/credit caps.
+- Permitted-source profiles retain explicitly associated contacts and evidence
+  separately from verified leads. One labelled firm website feeds the existing
+  primary research/Launch/Manage qualification and verification pipeline. Added
+  a collapsed directory-source status table and source/terms audit details.
+- Current catalogue: Justia, Avvo and FindLaw are restricted for the proposed
+  commercial collection under the checked published terms; the other 13 require
+  review. No real directory is configured as permitted. An IP block is not the
+  criterion for whether terms apply. There is no bulk all-lawyer dump, permission
+  bypass, automatic approval of an unfamiliar site, proxy rotation or CAPTCHA solving.
+- Added the `source_holds` table without modifying existing firm/contact data.
+  Runtime holds remain private and survive process restarts; automatic retries
+  cannot clear review holds or shorten another worker's pause. Existing cached
+  inventory, target-count and seven-day verification rules remain intact.
+- Offline validation: 171 research checks, 153 shared/email/social/runtime checks
+  and 18 manager/dashboard checks passed (342 total), plus JavaScript syntax and
+  PCT reconnect checks. Tests use synthetic permissions, mock HTTP/providers and
+  temporary state. No research credits, live campaign or social action was used.
+- Scope: source/UI/configuration/documentation only, on the existing handoff
+  branch. No AWS deployment, service restart, production data migration or
+  deployment cleanup was performed. Existing production secrets, data, active
+  processes and disabled send/publish settings were not changed. A future isolated
+  deployment must follow `CODEX_HANDOFF.md`; rollback restores source while
+  preserving newer databases/holds. Details: `DIRECTORY_RESEARCH_20261020.md`.
+
+## 2026-10-20 — US and Australia research priorities
+
+Superseded by the worldwide-discovery clarification below.
+
+- User clarified worldwide eligibility with US/Australia as the main commercial
+  research focus, citing US product hosting. Added editable `priority_countries`
+  separately from the existing `countries` eligibility allowlist. The saved
+  profile keeps global eligibility and prefers the two named markets; it retains
+  a global query lane and the same query/credit limits. No other market was added
+  to the priority list or automatically excluded based on assumed hosting needs.
+- Round-robin website/directory query generation covers both preferred markets
+  in the first three-search plan before ordinary historical query rotation.
+  An explicit country allowlist takes precedence. Changing a search preference
+  does not invalidate or hide existing inventory or alter qualification rules.
+- Validation: 174 research checks and 43 manager/runtime checks passed (217 total).
+  No live search, verification credit operation, campaign, deployment or service
+  change was performed. Hosting location is user-provided context, not a claim
+  that every firm in a country accepts it or that other countries forbid it.
+
+## 2026-10-20 — Clarification: worldwide lawyer discovery
+
+- User clarified that US/Australia are examples and discovery should identify
+  lawyers worldwide. Cleared saved `priority_countries` while preserving empty
+  `countries` for global eligibility. Optional per-run country targeting remains
+  available; no market is excluded because of assumed hosting requirements.
+- Added international and solicitor/advocate directory search themes within the
+  same rotating query/credit caps. Corrected current documentation and added an
+  offline regression check that the saved search does not append either country.
+- Existing source-permission holds, qualification, lead inventory, verification
+  and disabled sending/publishing remain unchanged. No provider work, AWS deploy,
+  service restart or production data change is part of this correction.
+- Validation: 49 directory-source and manager/dashboard checks passed, including
+  the worldwide saved-profile search regression; no live providers were contacted.
+
+## 2026-10-20 — Dynamic source URL tests and bounded bulk imports
+
+- User requested bulk extraction, different site layouts, remembered source
+  progress and a left-side URL/API test card in Prospect Research. Added that
+  card, a separate unverified-observation table and source Details drawer.
+  Qualified inventory and sending remain separate and unchanged.
+- Added reviewed per-path HTML/JSON reader recipes, container-scoped fields,
+  explicit profile/next URLs, safe pagination queries and dedicated environment
+  authentication for feeds. Unknown/incompatible layouts and unreviewed or
+  restricted directories remain held. No real directory/feed was enabled.
+- Source jobs add up to 50 observations per explicit batch, buffer unread rows,
+  checkpoint progress, deduplicate and resume within existing source limits.
+  Only a completed selected URL/feed scope gets UTC calendar-month reuse; a
+  partial job never marks the whole site exhausted. Refresh/later-month tests
+  mark new/changed/unchanged observations. No new recurring schedule was enabled.
+- Both local and isolated AWS adapters register authenticated, operator-only,
+  same-origin routes. Browser requests cannot alter policy, enter credentials,
+  raise fixed test caps or trigger provider verification/search/model operations.
+- AWS identity verification failed, with diagnostics retained privately. This
+  is source/UI/documentation only: no production deployment, service restart,
+  real source collection, lead migration, campaign or social publication occurred.
+  No deployment cleanup applied; test fixtures use automatically cleaned private
+  temporary directories. See `SOURCE_IMPORT_20261020.md` for exact limits and
+  continuation/deployment instructions.
+- Added transactional `source_requests` pacing for explicit source tests so
+  changing URLs or restarting a batch cannot reset its source request interval.
+  A pacing deadline retains partial work without creating a permanent denial.
+- Validation: 201 research checks, 153 shared/email/social/runtime/dashboard
+  checks and 18 manager/UI checks passed (372 total), plus JavaScript syntax
+  and PCT reconnect checks. Reviewed the synthetic credential-URL rejection
+  fixture during the pre-publication audit; no real environment values or
+  private business records are included in this source change.
+
+## 2026-10-20 — Source test card deployed and verified
+
+- Renewed the authorized Devteam AWS session and deployed source commit
+  `1869d1c3ad2b4b67b45f7f1907fa47c9904bae9a` to the isolated Lexmom runtime.
+  Restarted only `lexmom-dashboard.service`; the shared OS container and PCT
+  runtime were preserved. Actual customized static assets were patched in scope,
+  including the server's existing HTML rather than an older public asset copy.
+- All 201 research tests passed on AWS staging; the actual patched JavaScript
+  passed syntax, manager UI and PCT reconnect checks. Served asset hashes matched;
+  anonymous API access returned 401. Authenticated live extraction and the source
+  Details drawer were verified with two selected-page tests (zero/one unverified
+  observations), using zero search, verification or model operations.
+- Hash checks confirmed all four original prospect tables and the environment
+  file were unchanged. Existing inventory displayed 355 contacts, with 52 currently
+  qualified/verified and 303 held. No real directory/feed was enabled, no campaign
+  sent and no social post published. Sending/publishing switches remain off.
+- Removed only inspected task-owned AWS staging/transfer copies and seven local
+  duplicate build/download files. Retained rollback source/static assets, database
+  backup, live state, source checkpoints, environment and compact evidence.
+  Exact paths, sizes and measured disk space before/after are recorded in
+  `docs/lexmom_sub_manager/SOURCE_CARD_RELEASE_20261020.md`.
+
+## 2026-10-20 — Responsive research layout and shared agent navigation
+
+- Repaired the cramped source/lead layout: saved leads now span the full content
+  width, source results have their own scroll boundary, and filters/statistics
+  adapt to container width. Narrow tables become labeled rows with explicit
+  table semantics; long emails remain inside their fields.
+- Added a shared mobile sidebar menu with an overlay, inert closed/background
+  states, keyboard navigation, focus handling and Escape dismissal. Preserved
+  desktop sidebar behavior and existing dashboard/PCT customizations.
+- Deployed only three scoped static files, ending at source commit `bc104a7`.
+  No service was restarted, environment changed or business data written.
+  Sending, publication and paid-generation flags stayed off.
+- Validation: 18 manager checks plus the actual-live-asset UI harness passed;
+  JavaScript syntax, PCT reconnect and publication audits passed. The live site
+  had no horizontal page overflow at 320/375/768/1024/1366/1920 CSS pixels.
+  Verified the mobile menu, Launch filter, 375-pixel drawer and light theme;
+  restored normal viewport, filters and theme.
+- Stopped the task-owned preview and removed five exact duplicate build/transfer
+  files. Kept source, environment, business state, both AWS rollback releases and
+  compact evidence. Exact paths and measured free space are recorded in
+  `docs/lexmom_sub_manager/RESPONSIVE_LAYOUT_RELEASE_20261020.md`.

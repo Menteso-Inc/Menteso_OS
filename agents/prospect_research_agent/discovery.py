@@ -7,9 +7,8 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from .models import FirmRecord
+from .directory_sources import DIRECTORY_HINT, load_directory_policy
 
-DIRECTORIES = frozenset({"lawzana.com", "legal500.com", "chambers.com", "avvo.com",
-    "justia.com", "findlaw.com", "superlawyers.com", "justdial.com", "hg.org", "thelawyersglobal.org"})
 SOCIAL_OR_NEWS = frozenset({"linkedin.com", "facebook.com", "instagram.com", "youtube.com",
     "wikipedia.org", "globalcompetitionreview.com", "dailyjournal.com", "wizehire.com", "law.com"})
 NON_FIRM_ORGANIZATIONS = frozenset({"americanbar.org", "uslaw.org"})
@@ -23,10 +22,32 @@ def matches_host(host, values):
     return any(host == item or host.endswith("." + item) for item in values)
 
 
-def source_kind(url):
+def search_geographies(request):
+    """Search preferences do not narrow country eligibility or invalidate inventory."""
+    import pycountry
+    def code(value):
+        try:
+            return pycountry.countries.lookup(value).alpha_2
+        except LookupError:
+            return value.casefold()
+    priorities = getattr(request, "priority_countries", [])
+    allowed = {code(country): country for country in request.countries}
+    selected = {}
+    for country in priorities:
+        key = code(country)
+        if not allowed or key in allowed:
+            selected.setdefault(key, allowed.get(key, country))
+    for key, country in allowed.items():
+        selected.setdefault(key, country)
+    return list(selected.values()) + ([""] if not allowed else [])
+
+
+def source_kind(url, title="", snippet=""):
     host = domain(url)
     institutional = bool(re.search(r"\.(?:gov|edu)(?:\.[a-z]{2})?$|\.ac\.[a-z]{2}$", host))
-    return "directory" if matches_host(host, DIRECTORIES) else "unsupported" if institutional or matches_host(host, SOCIAL_OR_NEWS | NON_FIRM_ORGANIZATIONS) else "website"
+    if institutional or matches_host(host, SOCIAL_OR_NEWS | NON_FIRM_ORGANIZATIONS):
+        return "unsupported"
+    return "directory" if load_directory_policy().find(url) or DIRECTORY_HINT.search(title + " " + snippet) else "website"
 
 
 def score_candidate(url, title, snippet):
@@ -59,10 +80,12 @@ def select_candidates(rows, limit, known, excluded):
         status, reason = "selected", "Candidate ranked for source research; fit not yet verified"
         if matches_host(host, excluded):
             status, reason = "rejected", "Domain excluded by targeting profile"
-        elif kind == "unsupported" or row["score"] < 0 and kind != "directory":
-            status, reason = "rejected", "Non-firm institution, social/news source or low-relevance search result"
         elif kind == "directory" and (urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1] in {"", "directory", "lawyers", "law-firms", "firms"} or row["score"] < 0):
             status, reason = "rejected", "Directory index or unrelated listing; no specific firm identified"
+        elif kind == "directory" and row.get("source_access", "review_required") != "permitted":
+            status, reason = "needs_research", row.get("reason") or "Directory collection/reuse terms require review"
+        elif kind == "unsupported" or row["score"] < 0 and kind != "directory":
+            status, reason = "rejected", "Non-firm institution, social/news source or low-relevance search result"
         elif host in known:
             status, reason = "already_known", "Recent validated research for this targeting profile"
             row["previous_run_id"] = known[host]["run_id"]

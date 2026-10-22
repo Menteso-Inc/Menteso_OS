@@ -2801,6 +2801,20 @@ async def force_clear_agent_run(name: str, request: Request):
 # ---------------------------------------------------------------------------
 # Launch
 # ---------------------------------------------------------------------------
+async def authorize_source_import(request: Request, *, write=False):
+    from fastapi import HTTPException
+    user = getattr(request.state, "user", {})
+    if user.get("role") not in {"admin", "operator"}:
+        raise HTTPException(403, "An operator account is required")
+    if write and request.headers.get("origin") != str(request.base_url).rstrip("/"):
+        raise HTTPException(403, "A same-origin dashboard request is required")
+    return user
+
+
+from agents.prospect_research_agent.source_api import register_routes as register_source_import_routes
+register_source_import_routes(app, authorize_source_import)
+
+
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("DASHBOARD_HOST", "0.0.0.0")

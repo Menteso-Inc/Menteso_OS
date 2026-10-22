@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -38,6 +39,11 @@ class ProspectStore:
                 CREATE TABLE IF NOT EXISTS reservations (
                     profile TEXT NOT NULL, run_id TEXT NOT NULL, data TEXT NOT NULL,
                     PRIMARY KEY (profile, run_id));
+                CREATE TABLE IF NOT EXISTS source_holds (
+                    host TEXT PRIMARY KEY, reason TEXT NOT NULL,
+                    retry_at REAL, observed_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS source_requests (
+                    host TEXT PRIMARY KEY, next_request_at REAL NOT NULL);
             """)
 
     @contextmanager
@@ -65,6 +71,47 @@ class ProspectStore:
                 db.execute("INSERT INTO queries VALUES (?, ?, 1, ?) ON CONFLICT(profile, query) DO UPDATE SET used=used+1, last_use=excluded.last_use", (profile, query, sequence))
             db.execute("INSERT INTO reservations VALUES (?, ?, ?)", (profile, run_id, json.dumps(selected)))
             return selected
+
+    def source_hold(self, host):
+        """Holds survive runs/restarts; a rate limit expires, an access denial does not."""
+        with self._connection() as db:
+            row = db.execute("SELECT reason, retry_at FROM source_holds WHERE host=?", (host,)).fetchone()
+        if row and (row[1] is None or row[1] > time.time()):
+            return row[0]
+        return None
+
+    def hold_source(self, host, reason, retry_at=None):
+        with self._connection() as db:
+            # Parallel runs cannot downgrade an indefinite review hold or
+            # shorten a pause already observed by another worker.
+            db.execute("""INSERT INTO source_holds VALUES (?, ?, ?, ?) ON CONFLICT(host) DO UPDATE SET
+                reason=CASE WHEN source_holds.retry_at IS NULL THEN source_holds.reason ELSE excluded.reason END,
+                retry_at=CASE WHEN source_holds.retry_at IS NULL OR excluded.retry_at IS NULL THEN NULL ELSE MAX(source_holds.retry_at, excluded.retry_at) END,
+                observed_at=excluded.observed_at""",
+                       (host, reason[:1000], retry_at, time.time()))
+
+    def release_source_hold(self, host):
+        """Operator-only recovery after reviewing the cause; never called by retries."""
+        with self._connection() as db:
+            db.execute("DELETE FROM source_holds WHERE host=?", (host,))
+
+    def reserve_source_request(self, host, interval, max_wait):
+        """Atomic pacing across explicit batches, URLs and worker restarts.
+
+        A failed/unused reservation is conservative. Never advance the queue
+        when the caller cannot wait for the next slot within its own deadline.
+        """
+        with self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT next_request_at FROM source_requests WHERE host=?", (host,)).fetchone()
+            now = time.time()
+            scheduled = max(now, row[0] if row else now)
+            wait = scheduled - now
+            if wait >= max_wait:
+                return None
+            db.execute("INSERT INTO source_requests VALUES (?, ?) ON CONFLICT(host) DO UPDATE SET next_request_at=excluded.next_request_at",
+                       (host, scheduled + interval))
+            return wait
 
     def save(self, profile, run_id, record):
         from agents.prospect_research_agent.models import FirmRecord

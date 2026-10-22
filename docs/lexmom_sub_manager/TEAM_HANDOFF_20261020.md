@@ -19,8 +19,37 @@ not instructions to repeat their tests against live recipients.
 
 ## Last verified production checkpoint
 
-The last live research check was **16 October 2026**, not a fresh check on the
-date of this handoff. It confirmed 53 research-ready contacts across 12 firms:
+The [source URL test card and bulk reader](SOURCE_IMPORT_20261020.md) are now live
+on the isolated AWS Lexmom service. The authenticated public card, extraction and
+Details drawer were verified on 20 October. It supports reviewed per-path HTML/JSON
+recipes, bounded explicit pagination, 50-record batches, private checkpoints and
+monthly completed-scope reuse. Imported observations stay outside qualified
+inventory and campaigns. See [the release receipt](SOURCE_CARD_RELEASE_20261020.md)
+for exact changed files, live checks and completed deployment cleanup.
+
+The subsequent [responsive layout release](RESPONSIVE_LAYOUT_RELEASE_20261020.md)
+is also live: full-width saved leads, contained tables, narrow-screen labeled
+rows, wrapping filters and a shared mobile agent menu. Only three static files
+were patched, with no service restart or environment/business-state change.
+Final UI source is `bc104a7`; the research backend boundary remains as documented
+in the source-card release. Sending/publishing remain disabled.
+
+The related [directory-discovery update](DIRECTORY_RESEARCH_20261020.md) adds the
+editable 16-source catalogue, bounded search/profile handling and durable holds.
+Its reader/catalogue/backend dependencies were included in this scoped release;
+the complete manager/default-profile changes were not deployed. The existing
+normal-research JSON profile remains preserved. No real source is configured as
+permitted for automated commercial collection. Recognized sources are not active
+licensed integrations. Only the isolated dashboard service was restarted;
+campaigns and social publishing remain off.
+
+The 20 October browser check displayed 355 saved contacts: 52 qualified/verified
+and 303 held. Hash comparison confirmed the four original prospect tables were
+unchanged by deployment and source smoke tests. This is a freshness-dependent
+snapshot, not a fixed target or proof of recipient permission.
+
+The historical live research check on **16 October 2026** confirmed 53
+research-ready contacts across 12 firms:
 45 named buyer-role contacts and eight general firm inboxes. Primary routing was
 50 Manage and three Launch contacts; the Launch contacts were from one practice.
 There were 355 saved email contacts in total, including 302 held records. All 84
@@ -118,7 +147,11 @@ data, fixtures and mocked providers; do not replace them with real sends.
 
 1. Recheck current service/connection state and provider quotas before spending
    credits. The handoff does not assert today's live status from an old receipt.
-2. Improve independent Launch discovery; do not confuse multiple contacts at one
+2. The [public-source reader repair](PUBLIC_SOURCE_RELEASE_20261020.md) follows
+   linked information pages and retains sourced people without email. Its two
+   company-site smoke jobs are observations, not new qualified leads. Chrome
+   controls timed out during the final visual check; that check remains pending.
+   Improve independent Launch discovery; do not confuse multiple contacts at one
    firm with multiple companies. Preserve evidence, buyer association, freshness
    and domain/email deduplication.
 3. Complete the email activation worker and five-step lifecycle against the real

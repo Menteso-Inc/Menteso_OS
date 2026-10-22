@@ -292,3 +292,5 @@ from agents.email_campaign_agent.api import register_routes as register_email_ro
 register_email_routes(app, authorize)
 from agents.social_media_posting_agent.api import register_routes as register_social_routes
 register_social_routes(app, authorize)
+from agents.prospect_research_agent.source_api import register_routes as register_source_routes
+register_source_routes(app, authorize)
