@@ -280,6 +280,8 @@ def map_blocks(lines,on_step=None):
     allowed={l['id']:l for l in lines}
     if not isinstance(answer.get('blocks'),list):raise RuntimeError('ollama_invalid_source_mapping')
     for block in answer['blocks']:
+        if block.get('section') not in headings:
+            raise RuntimeError('ollama_source_role_unconfirmed')
         ids=[block.get('section')]
         for kind in ['name','address','email','phone','country']:
             if not isinstance(block.get(kind),list):raise RuntimeError('ollama_invalid_source_mapping')
@@ -338,6 +340,9 @@ def exact_values(kind,text):
 def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
     """No spelling supplied to vision. Disputes require a new crop and OCR."""
     source=' '.join(lookup[i]['text'] for i in ids)
+    if kind=='name' and re.fullmatch(r'\s*(?:Name|Nom|Nombre|Name of signatory)\s*:?\s*',source,re.I):
+        return [],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                   'withheld':'Field label is not a contact name'}
     data=crop(pdf,ids,lookup)
     label=f"{kind}-{'-'.join(map(str,ids))}"
     (evidence_dir/(label+'.png')).write_bytes(data)
@@ -363,6 +368,18 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None):
     if next_values and key(next_values)==key(original) and key(next_values)==key(exact_values(kind,ocr)):
         trace['resolution']='Second original-image reading agrees with both OCR readings'
         return original,trace
+    if next_values and key(next_values)==key(exact_values(kind,ocr)):
+        # An OCR/vision pair supports a candidate, but the earlier read differs.
+        # One bounded fresh image read can establish the same two-vision-plus-
+        # OCR agreement used above, without guessing from an expected answer.
+        confirmation=crop(pdf,ids,lookup,scale=3.5,padding=3)
+        (evidence_dir/(label+'-confirmation.png')).write_bytes(confirmation)
+        third,third_meta=read_crop(confirmation,kind,on_step)
+        third_values=exact_values(kind,third.get('text','')) if third.get('legible') is True else []
+        trace['third_visual']=third;trace['calls'].append(third_meta)
+        if third_values and key(third_values)==key(next_values):
+            trace['resolution']='Two original-image readings agree with alternate OCR'
+            return next_values,trace
     trace['withheld']='Independent source readings disagree'
     return [],trace
 
@@ -408,6 +425,10 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             # Applicant identity without reachable details is already present
             # in the input metadata; it cannot determine the exported contact.
             if block['role']=='applicant' and not block['email'] and not block['phone']:
+                continue
+            if redundant_additional_agent(block,lookup,fields):
+                record.setdefault('omitted_unused_fields',[]).append({
+                    'section':block['section'],'reason':'Additional-agent list has no contact details; primary contact and name already verified'})
                 continue
             section=source_section(lookup[block['section']],scan['lines']);role=block['role']
             pattern=policy.AGENT_SECTION if role=='agent' else policy.APPLICANT_SECTION
@@ -457,3 +478,18 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
     atomic_json(folder/'verification.json',record)
     step(f"[AI Verification] {result['ai_status']}: {result.get('reason') or 'Original source contacts confirmed'} ({record['seconds']}s)")
     return result
+
+
+def redundant_additional_agent(block,lookup,fields):
+    """A name-only additional list cannot replace a verified primary contact.
+
+    Full-page OCR and assignment of every email are still required. This skips
+    only unused name pixels, after the actual contact and identity have passed.
+    """
+    if (block['role']!='agent' or block['email'] or block['phone'] or
+            not re.match(r'^Additional\s+agent',lookup[block['section']]['text'],re.I)):
+        return False
+    kinds={}
+    for field in fields:
+        if field.role=='agent':kinds.setdefault(field.block_id,set()).add(field.kind)
+    return any('name' in values and bool(values & {'email','phone'}) for values in kinds.values())

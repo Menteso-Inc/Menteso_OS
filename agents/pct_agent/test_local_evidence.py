@@ -129,6 +129,22 @@ def test_one_agreeing_ocr_signal_cannot_override_disagreeing_image_reads(monkeyp
     assert values==[]
 
 
+def test_bounded_third_read_requires_same_value_as_second_and_alternate_ocr(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'MULLER PATENTS','legible':True},
+                           {'text':'MÜLLER PATENTS','legible':True},
+                           {'text':'MÜLLER PATENTS','legible':True}],'MÜLLER PATENTS')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'MULLFR PATENTS',10,10)},'name',tmp_path)
+    assert values==['MÜLLER PATENTS'] and len(trace['calls'])==3
+
+
+def test_third_read_cannot_accept_unconfirmed_candidate(monkeypatch,tmp_path):
+    setup_crop(monkeypatch,[{'text':'muller@example.org','legible':True},
+                           {'text':'mueller@example.org','legible':True},
+                           {'text':'mueler@example.org','legible':True}],'mueller@example.org')
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'mullfr@example.org',10,10)},'email',tmp_path)
+    assert values==[] and 'withheld' in trace and len(trace['calls'])==3
+
+
 def test_state_of_nationality_is_not_part_of_the_contact_address():
     scan=form();scan['lines'][8]['text']='State of nationality'
     block=local.table_blocks(scan)[0]
@@ -154,6 +170,44 @@ def test_vision_prompt_does_not_contain_expected_email(monkeypatch):
     monkeypatch.setattr(local,'chat',fake)
     local.read_crop(b'original pixels','email')
     assert captured[1]['images'] and 'candidate' not in json.dumps(captured).lower()
+
+
+def test_field_label_cannot_be_exported_as_contact_identity(monkeypatch,tmp_path):
+    monkeypatch.setattr(local,'crop',lambda *a,**kw:pytest.fail('A label must not request vision'))
+    values,trace=local.verify_value('source.pdf',[1],{1:line(1,'Name',10,10)},'name',tmp_path)
+    assert values==[] and trace['withheld']=='Field label is not a contact name'
+
+
+def test_only_unused_additional_names_can_skip_image_verification():
+    lookup={1:line(1,'Additional agent(s)',40,20)}
+    block={'role':'agent','section':1,'email':[],'phone':[]}
+    fields=[SimpleNamespace(role='agent',block_id='primary',kind=k) for k in ['name','email']]
+    assert local.redundant_additional_agent(block,lookup,fields)
+    assert not local.redundant_additional_agent(block,lookup,fields[:1])
+    assert not local.redundant_additional_agent(dict(block,email=[3]),lookup,fields)
+    assert not local.redundant_additional_agent(block,{1:line(1,'Agent',40,20)},fields)
+
+
+def test_omitting_contactless_additional_name_preserves_selected_output(monkeypatch):
+    from agents.pct_agent import ai_verifier as ai
+    from agents.pct_agent.test_ai_verifier import extraction,field
+    monkeypatch.setattr(ai.policy,'email_domain_status',lambda email:'mx')
+    primary=[field('mail@example.org',entity='EXAMPLE PATENTS'),
+             field('EXAMPLE PATENTS',kind='name',entity='EXAMPLE PATENTS')]
+    extra=field('ANOTHER, Agent',kind='name').model_copy(update={
+        'block_id':'additional','entity':'ANOTHER, Agent','section':'Additional agents'})
+    first=ai.select_contacts(extraction(*primary),ai.load_rules(),[1])
+    second=ai.select_contacts(extraction(*primary,extra),ai.load_rules(),[1])
+    assert first==second and first['status']=='found' and first['agent_name']=='EXAMPLE PATENTS'
+
+
+def test_model_cannot_select_role_value_instead_of_actual_heading(monkeypatch):
+    scan=form();scan['lines'].append(line(70,'Agent',250,125))
+    invalid={'blocks':[{'role':'agent','section':70,'name':[5],'address':[7],
+                       'country':[8],'phone':[12],'email':[16],'entity_type':'unknown'}]}
+    monkeypatch.setattr(local,'chat',lambda *a,**kw:(invalid,{}))
+    with pytest.raises(RuntimeError,match='ollama_source_role_unconfirmed'):
+        local.map_blocks(scan['lines'])
 
 
 def test_email_must_not_be_a_valid_suffix_of_a_malformed_address():
