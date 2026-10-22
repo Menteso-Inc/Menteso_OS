@@ -215,11 +215,39 @@ def test_ambiguous_layout_uses_bounded_second_scan_and_records_time(monkeypatch)
     alternate=form();alternate['engine']='rapidocr';alternate['seconds']=3
     monkeypatch.setenv('PCT_OLLAMA_SECONDARY_OCR','true')
     calls=[]
-    def scan(path,secondary=False):calls.append(secondary);return alternate
+    def scan(path,secondary=False,page_numbers=None):calls.append((secondary,page_numbers));return alternate
     monkeypatch.setattr(local,'scan_pdf',scan)
     selected,audit=local.choose_source_scan('original.pdf',primary,lambda m:None)
-    assert selected is alternate and calls==[True] and selected['seconds']==4
+    assert selected['lines']==alternate['lines'] and calls==[(True,[1])] and selected['seconds']==4
     assert audit['used'] and audit['preserved_email_regions']
+
+
+def test_second_ocr_keeps_clear_pages_and_unique_source_ids(monkeypatch):
+    primary=form();primary['engine']='windows_en'
+    second=[dict(l,page=2,id=l['id']+100) for l in primary['lines']]
+    second[0]['text']='Damaged heading'
+    primary['lines']+=second
+    primary['pages'].append({'page':2,'width':600,'height':800})
+    alternate=form();alternate['lines']=[dict(l,page=2) for l in alternate['lines']]
+    alternate['pages']=[{'page':2,'width':600,'height':800}];alternate['seconds']=3
+    monkeypatch.setenv('PCT_OLLAMA_SECONDARY_OCR','true')
+    called=[]
+    def scan(path,**kwargs):called.append(kwargs['page_numbers']);return alternate
+    monkeypatch.setattr(local,'scan_pdf',scan)
+    selected,audit=local.choose_source_scan('source.pdf',primary,lambda m:None)
+    assert called==[[2]] and audit['primary_pages_retained']==[1]
+    assert [l['text'] for l in selected['lines'] if l['page']==1]==[l['text'] for l in primary['lines'] if l['page']==1]
+    assert len({l['id'] for l in selected['lines']})==len(selected['lines'])
+    assert selected['engine']=='mixed_windows_rapidocr' and audit['preserved_email_regions']
+
+
+def test_second_ocr_cannot_silently_drop_an_email_region(monkeypatch):
+    primary=form();primary['engine']='windows_en';primary['lines'][0]['text']='Damaged heading'
+    alternate=form();alternate['lines']=[l for l in alternate['lines'] if '@' not in l['text']];alternate['seconds']=2
+    monkeypatch.setenv('PCT_OLLAMA_SECONDARY_OCR','true')
+    monkeypatch.setattr(local,'scan_pdf',lambda *a,**kw:alternate)
+    selected,audit=local.choose_source_scan('source.pdf',primary,lambda m:None)
+    assert selected is primary and not audit['used'] and not audit['preserved_email_regions']
 
 
 def test_clear_layout_does_not_repeat_ocr(monkeypatch):

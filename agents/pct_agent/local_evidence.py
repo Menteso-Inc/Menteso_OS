@@ -104,7 +104,7 @@ def atomic_json(path, value):
             time.sleep(.1 * (attempt + 1))
 
 
-def scan_pdf(path, secondary=False):
+def scan_pdf(path, secondary=False, page_numbers=None):
     import winocr
     lines, pages = [], []
     started = time.monotonic()
@@ -112,6 +112,8 @@ def scan_pdf(path, secondary=False):
         if not 0 < len(doc) <= 100:
             raise RuntimeError('ollama_document_page_limit')
         for number, page in enumerate(doc, 1):
+            if page_numbers is not None and number not in page_numbers:
+                continue
             scale = 2.5
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
             image=Image.open(io.BytesIO(pix.tobytes('png')))
@@ -308,9 +310,21 @@ def choose_source_scan(pdf_path, primary, on_step):
     if (primary.get('engine')=='rapidocr' or table_blocks(primary) is not None or
             os.getenv('PCT_OLLAMA_SECONDARY_OCR')!='true'):
         return primary,None
-    on_step('[AI Verification] Ambiguous form labels; checking a second OCR engine before source mapping')
-    alternate=scan_pdf(pdf_path,secondary=True)
+    pages=[]
+    for page in primary['pages']:
+        lines=[l for l in primary['lines'] if l['page']==page['page']]
+        single={'pages':[page],'lines':lines}
+        # Every page was already scanned. Re-run only unresolved contact pages,
+        # retaining the original scan of clear/contact-free pages unchanged.
+        contact=(required_email_ids(single) or role_headings(lines,page['width']) or
+                 any(len(l['text'])<45 and EMAIL_LABEL.search(l['text']) for l in lines))
+        if contact and table_blocks(single) is None:pages.append(page['page'])
+    if not pages:return primary,None
+    on_step(f'[AI Verification] Ambiguous form labels; second OCR checks {len(pages)} of {len(primary["pages"])} already-scanned pages')
+    rescanned=scan_pdf(pdf_path,secondary=True,page_numbers=pages)
+    alternate=merge_page_scans(primary,rescanned,pages)
     audit={'primary_seconds':primary['seconds'],'secondary_seconds':alternate['seconds'],
+           'secondary_pages':pages,'primary_pages_retained':[p['page'] for p in primary['pages'] if p['page'] not in pages],
            'preserved_email_regions':preserves_email_regions(primary,alternate)}
     if not audit['preserved_email_regions']:
         audit['used']=False
@@ -318,6 +332,19 @@ def choose_source_scan(pdf_path, primary, on_step):
     audit['used']=True
     alternate['seconds']=round(primary['seconds']+alternate['seconds'],3)
     return alternate,audit
+
+
+def merge_page_scans(primary, rescanned, replaced_pages):
+    if {p['page'] for p in rescanned['pages']} != set(replaced_pages):
+        raise RuntimeError('ollama_secondary_page_coverage')
+    lines=[];pages=[]
+    for page in primary['pages']:
+        source=rescanned if page['page'] in replaced_pages else primary
+        selected=[dict(l) for l in source['lines'] if l['page']==page['page']]
+        for line in selected:line['id']=len(lines)+1;lines.append(line)
+        pages.append({**page,'line_ids':[l['id'] for l in selected]})
+    return {'pages':pages,'lines':lines,'seconds':rescanned['seconds'],
+            'engine':'rapidocr' if len(replaced_pages)==len(pages) else 'mixed_windows_rapidocr'}
 
 
 def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='model'):
