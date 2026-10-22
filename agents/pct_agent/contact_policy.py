@@ -117,7 +117,7 @@ def agree(first, second, ocr_emails=None):
 
 FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
 AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandatario|대리인|代理|^IV\b', re.I)
-APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|solicitante|申请人|出願人|출원인|^II\b', re.I)
+APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|申请人|出願人|출원인|^II\b', re.I)
 
 
 EMAIL_RE = re.compile(

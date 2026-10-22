@@ -116,6 +116,75 @@ def test_mapper_rejects_invented_source_ids(monkeypatch):
         local.map_blocks(form()['lines'])
 
 
+def test_spanish_contact_labels_exclude_heading_wrap_and_narrative():
+    scan=form();scan['lines'][0]['text']='Mandatario o representante común; o'
+    scan['lines'][1]['text']='solicitante(s) ante las administraciones'
+    scan['lines'][3]['text']='Nombre (APELLIDOS, Nombre)'
+    scan['lines'][5]['text']='Direcciön'
+    scan['lines'][10]['text']='No. de teléfono'
+    scan['lines'][14]['text']='Correo electrönico'
+    scan['lines'].append(line(70,'dirección para la correspondencia',50,110))
+    block=local.table_blocks(scan)[0]
+    assert block['role']=='agent' and block['email']==[16] and block['phone']==[12]
+    assert block['name']==[5] and block['address']==[7,8]
+
+
+def test_french_contact_labels_keep_country_separate_from_nationality():
+    scan=form();scan['lines'][0]['text']='Déposant'
+    scan['lines'][1]['text']='Déposant pour :'
+    scan['lines'][3]['text']='Nom:'
+    scan['lines'][5]['text']='Adresse :'
+    scan['lines'][8]['text']="Nationalité (nom de l'État) :"
+    scan['lines'][10]['text']='n° de téléphone :'
+    scan['lines'][14]['text']='Courrier électronique :'
+    block=local.table_blocks(scan)[0]
+    assert block['role']=='applicant' and block['country']==[8]
+    assert block['email']==[16] and block['phone']==[12]
+    assert local.policy.APPLICANT_SECTION.search('Déposant')
+
+
+def test_second_ocr_cannot_erase_an_email_region():
+    primary=form();alternate=form()
+    assert local.preserves_email_regions(primary,alternate)
+    alternate['lines'][15]['page']=2
+    assert not local.preserves_email_regions(primary,alternate)
+    alternate=form();alternate['lines'][15]['rect'][1]+=30
+    alternate['lines'][15]['rect'][3]+=30
+    assert not local.preserves_email_regions(primary,alternate)
+
+
+def test_ambiguous_layout_uses_bounded_second_scan_and_records_time(monkeypatch):
+    primary=form();primary['lines'][0]['text']='Damaged heading';primary['engine']='windows_en'
+    alternate=form();alternate['engine']='rapidocr';alternate['seconds']=3
+    monkeypatch.setenv('PCT_OLLAMA_SECONDARY_OCR','true')
+    calls=[]
+    def scan(path,secondary=False):calls.append(secondary);return alternate
+    monkeypatch.setattr(local,'scan_pdf',scan)
+    selected,audit=local.choose_source_scan('original.pdf',primary,lambda m:None)
+    assert selected is alternate and calls==[True] and selected['seconds']==4
+    assert audit['used'] and audit['preserved_email_regions']
+
+
+def test_clear_layout_does_not_repeat_ocr(monkeypatch):
+    primary=form();primary['engine']='windows_en'
+    monkeypatch.setenv('PCT_OLLAMA_SECONDARY_OCR','true')
+    monkeypatch.setattr(local,'scan_pdf',lambda *a,**k:pytest.fail('Redundant scan'))
+    assert local.choose_source_scan('original.pdf',primary,lambda m:None)==(primary,None)
+
+
+def test_model_layout_calls_cannot_mix_ids_from_different_pages(monkeypatch):
+    scan=form();second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
+    scan['lines']+=second
+    calls=[]
+    def chat(messages,schema,**kwargs):
+        ids=schema['properties']['blocks']['items']['properties']['name']['items']['enum']
+        calls.append(ids)
+        return {'blocks':[]},{'seconds':1}
+    monkeypatch.setattr(local,'chat',chat)
+    _,meta=local.map_blocks(scan['lines'])
+    assert len(calls)==2 and max(calls[0])<min(calls[1]) and meta['seconds']==2
+
+
 def setup_crop(monkeypatch,readings,alternate=''):
     monkeypatch.setattr(local,'crop',lambda *a,**kw:b'image')
     monkeypatch.setattr(local.Image,'open',lambda *a:object())
