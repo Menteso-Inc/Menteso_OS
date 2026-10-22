@@ -1,6 +1,6 @@
 # Menteso Agent Operations Logbook
 
-## 2026-10-22 - PCT person greetings and management categories prepared
+## 2026-10-22 - PCT person greetings and management categories activated
 
 - The user clarified that human names usually identify people from bibliography
   or signatures, while Cat is a management label. Inspected the 672-row human
@@ -37,10 +37,17 @@
   original human/input hashes are unchanged. Private results are in the Downloads
   blind-test folder under repair-20261022/person-category-review.
 - Source was prepared in pct-person-category-20261022 from combined 7a80e21,
-  preserving teammate changes. Runtime activation is pending the separate idle
-  guard and source-only release receipt; no active job may be stopped. Keep the
-  Ollama document provider, GPT-4o CAPTCHA adapter, environment, tunnel, original
-  outputs and unrelated agents unchanged.
+  preserving teammate changes. Fresh all-agent idle checks preceded activation
+  of source commit 36f90f6. Only the idle local dashboard restarted, PID 3028 to
+  10880; Ollama 7608, private test dashboard 3300 and tunnel were retained. Local
+  and public authenticated PCT status routes returned HTTP 200/idle. All 20 source
+  hashes matched; 141 protected files passed unchanged-data or explicit scheduler
+  heartbeat/history guards. The environment is byte-identical. No active run,
+  original report, AWS service, model or CAPTCHA provider was changed.
+- Private source/index backups, rollback plan and successful activation/health
+  receipts are under C:\ProgramData\Menteso\pct-person-category-20261022. Restore
+  only scoped source while idle, never whole data directories or newer outputs.
+  New verification fingerprints intentionally invalidate incompatible handoffs.
 
 Last updated: 2026-10-21 (Asia/Calcutta)
 
