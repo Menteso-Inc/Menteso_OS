@@ -1,0 +1,27 @@
+{
+  "version": "20261014-conversation-v3.1",
+  "tabs": {
+    "launch": {
+      "email_sections": 5,
+      "link_labels_verified": true,
+      "destinations_preserved": true,
+      "bodies_and_subjects_preserved": true,
+      "audience_preserved": true
+    },
+    "manage": {
+      "email_sections": 5,
+      "link_labels_verified": true,
+      "destinations_preserved": true,
+      "bodies_and_subjects_preserved": true,
+      "audience_preserved": true
+    },
+    "both": {
+      "email_sections": 5,
+      "link_labels_verified": true,
+      "destinations_preserved": true,
+      "bodies_and_subjects_preserved": true,
+      "audience_preserved": true
+    }
+  },
+  "emails_sent": 0
+}

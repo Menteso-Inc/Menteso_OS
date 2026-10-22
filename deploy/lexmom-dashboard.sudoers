@@ -1,0 +1,2 @@
+# Only these exact commands can control the isolated research worker.
+menteso_os ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block lexmom-research.service, /usr/bin/systemctl stop --no-block lexmom-research.service

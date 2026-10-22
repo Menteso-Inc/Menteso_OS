@@ -1,0 +1,31 @@
+[Unit]
+Description=Lexmom Sub Manager on-demand prospect research
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/lexmom_sub_manager/app
+ExecStart=/home/menteso_os/agents/lexmom_sub_manager/.venv/bin/python -m agents.lexmom_marketing_agent.run --input /home/menteso_os/agents/lexmom_sub_manager/pilot.json --status-file /home/menteso_os/agents/lexmom_sub_manager/state/status.json
+UMask=0077
+TimeoutStartSec=400
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/menteso_os/agents/lexmom_sub_manager
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=CREWAI_TELEMETRY_ENABLED=false
+Environment=OTEL_SDK_DISABLED=true
+Environment=DO_NOT_TRACK=1
+Environment=XDG_CACHE_HOME=/home/menteso_os/agents/lexmom_sub_manager/state/cache
+Environment=XDG_DATA_HOME=/home/menteso_os/agents/lexmom_sub_manager/state/data
+Environment=TIKTOKEN_CACHE_DIR=/home/menteso_os/agents/lexmom_sub_manager/state/tokenizer-cache
+MemoryMax=2G
+CPUQuota=100%
+TasksMax=128

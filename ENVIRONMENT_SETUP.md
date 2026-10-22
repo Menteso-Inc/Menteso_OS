@@ -9,12 +9,19 @@ WordPress application password, SMTP password, API key, or AWS secret export.
 | Component | Development file | Production source |
 |---|---|---|
 | Menteso OS dashboard, PCT, SEO | repository-root `.env` | `/home/menteso_os/app/.env.aws` |
+| Lexmom manager / research / email / social | repository-root `.env` with dedicated prefixed slots | `/home/menteso_os/agents/lexmom_sub_manager/.env` |
 | Invoice Request Agent | `services/accountant_agent/.env` | AWS Secrets Manager: `invoice-request-agent/config` |
 | Invoice Reminder Agent | dedicated untracked reminder environment | AWS Secrets Manager: `invoice-reminder-agent/gmail` |
 | Agent state | local ignored runtime directories | `/home/menteso_os/data/*` |
 
 The files above are deliberately ignored by Git. Do not copy production state
 or secrets into the repository to make development easier.
+
+Lexmom's isolated source, loopback adapter, supervised monitors and pending
+provider permissions are documented in
+[`TEAM_HANDOFF_20261020.md`](docs/lexmom_sub_manager/TEAM_HANDOFF_20261020.md).
+Use the existing authorized environment rather than another company's mailbox
+credentials. Keep send/publish gates false on development machines.
 
 ## Home workstation setup
 

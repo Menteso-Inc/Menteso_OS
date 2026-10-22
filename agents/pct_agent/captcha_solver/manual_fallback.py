@@ -63,6 +63,21 @@ def _is_headless_mode():
     return (os.getenv("PCT_HEADLESS_MODE") or "true").lower() in ("1", "true", "yes")
 
 
+def _patent_page_ready(page):
+    """A missing form alone also describes a blank, loading or closed page."""
+    try:
+        if page.is_closed() or _form_visible(page):
+            return False
+        from ..browser import _page_has_captcha_selectors, _title_looks_like_captcha
+        if _page_has_captcha_selectors(page) or _title_looks_like_captcha(page) or '403' in page.title():
+            return False
+        form = page.locator('#detailMainForm')
+        return bool((form.count() and form.first.is_visible())
+                    or page.get_by_text('PCT Biblio', exact=False).first.is_visible())
+    except Exception:
+        return False
+
+
 def wait_for_manual(page, on_step=None, max_seconds=300):
     """Engage the human to solve the captcha. Returns (success, image_bytes)."""
     step = on_step or (lambda *_a, **_k: None)
@@ -80,7 +95,7 @@ def _solve_in_place(page, step, max_seconds, image_bytes):
     deadline = time.time() + max_seconds
     last_beep = time.time()
     while time.time() < deadline:
-        if not _form_visible(page):
+        if _patent_page_ready(page):
             step("[Solver:Manual] Captcha cleared by human — resuming")
             return True, image_bytes
         if time.time() - last_beep > 30:
@@ -153,7 +168,7 @@ def _solve_via_popup(page, step, max_seconds, image_bytes):
         last_beep = time.time()
         solved = False
         while time.time() < deadline:
-            if not _form_visible(headed_page):
+            if _patent_page_ready(headed_page):
                 solved = True
                 step("[Solver:Manual] Captcha cleared in the popup — transferring session")
                 break
@@ -173,15 +188,24 @@ def _solve_via_popup(page, step, max_seconds, image_bytes):
                 page.context.add_cookies(fresh)
         except Exception as e:
             step(f"[Solver:Manual] Could not transfer cookies back: {e}")
+            return False, image_bytes
 
         # Reload the headless page so it re-fetches with the new session.
         try:
             page.reload(wait_until="domcontentloaded", timeout=15000)
-            step("[Solver:Manual] Headless session refreshed — resuming")
         except Exception as e:
             step(f"[Solver:Manual] Reload after popup failed (will retry on next poll): {e}")
 
-        return True, image_bytes
+        # Confirm the actual worker can read the patent after the transfer.
+        # Do not count a cleared popup as a solved challenge on another page.
+        confirm_deadline = time.monotonic() + 15
+        while time.monotonic() < confirm_deadline:
+            if _patent_page_ready(page):
+                step("[Solver:Manual] Patent page confirmed in worker — resuming")
+                return True, image_bytes
+            time.sleep(0.5)
+        step("[Solver:Manual] Worker page not confirmed after manual session transfer")
+        return False, image_bytes
     finally:
         # ALWAYS close the popup, even on errors. This is the user's
         # explicit ask: "close that chromium window even after solve".

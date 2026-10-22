@@ -1,0 +1,363 @@
+INTERNAL REVIEW ONLY — nothing is scheduled or enrolled.
+
+Audience: sourced law-firm owners, partners and operations contacts, plus relevant general firm inboxes. Launch: firms with a supported website need. Manage: firms with a supported case-workflow need. Both: evidence supports both needs and no product preference is known. Never assume an old workflow or a missing website without evidence.
+
+One contact gets one sequence, with at most five emails total: introduction, three follow-ups and final feedback. Proposed spacing: days 1, 3, 6, 10 and 14, during the recipient’s weekday business hours. These are proposed offsets, not an active sending schedule. Personalize with a sourced name, firm and one relevant fact.
+
+Response strategy for later activation: no response → next planned step; opens alone → no escalation; a credible Launch/Manage link click → focus the remaining unsent steps on that product without restarting or adding emails; any real reply → pause automated follow-ups for review; interested reply/demo request → human demo handoff; signup → stop acquisition and hand off to onboarding; confirmed purchase → stop all acquisition; unsubscribe, complaint or hard bounce → suppress immediately; final feedback/no response → close this sequence without automatic recycling.
+
+Activation is deferred. Real signup/demo/payment hooks and automatic product-branch scheduling still need integration after the Lexmom product work. Current mailbox monitoring and suppression remain enabled; prospect sending remains disabled. Before activation: validate audience eligibility, postal identity, opt-out, fresh verification and sender limits.
+
+Deliverability: use authenticated SES, one recipient per message and small initial batches. Opens can be inflated by privacy proxies and clicks by security scanners. Delivery does not reveal Inbox versus Spam. Measure controlled seed placement, bounces, complaints, replies and confirmed conversions; never promise zero spam.
+
+Review requested: approve audience fit, truthful personalization, product claims, cadence and final-feedback language. Approval of this review does not activate campaigns.
+
+LexMom Launch — five drafts; campaign remains paused.
+
+-----
+
+Email 1 / proposed day 1: Introduction
+Subject: Want to see an AI website for your law firm?
+Named-contact example: John, want to see an AI website for your law firm?
+Firm-inbox example: Example Law: want to see an AI website for your law firm?
+
+Hi,
+
+Could your next law-firm website start with a short practice brief?
+
+LexMom Launch helps turn your practice areas and goals into AI-drafted pages and guided client intake. Your team reviews the content before publishing.
+
+If your web presence is a current priority, explore Launch or reply with the practice area you want to start with.
+
+Explore Launch: https://lexmom.com/launch/
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 2 / proposed day 3: Follow Up 1
+Subject: What would your ideal practice page say?
+Named-contact example: John, which practice page would you build first?
+Firm-inbox example: Example Law: which practice page should come first?
+
+Hi,
+
+Which service would you put on your first practice page?
+
+A clear brief gives the AI useful starting context: who you help, the work you do and how a prospective client should contact you. Launch brings the draft and intake together for your review.
+
+Reply with one practice area, or take a look at the Launch flow below.
+
+Explore Launch: https://lexmom.com/launch/
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 3 / proposed day 6: Follow Up 2
+Subject: See the Launch flow before deciding
+Named-contact example: John, would a quick Launch walkthrough help?
+Firm-inbox example: Example Law: a closer look at Launch
+
+Hi,
+
+A preview is more useful than another promise.
+
+The Launch flow starts with a practice brief, then creates AI-drafted pages and intake for your team to review. We can walk you through those steps so you can assess the fit.
+
+We have not created a website for your firm yet. If you want to explore one, reply with the brief you would use.
+
+Explore Launch: https://lexmom.com/launch/
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 4 / proposed day 10: Follow Up 3
+Subject: What would stop you from trying Launch?
+Named-contact example: John, what would you need to check first?
+Firm-inbox example: Example Law: what needs to be clear before a website change?
+
+Hi,
+
+Before considering a website change, what would you need to check: the content, the setup process or how intake works?
+
+Tell us the question that matters to you. We can explain that part of Launch instead of repeating the introduction.
+
+If now is not the right time, a quick reply is enough.
+
+Explore Launch: https://lexmom.com/launch/
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 5 / proposed day 14: Feedback
+Subject: Was Launch relevant to your practice?
+Named-contact example: John, did we get the website need right?
+Firm-inbox example: Example Law: was Launch relevant?
+
+Hi,
+
+This is the final message in this introduction sequence.
+
+Was an AI-assisted law-firm website relevant to your practice, or did we miss the need? A short reply such as interested, not now or not relevant would help us understand.
+
+If there is no reply, this sequence ends here. Thank you for your time.
+
+Explore Launch: https://lexmom.com/launch/
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+LexMom Manage — five drafts; campaign remains paused.
+
+-----
+
+Email 1 / proposed day 1: Introduction
+Subject: What if one matter had one clear view?
+Named-contact example: John, could one matter be easier to follow?
+Firm-inbox example: Example Law: a clearer view of your matters
+
+Hi,
+
+Could it be useful to see a matter’s client, tasks, documents and financial context together?
+
+LexMom Manage brings practice workflows into one place with AI-assisted features. A short walkthrough lets you judge whether it fits the way your firm works.
+
+Reply with one workflow you would like to inspect, or book a demo below.
+
+Book a Manage demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 2 / proposed day 3: Follow Up 1
+Subject: Which part of a matter takes the most chasing?
+Named-contact example: John, which matter workflow would you simplify?
+Firm-inbox example: Example Law: which workflow should we show?
+
+Hi,
+
+What would you most like to make easier to follow: tasks, documents, client context or billing?
+
+We can use one typical matter in a Manage walkthrough and focus on the area that matters to you. You can evaluate the product before deciding whether to change your tools.
+
+Reply with the workflow, or choose a demo below.
+
+Book a Manage demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 3 / proposed day 6: Follow Up 2
+Subject: A walkthrough you can judge against your work
+Named-contact example: John, want to see Manage on one matter?
+Firm-inbox example: Example Law: see Manage with one matter workflow
+
+Hi,
+
+The useful question is whether Manage fits your work, not whether a feature list sounds impressive.
+
+A walkthrough can show how client information, task ownership, documents and financial context connect within a matter. Bring the process you want to check and judge the fit yourself.
+
+Book a demo or reply with that process.
+
+Book a Manage demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 4 / proposed day 10: Follow Up 3
+Subject: What would you need to know before a demo?
+Named-contact example: John, what needs to be clear before trying Manage?
+Firm-inbox example: Example Law: what would block a Manage evaluation?
+
+Hi,
+
+What would you need to understand before evaluating Manage: the setup, the workflow fit or how your team would use it?
+
+Reply with the question that matters most. We can address that point rather than assume your existing process needs replacing.
+
+If timing is the issue, let us know when a conversation would be useful.
+
+Book a Manage demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 5 / proposed day 14: Feedback
+Subject: Was Manage relevant to your firm?
+Named-contact example: John, did we get the practice-management need right?
+Firm-inbox example: Example Law: was Manage relevant?
+
+Hi,
+
+This is the final message in this introduction sequence.
+
+Was Manage relevant to your firm, or is practice management not a current priority? Interested, not now or not relevant is enough for a useful reply.
+
+Without a reply, this sequence ends here. Thank you for your time.
+
+Book a Manage demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+LexMom Both — five drafts; campaign remains paused.
+
+-----
+
+Email 1 / proposed day 1: Introduction
+Subject: Website or case workflow—which needs attention?
+Named-contact example: John, website or case workflow: which comes first?
+Firm-inbox example: Example Law: website, matter workflow, or both?
+
+Hi,
+
+Which would be more useful for your firm right now: an AI-assisted website or a clearer matter workflow?
+
+LexMom Launch helps turn a practice brief into AI-drafted website pages and intake. LexMom Manage brings client, task, document and financial context together within practice workflows.
+
+Choose the product you want to explore below, or reply with the priority. You will have one introduction sequence, not two parallel campaigns.
+
+Explore Launch: https://lexmom.com/launch/
+
+Explore Manage / book a demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 2 / proposed day 3: Follow Up 1
+Subject: Which LexMom path would be useful first?
+Named-contact example: John, should we focus on Launch or Manage?
+Firm-inbox example: Example Law: which LexMom path should we show first?
+
+Hi,
+
+If we could show you one useful starting point, which would you choose?
+
+For a website, we can explain the Launch practice-brief and review flow. For practice management, we can walk through one matter in Manage.
+
+Reply with Launch, Manage or the question you want answered. A product choice should narrow the conversation, not create another sales sequence.
+
+Explore Launch: https://lexmom.com/launch/
+
+Explore Manage / book a demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 3 / proposed day 6: Follow Up 2
+Subject: See the product that matches your priority
+Named-contact example: John, want a closer look at the right product?
+Firm-inbox example: Example Law: a focused LexMom walkthrough
+
+Hi,
+
+Here is what we can demonstrate without guessing your needs.
+
+Launch: a practice brief becomes AI-drafted pages and intake for review before publication. Manage: a matter connects its client, tasks, documents and financial context.
+
+Tell us which flow you want to inspect. If both matter, tell us which one you would evaluate first.
+
+Explore Launch: https://lexmom.com/launch/
+
+Explore Manage / book a demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 4 / proposed day 10: Follow Up 3
+Subject: What would need to be clear before moving ahead?
+Named-contact example: John, what is the question we should answer?
+Firm-inbox example: Example Law: what would make the next step useful?
+
+Hi,
+
+Are you deciding which product fits, checking the setup, or waiting for a better time?
+
+Reply with the actual question or the product you want to focus on. We can explain that part of Launch or Manage without assuming your current website or systems are inadequate.
+
+If neither is relevant, please tell us so.
+
+Explore Launch: https://lexmom.com/launch/
+
+Explore Manage / book a demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.
+
+-----
+
+Email 5 / proposed day 14: Feedback
+Subject: Did we understand what your firm needs?
+Named-contact example: John, did we miss your firm’s priority?
+Firm-inbox example: Example Law: final feedback on Launch and Manage
+
+Hi,
+
+This is the final message in this introduction sequence.
+
+Which best describes your situation: interested in Launch, interested in Manage, interested in both, not now or not relevant? A short reply is enough.
+
+If there is no reply, this sequence ends here. Thank you for considering LexMom.
+
+Explore Launch: https://lexmom.com/launch/
+
+Explore Manage / book a demo: https://lexmom.com/manage/book-demo
+
+LexMom team
+support@lexmom.com
+
+Reply “stop” if you do not want further emails.

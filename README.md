@@ -32,7 +32,17 @@ Agents are general-purpose and not tied to any single sub-company. They are buil
 |-------|------|-------------|
 | **Test Agent** | System Reporter | Collects system/environment info. Used to verify the framework works. |
 | **PCT Agent** | Patent Data Processor | Processes WIPO PatentScope Excel sheets — scrapes patent pages, downloads RO/101 or 306 PDFs, extracts email/phone contacts. |
-| **SEO Posting Agent** | Daily SEO Publisher | Researches patent-law blog topics, generates SEO articles with OpenAI, and publishes WordPress drafts or posts for PatentZoom. |
+| **SEO Posting Agent** | Daily SEO Publisher | Researches topics, generates SEO articles and manages WordPress drafts/posts for configured approved workspaces. |
+| **Accountant Agent** | Invoice Workflows | Dashboard integration for the separately deployed invoice-request and reminder services. |
+| **Lexmom Sub Manager** | Research Manager | Coordinates sourced prospect research and displays inventory, activity and business summaries. |
+| **Prospect Research** | Research and Qualification | Discovers firms, preserves evidence, assesses Launch/Manage fit and checks published email addresses. |
+| **Email Campaign** | Drafts and Mailbox Monitoring | Five-step Launch, Manage and combined drafts, Sent/reply synchronization and delivery/activity tracking; campaign dispatch remains disabled. |
+| **Social Media Posting** | Content and Connections | LinkedIn/YouTube drafts, media previews, official connections and read-only monitoring; publishing remains disabled. |
+
+For teammate setup and the distinction between implemented, deployed and pending
+work, read [the agent pipeline handoff](docs/lexmom_sub_manager/TEAM_HANDOFF_20261020.md).
+Read [CODEX_HANDOFF.md](CODEX_HANDOFF.md) before any deployment. Source control
+does not include production credentials, lead/mailbox databases or machine tasks.
 
 ## Agent Lifecycle
 

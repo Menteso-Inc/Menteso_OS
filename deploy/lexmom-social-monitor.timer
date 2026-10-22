@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Lexmom social connections every fifteen minutes (no publishing)
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+RandomizedDelaySec=30
+Unit=lexmom-social-monitor.service
+
+[Install]
+WantedBy=timers.target

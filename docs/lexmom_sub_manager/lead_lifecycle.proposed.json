@@ -1,0 +1,38 @@
+{
+  "version": "2026-10-14-ceo-five-message-proposal",
+  "applied_to_runtime": false,
+  "sending_enabled": false,
+  "lead_identity": "normalized_email",
+  "max_active_acquisition_sequences_per_contact": 1,
+  "products": ["manage", "launch"],
+  "introduction_routes": ["manage", "launch", "combined"],
+  "max_acquisition_messages_per_sequence": 5,
+  "sequence_steps": ["introduction", "follow_up_1", "follow_up_2", "follow_up_3", "feedback"],
+  "separate_dimensions": ["lifecycle_stage", "engagement_temperature", "research_readiness", "sending_eligibility"],
+  "lifecycle_stages": ["discovered", "research_held", "ready", "contacted", "engaged", "reply_review", "interested", "demo_booked", "registered", "activated", "paid", "dormant", "not_now", "declined", "suppressed"],
+  "heat_rules": {
+    "opened": "recorded_open_is_weak_evidence",
+    "warm": "tracked_matching_product_cta_click_excluding_likely_bots",
+    "hot": "confirmed_positive_reply_or_validated_demo_request",
+    "reply": "pause_and_review_intent_before_marking_hot"
+  },
+  "acquisition_series": {
+    "manage": {"status": "paused", "steps": 5, "primary_action": "book_demo"},
+    "launch": {"status": "paused", "steps": 5, "primary_action": "site_brief_or_reviewed_preview"},
+    "combined": {"status": "paused", "steps": 5, "primary_action": "express_product_preference", "branching_does_not_reset_step": true}
+  },
+  "recommendation_requires_owner_agreement": {
+    "send_days": [1, 3, 6, 10, 14],
+    "recipient_business_hours": true,
+    "click_does_not_accelerate_sending": true
+  },
+  "pause_on": ["any_actual_reply", "mailbox_unavailable", "research_stale", "verification_stale", "ambiguous_provider_acceptance"],
+  "decision_priority": ["suppressed", "verified_paid", "demo_booked", "registered", "actual_reply", "explicit_preference", "matching_product_click", "open_only", "no_recorded_activity"],
+  "new_paid_customer_cross_sell": "separate_later_campaign_requires_eligibility_and_activation",
+  "stop_acquisition_on": ["demo_booking_confirmed", "signup_confirmed", "payment_verified", "decline", "unsubscribe", "complaint", "hard_bounce"],
+  "new_event_sources_required": ["validated_demo_request", "booking_confirmation", "product_signup", "product_activation", "verified_payment"],
+  "dormant_cooldown_days_proposed": 30,
+  "automatic_reenrollment": false,
+  "audit_fields": ["event_id", "source", "observed_at", "contact_id", "product", "previous_stage", "new_stage", "reason"],
+  "future_worker": {"durable_queue": true, "idempotent_actions": true, "supervised": true, "send_switch_default": false}
+}

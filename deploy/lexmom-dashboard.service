@@ -1,0 +1,25 @@
+[Unit]
+Description=Lexmom dashboard adapter
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/lexmom_sub_manager/app
+ExecStart=/home/menteso_os/agents/lexmom_sub_manager/.venv/bin/python -m uvicorn deploy.lexmom_dashboard:app --host 127.0.0.1 --port 8030 --no-access-log
+Restart=on-failure
+RestartSec=3
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=CREWAI_TELEMETRY_ENABLED=false
+Environment=OTEL_SDK_DISABLED=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/menteso_os/agents/lexmom_sub_manager
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

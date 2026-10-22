@@ -1,0 +1,71 @@
+{
+  "free_bytes_after": 11784429568,
+  "free_bytes_before": 11783782400,
+  "removed": [
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\activate-discovery-20261009.py",
+      "bytes": 3687
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\activate-discovery-followup.py",
+      "bytes": 3698
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\discovery-part-0.py",
+      "bytes": 60258
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\discovery-part-1.py",
+      "bytes": 60258
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\discovery-part-2.py",
+      "bytes": 26702
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\discovery-result-20261009.py",
+      "bytes": 965
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\finalize-discovery-20261009.py",
+      "bytes": 1877
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\preflight-20261009.py",
+      "bytes": 2220
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\prepare-discovery-followup.py",
+      "bytes": 4183
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\prepare-discovery-release.py",
+      "bytes": 4145
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\public-app-deployed-20261009.js",
+      "bytes": 218932
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\public-app-preflight-20261009.js",
+      "bytes": 217758
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\stage-discovery-20261009-followup.py",
+      "bytes": 3044
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\stage-discovery-20261009.py",
+      "bytes": 3026
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\start-discovery-20261009.py",
+      "bytes": 2804
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\cleanup-discovery-20261009.py",
+      "bytes": 1924
+    }
+  ],
+  "preserved": "Source, secrets, data, previous verification-copy cleanup exception, shared ssm helper and rollback evidence"
+}

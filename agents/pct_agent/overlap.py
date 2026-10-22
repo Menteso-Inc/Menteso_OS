@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .browser import BrowserStopRequested
+from .browser import BrowserStopRequested, BrowserAccessDenied
 
 
 def bounded_setting(name, default, minimum, maximum, convert=float):
@@ -159,14 +159,21 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                     if pdf_path:
                         interval = max(min_interval, interval * 0.75)
                         break
-                    if failure == "no_pdf_row":
+                    if failure in {"no_pdf_row", "wipo_access_denied"}:
                         break
                     interval = min(60.0, max(10.0, interval * 2))
                     if attempt == 0 and not stop_requested():
                         step(f"[Row {index}] {failure}; retrying the same row with backoff")
+                if (not pdf_path and failure == 'wipo_access_denied'
+                        and not getattr(browser,'continue_from_cache_after_access_denied',False)):
+                    step(f'[Row {index}] WIPO access denied; checkpoint preserved and this row remains pending')
+                    raise BrowserAccessDenied('WIPO access denied; resume the pending row after access is restored')
                 if stop_requested() and not pdf_path:
                     break
                 if pdf_path:
+                    bibliography = getattr(browser, 'last_bibliography', None)
+                    if bibliography:
+                        row['_bibliography'] = dict(bibliography)
                     future = (worker.submit(pdf_path, row) if process_worker is not None
                               else worker.submit(verify_row, pdf_path, row))
                     pending[future] = (row, url)

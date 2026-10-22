@@ -1,0 +1,138 @@
+{
+  "recorded_at": "2026-10-15T08:49:47.37594Z",
+  "remote": {
+    "removed": [
+      "/home/menteso_os/agents/lexmom_sub_manager/social-build-stage-20261015T073505Z"
+    ],
+    "removed_files": 22,
+    "removed_file_bytes": 363179,
+    "free_bytes_before": 78228004864,
+    "free_bytes_after": 78228451328,
+    "rollback_media_state_env_preserved": true
+  },
+  "local": {
+    "removed": [],
+    "retained": [
+      {
+        "path": "C:/Users/hp/Desktop/Menteso/Menteso_OS/runtime-data/lexmom-social-20261015/install_server.sh",
+        "bytes": 44486,
+        "reason": "Automatic approval review rejected native PowerShell removal before execution: blocked by policy. No retry or bypass."
+      }
+    ],
+    "free_bytes_before_attempt": 14843420672,
+    "free_bytes_after_rejection": 14832750592,
+    "space_note": "No local file was removed. Free-space movement includes concurrent activity and is not cleanup recovery.",
+    "task_preview_processes": 0
+  },
+  "preserved": [
+    "Source and uncommitted work",
+    "All .env files and credentials",
+    "Private media and durable state",
+    "Required rollback releases",
+    "Compact deployment evidence",
+    "Earlier policy-blocked cleanup targets"
+  ],
+  "deployment_evidence": "runtime-data/lexmom-social-20261015/deployment-verification.json",
+  "publishing_controls_followup": {
+    "recorded_at": "2026-10-15T09:24:27.07261Z",
+    "removed": [],
+    "new_disposable_transfer_archives": 0,
+    "new_remote_stages": 0,
+    "free_bytes_before": 12384522240,
+    "free_bytes_after": 12384522240,
+    "retained_blocked_archive": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-social-20261015\\install_server.sh",
+    "retained_blocked_archive_bytes": 44486,
+    "source_state_env_media_and_rollback_preserved": true,
+    "note": "Inline patch created no new transfer archive or stage. No deletion attempted; earlier blocked target retained. OAuth setup remains pending."
+  },
+  "posts_table_followup": {
+    "recorded_at": "2026-10-15T10:31:10.9179137Z",
+    "removed": [],
+    "new_disposable_archives": 0,
+    "new_remote_stages": 0,
+    "temporary_source_files": "Consumed by atomic replace",
+    "free_bytes_before": 13443682304,
+    "free_bytes_after": 13443682304,
+    "preserved": [
+      "Source and pending setup helpers",
+      "Protected environment files",
+      "Private media and durable data",
+      "Required source/SQLite rollback",
+      "Compact verification and screenshots"
+    ],
+    "previous_blocked_paths_untouched": true,
+    "note": "Inline releases created no disposable transfer archive or staging directory. No additional cleanup deletion was needed or attempted."
+  },
+  "persistent_access_followup": {
+    "recorded_at": "2026-10-15T10:48:14.1395111Z",
+    "removed": [],
+    "new_disposable_archives": 0,
+    "new_remote_stages": 0,
+    "free_bytes_before": 13386350592,
+    "free_bytes_after": 13386350592,
+    "previous_blocked_paths_untouched": true,
+    "preserved": [
+      "Pending provider setup source",
+      "Protected environments",
+      "Private media and durable data",
+      "Required source/environment/SQLite rollback",
+      "Compact release evidence"
+    ],
+    "note": "Inline releases consumed temporary source files by atomic replace. No disposable build archive/stage or additional deletion. Provider grants remain pending."
+  },
+  "youtube_connection_followup": {
+    "recorded_at": "2026-10-15T11:15:31.236564+00:00",
+    "removed": [],
+    "new_disposable_archives": 0,
+    "new_remote_stages": 0,
+    "remote_free_bytes_before": 78223859712,
+    "remote_free_bytes_after": 78223556608,
+    "local_free_bytes_before": 13256642560,
+    "local_free_bytes_after": 13256638464,
+    "previous_blocked_paths_untouched": true,
+    "preserved": [
+      "Protected environments and new YouTube refresh grant",
+      "Five draft records and private media",
+      "Pending LinkedIn setup source",
+      "Required release rollback",
+      "Compact worker verification and screenshot evidence"
+    ],
+    "note": "OAuth completion and inline static patch created no disposable archive/stage. Atomic source temporary files consumed by replace. No process stopped or cleanup deletion needed."
+  },
+  "google_production_followup": {
+    "recorded_at": "2026-10-15T11:54:59.296359+00:00",
+    "removed": [],
+    "retained_blocked_bytecode": [
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\agents\\social_media_posting_agent\\__pycache__\\privacy.cpython-312.pyc",
+        "bytes": 4425,
+        "exists": true
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\agents\\social_media_posting_agent\\__pycache__\\public_pages.cpython-312.pyc",
+        "bytes": 6626,
+        "exists": true
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\tests\\__pycache__\\test_lexmom_social.cpython-312.pyc",
+        "bytes": 91026,
+        "exists": true
+      }
+    ],
+    "automatic_approval_review": "Deletion command rejected before execution: blocked by policy. No retry or alternative deletion attempted.",
+    "local_free_bytes_before": 12336484352,
+    "local_free_bytes_after": 12336484352,
+    "remote_free_bytes_before": 78222667776,
+    "remote_free_bytes_after": 78222053376,
+    "new_disposable_archives": 0,
+    "new_remote_stages": 0,
+    "previous_blocked_paths_untouched": true,
+    "preserved": [
+      "Source and pending provider setup helpers",
+      "Protected environments/current YouTube grant",
+      "Private media and durable data",
+      "Required source/SQLite rollback",
+      "Compact verification and screenshots"
+    ]
+  }
+}

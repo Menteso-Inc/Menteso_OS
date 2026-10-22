@@ -1,0 +1,20 @@
+{
+  "mode": "live",
+  "product": "manage",
+  "countries": [],
+  "target_segments": ["solo", "small", "mid_size"],
+  "query_terms": [
+    "boutique law firm team attorneys contact United States",
+    "small law firm lawyers contact India",
+    "solicitors small firm team contact United Kingdom"
+  ],
+  "target_count": 5,
+  "max_candidates": 10,
+  "max_queries": 3,
+  "max_pages_per_firm": 3,
+  "max_llm_calls": 15,
+  "max_verifications": 3,
+  "enable_verification": true,
+  "budget_usd": 1,
+  "deadline_seconds": 300
+}

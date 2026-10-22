@@ -13,19 +13,34 @@ def words(value):
 
 
 def country_code(value):
-    aliases = {'österreich': 'AT', 'osterreich': 'AT', 'deutschland': 'DE',
+    aliases = {'brasil': 'BR', 'österreich': 'AT', 'osterreich': 'AT', 'deutschland': 'DE',
                'schweiz': 'CH', 'suisse': 'CH', 'italia': 'IT', 'españa': 'ES',
                'republic of korea': 'KR', 'south korea': 'KR', 'uk': 'GB',
                'p.r. china': 'CN', 'united states of america': 'US'}
     try:
         return pycountry.countries.lookup(aliases.get(value.strip().casefold(), value.strip())).alpha_2
     except LookupError:
-        return ''
+        parenthetic=re.fullmatch(r'(.+?)\s*\(([^()]+)\)',value.strip())
+        if parenthetic:
+            try:
+                return pycountry.countries.lookup(parenthetic[2]+' '+parenthetic[1].strip()).alpha_2
+            except LookupError:
+                pass
+        # OCR can insert whitespace inside a country word. Accept only an
+        # exact character match to one known country after spacing/formatting
+        # normalization; never guess from a phone prefix or a fuzzy spelling.
+        needle=words(value)
+        candidates={code for label,code in aliases.items() if needle and words(label)==needle}
+        for country in pycountry.countries:
+            if needle and any(words(getattr(country,key,''))==needle
+                              for key in ('name','official_name','common_name')):
+                candidates.add(country.alpha_2)
+        return next(iter(candidates)) if len(candidates)==1 else ''
 
 
 def address_country(address):
     """Match a printed country at the end of a confirmed address, never a phone/office."""
-    candidates = [('Österreich', 'AT'), ('Deutschland', 'DE'), ('Schweiz', 'CH'),
+    candidates = [('Brasil', 'BR'), ('Österreich', 'AT'), ('Deutschland', 'DE'), ('Schweiz', 'CH'),
                   ('Suisse', 'CH'), ('Italia', 'IT'), ('España', 'ES')]
     for country in pycountry.countries:
         for key in ('name', 'official_name', 'common_name'):
@@ -101,8 +116,8 @@ def agree(first, second, ocr_emails=None):
 
 
 FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
-AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandatario|대리인|代理|^IV\b', re.I)
-APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|solicitante|申请人|출원인|^II\b', re.I)
+AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|^IV\b', re.I)
+APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|^II\b', re.I)
 
 
 EMAIL_RE = re.compile(
@@ -229,7 +244,7 @@ def unique_contact(blocks):
     # Keep one complete block, never assemble fields across different owners.
     return sorted(blocks, key=lambda fs: (-sum(bool(values(fs, kind)) for kind in ('email', 'phone')),
                   min(f.page for f in fs),
-                  0 if any(re.search(r'IV\s*[-.]?\s*1\b', f.section, re.I) for f in fs) else 1,
+                  0 if any(re.search(r'IV\s*[-.]?\s*[1I]\b', f.section, re.I) for f in fs) else 1,
                   0 if fs[0].entity_type == 'law_firm' else 1, fs[0].block_id))[0]
 
 
@@ -239,7 +254,7 @@ def primary_contact(blocks, role):
         return None
     if role == 'agent':
         primary = [fields for fields in blocks if any(
-            re.search(r'IV\s*[-.]?\s*1(?:\D|$)', field.section, re.I) for field in fields
+            re.search(r'IV\s*[-.]?\s*[1I](?:\D|$)', field.section, re.I) for field in fields
         )]
         return primary[0] if len(primary) == 1 else None
     if role == 'applicant':
@@ -294,7 +309,7 @@ def _email_only_result(fields, issues, extraction, role, selection):
             'field_evidence': [f.model_dump() for f in evidence], 'agent_name_evidence': []}
 
 
-def select(extraction, rules, page_numbers, empty):
+def _select_primary(extraction, rules, page_numbers, empty, preferred=None):
     groups, issues = valid_fields(extraction, rules, page_numbers)
     if set(extraction.reviewed_pages) != set(page_numbers):
         return empty(reason='Not all supplied pages were reviewed')
@@ -308,7 +323,10 @@ def select(extraction, rules, page_numbers, empty):
     agents = [fs for fs in contacts if fs[0].role == 'agent']
     app = unique_contact(applicants) or primary_contact(applicants, 'applicant')
     ag = unique_contact(agents) or primary_contact(agents, 'agent')
-    if applicants and app is None:
+    if preferred is not None:
+        chosen = preferred
+        selection = 'Verified signing representative linked to this printed contact owner'
+    elif applicants and app is None:
         applicant_emails = [f for fields in applicants for f in fields if f.kind == 'email']
         if len({value_key('email', f.value) for f in applicant_emails}) == 1:
             result = _email_only_result(
@@ -318,7 +336,9 @@ def select(extraction, rules, page_numbers, empty):
             if result:
                 return result
         return empty(reason='Multiple different contact owners require selection review')
-    if agents and ag is None:
+    if preferred is not None:
+        pass
+    elif agents and ag is None:
         if app:
             # If an unresolved agent block shares the applicant email, that
             # email is safe under either address outcome; other fields are not.
@@ -346,7 +366,7 @@ def select(extraction, rules, page_numbers, empty):
     else:
         chosen = app or ag
         selection = 'Only one contact role has usable contact details'
-    if app and ag:
+    if app and ag and preferred is None:
         if not shared_contacts(app, ag):
             if values(app, 'email') or not values(ag, 'email'):
                 chosen = app
@@ -392,6 +412,54 @@ def select(extraction, rules, page_numbers, empty):
             'reason': '; '.join(dict.fromkeys(issues + extraction.uncertainties)),
             'field_evidence': [f.model_dump() for f in chosen],
             'agent_name_evidence': [f.model_dump() for f in (named_agent or []) if f.kind == 'name']}
+
+
+def select(extraction, rules, page_numbers, empty):
+    from .signer_evidence import resolve
+    groups, _ = valid_fields(extraction, rules, page_numbers)
+    preferred, signer = resolve(extraction, groups, page_numbers)
+    # Signature chooses between representatives, never reverses the established
+    # applicant-versus-agent ownership policy for a different contact role.
+    original = _select_primary(extraction, rules, page_numbers, empty)
+    if preferred is not None and (preferred[0].role != 'agent' or original.get('contact_role') != 'agent'):
+        preferred = None
+        signer = {**signer, 'status': 'retained_role_policy', 'reason': 'Keep established applicant/agent selection'}
+    result = _select_primary(extraction, rules, page_numbers, empty, preferred=preferred) if preferred else original
+    result['signer_selection'] = signer
+    result['additional_emails'] = []
+    if set(extraction.reviewed_pages) != set(page_numbers):
+        return result
+    selected = {value_key('email', value) for value in result.get('emails', [])}
+    seen = set()
+    for fields in groups.values():
+        for field in fields:
+            key = (field.role, words(field.entity), value_key('email', field.value))
+            if field.kind != 'email' or key[2] in selected or key in seen:
+                continue
+            seen.add(key)
+            result['additional_emails'].append({'email': field.value.strip(), 'role': field.role,
+                'owner': field.entity, 'block_id': field.block_id, 'page': field.page,
+                'section': field.section, 'evidence': field.evidence})
+    from .recipient import apply
+    return apply(result, extraction, rules)
+
+
+def result_emails(result):
+    return list(dict.fromkeys([*result.get('emails', []),
+        *(item['email'] for item in result.get('additional_emails', []))]))
+
+
+def withhold_email(result, email):
+    key = value_key('email', email)
+    result['emails'] = [value for value in result.get('emails', []) if value_key('email', value) != key]
+    result['additional_emails'] = [item for item in result.get('additional_emails', [])
+                                   if value_key('email', item['email']) != key]
+
+
+def format_additional_emails(result):
+    labels = {'agent': 'Agent email', 'applicant': 'Applicant email'}
+    return '\n'.join(f"{labels[item['role']]} ({item['owner']}): {item['email']}"
+                     for item in result.get('additional_emails', []) if item.get('role') in labels)
 
 
 _DNS_CACHE = {}

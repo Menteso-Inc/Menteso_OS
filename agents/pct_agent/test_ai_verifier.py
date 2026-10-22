@@ -366,13 +366,13 @@ def test_report_matches_aneeq_columns_exactly(tmp_path, monkeypatch):
     from agents.pct_agent import agent
     monkeypatch.setattr(agent, "PCT_OUTPUT_DIR", tmp_path)
     expected = ["Publication No", "Title", "Application No.", "Applicant", "Url", "Cat",
-                "Phone No.", "Email", "Agent Name", "Country", "Researcher", "Priorty Date"]
+                "Phone No.", "Email", "Agent Name", "Country", "Researcher", "Priorty Date", "Additional Email"]
     for kind in ("worked", "not_found"):
         path = agent.generate_work_report([{"row": 1, "patent_id": "WO1", "ai_status": "needs_review",
                                            "reason": "Unclear l/1", "evidence_file": "source.pdf",
                                            "researcher": "Aneeq", "priority_date": "05 August to 10 August 2026"}], kind=kind)
         wb = openpyxl.load_workbook(path)
-        assert wb.active.max_column == 12
+        assert wb.active.max_column == 13
         assert [c.value for c in wb.active[1]] == expected
         assert wb.active.cell(2, 11).value == "Aneeq"
         assert wb.active.cell(2, 12).value == "05 August to 10 August 2026"

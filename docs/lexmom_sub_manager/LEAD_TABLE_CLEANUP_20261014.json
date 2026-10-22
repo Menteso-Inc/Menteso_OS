@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-14",
+  "status": "Automatic approval review rejected removal before execution",
+  "reason": "blocked by policy",
+  "free_before": 9756569600,
+  "free_after": 9710739456,
+  "removed": [],
+  "retained": [
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\apply_leads.py",
+      "bytes": 8823
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\deploy_leads.py",
+      "bytes": 2940
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\configure_events.py",
+      "bytes": 2426
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\remote-source\\agents\\lexmom_marketing_agent\\agent.py",
+      "bytes": 8794
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\remote-source\\deploy\\lexmom_dashboard.py",
+      "bytes": 12726
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-leads-20261014\\__pycache__\\deploy_leads.cpython-312.pyc",
+      "bytes": 4821
+    }
+  ],
+  "retained_bytes": 40530.0,
+  "remote_temporary_archives_created": false,
+  "processes_stopped": [],
+  "worktrees_archived": [],
+  "preserved": [
+    "Source, lifecycle proposals and screenshots",
+    "Secrets, private research/mail state and generated videos",
+    "AWS rollback releases and SQLite backups",
+    "Earlier blocked-cleanup paths"
+  ]
+}

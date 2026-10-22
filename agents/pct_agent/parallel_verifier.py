@@ -35,7 +35,7 @@ class ProcessVerifier:
 
     def __init__(self, workers=4, api_concurrency=8, verify_function=None):
         self.workers = max(1, min(4, int(workers)))
-        self.api_concurrency = max(2, min(8, int(api_concurrency)))
+        self.api_concurrency = max(1, min(8, int(api_concurrency)))
         self.verify_function = verify_function
         self.executor = None
 

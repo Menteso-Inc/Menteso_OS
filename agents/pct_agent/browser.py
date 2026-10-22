@@ -56,6 +56,10 @@ class BrowserStopRequested(RuntimeError):
     """Raised when the current browser run is force-stopped."""
 
 
+class BrowserAccessDenied(RuntimeError):
+    """Leave the denied row pending until remote access is restored."""
+
+
 # High-confidence markers only. Generic strings like "captcha", "challenge",
 # or "please select" appear in normal WIPO page markup (dropdown placeholders,
 # JS variable names, CSS classes) and used to trigger false-positive banners.
@@ -742,6 +746,7 @@ class PatentBrowser:
 
         # Distinguish a checked missing document from an unsuccessful lookup.
         self.last_failure_reason = ""
+        self.access_denied = False
 
     def __enter__(self):
         self.start()
@@ -828,6 +833,11 @@ class PatentBrowser:
         """
         step = on_step or self.on_step or (lambda m: None)
         self.last_failure_reason = ""
+        self.last_bibliography = {}
+        if self.access_denied:
+            self.last_failure_reason = "wipo_access_denied"
+            step("[Browser] WIPO access denied; remote requests paused for this session")
+            return None
         page = self._page
         self._check_stop()
         if not page:
@@ -841,7 +851,10 @@ class PatentBrowser:
             self._check_stop()
             _pace()
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=8000)
+                response = page.goto(url, wait_until="domcontentloaded", timeout=8000)
+                if response is not None and response.status == 403:
+                    self._deny_access(step)
+                    return None
             except Exception as e:
                 if self.is_stop_requested():
                     raise BrowserStopRequested("Stop requested")
@@ -856,6 +869,8 @@ class PatentBrowser:
             if self._wait_for_content(timeout=20, on_step=step):
                 loaded = True
                 break
+            elif self.access_denied:
+                return None
             elif attempt == 0:
                 step("[Browser] Retrying page load...")
                 time.sleep(0.5)
@@ -864,6 +879,13 @@ class PatentBrowser:
             self.last_failure_reason = "load_timeout"
             step("[Browser] Page did not load after retries")
             return None
+
+        # Read the existing bibliography before leaving it; no extra request.
+        try:
+            from .bibliography import capture
+            self.last_bibliography = capture(page, doc_id)
+        except Exception:
+            self.last_bibliography = {}
 
         # --- Step 3: Click Documents tab ---
         try:
@@ -938,6 +960,9 @@ class PatentBrowser:
                     solver_attempted = True
                     if not self._invoke_solver(step, deadline):
                         return False
+                    # Human confirmation may consume the original page-load
+                    # budget. Give the confirmed page time to finish loading.
+                    deadline = max(deadline, time.time() + min(timeout, 10))
                     # Solver finished. Let the loop poll again and confirm
                     # content; reset streak so any future captcha gets its
                     # own debounce.
@@ -950,20 +975,21 @@ class PatentBrowser:
             # match doesn't latch.
             captcha_streak = 0
 
-            # 403 error
+            # A denial is not a transient page load or a missing contact.
+            # Stop remote requests for this session instead of hammering reload.
             if "403" in (self._page.title() or ""):
-                step("[Browser] Got 403 Forbidden — retrying...")
-                time.sleep(0.5)
-                try:
-                    self._page.reload(wait_until="domcontentloaded", timeout=5000)
-                except Exception:
-                    pass
-                continue
+                self._deny_access(step)
+                return False
 
             # Page might be reloading (the setTimeout(reload) trick)
             time.sleep(0.25)
 
         return False
+
+    def _deny_access(self, step):
+        self.access_denied = True
+        self.last_failure_reason = "wipo_access_denied"
+        step("[Browser] HTTP 403 Forbidden; remote requests paused for this session. Saved PDFs can still be processed")
 
     def _invoke_solver(self, step, deadline):
         """Call the captcha solver synchronously. Returns True if the solver

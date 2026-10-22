@@ -85,3 +85,12 @@ accounts_oauth.json
 gmail-push.trigger
 backups/
 runtime-data/
+
+# Private Google verification review videos and their account-screen captures
+artifacts/lexmom-google-verification-*/
+
+# Private account/mailbox/lead screenshots; source artwork lives in static/.
+docs/lexmom_sub_manager/*.png
+docs/lexmom_sub_manager/*.jpg
+docs/lexmom_sub_manager/*.jpeg
+docs/lexmom_sub_manager/*.webp
