@@ -77,6 +77,8 @@ def qualified_role(text):
     if QUALIFIED_ROLE.search(text):return True
     # Spanish/French references to applicants inside prose are not headings.
     if re.match(r'^(?:Solicitante|D[eé]posant)\b',text,re.I):
+        if re.fullmatch(r'Solicitante (?:y/o|ylo) inventor|D[eé]posant et/ou inventeur',text,re.I):
+            return False  # This excluded role still ends the preceding block.
         return not bool(re.fullmatch(r'(?:Solicitante|D[eé]posant)(?:s|\(s\))?\s*:?',text,re.I))
     return False
 

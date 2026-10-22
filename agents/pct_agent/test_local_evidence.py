@@ -161,6 +161,15 @@ def test_french_contact_labels_keep_country_separate_from_nationality():
     assert local.policy.APPLICANT_SECTION.search('Déposant')
 
 
+def test_spanish_combined_inventor_section_ends_preceding_applicant_block():
+    scan=form();scan['lines'][0]['text']='Solicitante'
+    scan['lines'][18]['text']='Solicitante y/o inventor'
+    blocks=local.table_blocks(scan)
+    assert len(blocks)==1 and blocks[0]['name']==[5] and blocks[0]['email']==[16]
+    scan['lines'].append(line(99,'unassigned@example.net',250,450))
+    assert local.table_blocks(scan) is None
+
+
 def test_second_ocr_cannot_erase_an_email_region():
     primary=form();alternate=form()
     assert local.preserves_email_regions(primary,alternate)
