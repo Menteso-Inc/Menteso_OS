@@ -40,15 +40,37 @@ SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|Sol
 
 def role_headings(lines,width):
     result=[]
+    combined={r['heading_id'] for r in confirmed_combined_applicants(lines,width)}
     for line in lines:
         if (line['rect'][0]>width*.34 or len(line['text'])>=100 or not ROLE_HEADING.search(line['text'])
-            or EXCLUDED_HEADING.search(line['text']) or qualified_role(line['text'])):continue
+            or (EXCLUDED_HEADING.search(line['text']) and line['id'] not in combined)
+            or qualified_role(line['text'])):continue
         # A wrapped "common representative" after "Signature of applicant,
         # agent or" belongs to the signature section, not a new contact block.
         if any(EXCLUDED_HEADING.search(other['text']) and abs(other['rect'][0]-line['rect'][0])<15
                and 0<line['rect'][1]-other['rect'][1]<35 for other in lines):continue
         result.append(line)
     return result
+
+
+def confirmed_combined_applicants(lines,width):
+    """A combined form heading is an applicant only with a printed role value."""
+    regions=[]
+    for heading in lines:
+        if heading['rect'][0]>width*.34 or not re.fullmatch(
+                r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+        labels=[l for l in lines if l['page']==heading['page']
+                and re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+                and abs(l['rect'][0]-heading['rect'][0])<15
+                and 0<l['rect'][1]-heading['rect'][1]<40]
+        for label in labels:
+            values=[l for l in lines if l['page']==heading['page']
+                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?',l['text'],re.I)
+                    and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
+            if len(values)==1:
+                regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
+                                'role_value_id':values[0]['id'],'reason':'Explicit applicant role in combined form block'})
+    return regions
 
 
 def qualified_role(text):
@@ -520,6 +542,8 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         record['pages_scanned']=[p['page'] for p in scan['pages']]
         record['ocr_seconds']=scan['seconds']
         record['excluded_contact_regions']=excluded_inventor_regions(scan)
+        record['confirmed_combined_applicant_regions']=[r for p in scan['pages']
+            for r in confirmed_combined_applicants([l for l in scan['lines'] if l['page']==p['page']],p['width'])]
         record['non_email_name_regions']=non_email_name_regions(scan)
         lookup={l['id']:l for l in scan['lines']}
         for region in record['non_email_name_regions']:
@@ -557,7 +581,8 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 continue
             section=source_section(lookup[block['section']],scan['lines']);role=block['role']
             pattern=policy.AGENT_SECTION if role=='agent' else policy.APPLICANT_SECTION
-            if not pattern.search(section) or EXCLUDED_HEADING.search(section):
+            combined_ids={r['heading_id'] for r in record['confirmed_combined_applicant_regions']}
+            if not pattern.search(section) or (EXCLUDED_HEADING.search(section) and block['section'] not in combined_ids):
                 issues.append('Contact withheld: source heading does not establish role');continue
             block_id=f"p{lookup[block['section']]['page']}-b{index}"
             entity=' '.join(lookup[i]['text'] for i in block['name']) or '[unnamed contact]'

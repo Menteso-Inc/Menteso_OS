@@ -69,6 +69,24 @@ def test_inventor_role_from_other_position_cannot_exclude_an_email():
     assert 104 in local.required_email_ids(scan)
 
 
+def test_explicit_applicant_and_inventor_remains_an_applicant():
+    scan=inventor_form('Applicant and inventor')
+    scan['lines'] += [line(105,'Name',50,640),line(106,'SECOND, Applicant',250,641),line(107,'E-mail',50,659)]
+    headings=local.role_headings(scan['lines'],600)
+    assert 101 in {h['id'] for h in headings}
+    proof=local.confirmed_combined_applicants(scan['lines'],600)
+    assert proof[0]['role_label_id']==102 and proof[0]['role_value_id']==103
+    blocks=local.table_blocks(scan)
+    assert blocks[-1]['role']=='applicant' and blocks[-1]['email']==[104]
+
+
+def test_inventor_only_or_unaligned_role_cannot_authorize_combined_applicant():
+    scan=inventor_form('Inventor only')
+    assert not local.confirmed_combined_applicants(scan['lines'],600)
+    scan=inventor_form('Applicant and inventor');scan['lines'][-2]['rect'][1]+=20
+    assert not local.confirmed_combined_applicants(scan['lines'],600)
+
+
 def test_two_owners_keep_different_blocks():
     scan=form();second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
     second[0]['text']='Agent'
