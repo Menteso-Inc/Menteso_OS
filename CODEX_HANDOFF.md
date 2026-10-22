@@ -2,6 +2,43 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## PCT combined release - 22 October 2026
+
+This release combines the teammate's `04bf7e9` research/responsive dashboard
+changes with local Qwen source-region verification, OCR fallback, telemetry and
+signing-agent selection. Preserve both histories when deploying. The public
+AWS dashboard has additional customized code; patch its reviewed PCT changes
+in scope, never replace the actual asset wholesale.
+
+The original report columns A-L remain in order; column M is `Additional Email`,
+with role/owner-labelled verified addresses. A source-confirmed signing agent
+resolves competing agent contacts, without reversing applicant/agent priority.
+Ambiguous signatures retain the previous policy. Do not substitute the signer
+into the contact-block Name or infer email spelling from the reference workbook.
+
+CPU production settings for this release: `PCT_AI_PROVIDER=ollama`,
+`PCT_OLLAMA_MODEL=qwen3.5:4b`, `PCT_OLLAMA_DOCUMENT_MODE=source_regions`,
+`PCT_OLLAMA_SECONDARY_OCR=true`, `PCT_OLLAMA_FIELD_OCR_GATE=true`; retain one PDF
+worker, one API slot, two pending PDFs and the pinned installed model digest.
+GPT-4o remains confined to the separate CAPTCHA adapter. The OCR name/phone
+agreement shortcut never bypasses email vision verification. Optional Windows
+OCR dependencies are kept in `C:\ProgramData\Menteso\pct-local-deps-20261022`
+and loaded through the local virtual environment's scoped `.pth` file.
+
+The 100-row development comparison retained 17 access failures and replayed
+83 saved verified contact extractions. One changed document was independently
+re-extracted from its original PDF in 64.94 seconds. Email agreement with the
+human sheet is 81/83 returned rows (97.59%), or 81/100 including access failures.
+This is not a fresh 100-row throughput or independently adjudicated accuracy
+claim. Names/category remain weak; no 100% guarantee is established. Original
+human/input sheets and historical outputs remain untouched. New policy hashes
+invalidate old resume files; never force an incompatible resume fingerprint.
+
+Release backups/receipts: `C:\ProgramData\Menteso\pct-combined-release-20261022`.
+Read the current logbook receipt before assuming deployment finished. Preserve
+all environment values except the explicitly scoped release settings, original
+data, newer runtime state, machine tasks and the reverse tunnel on port 29010.
+
 ## PCT local Qwen activated - 21 October 2026
 
 The `PCT_AI_PROVIDER=ollama` transport and synthetic teaching examples are
