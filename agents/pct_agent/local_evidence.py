@@ -131,6 +131,40 @@ def compact_regions(scan):
     return sorted(selected,key=lambda l:(l['page'],round(l['rect'][1]/5),l['rect'][0]))
 
 
+def excluded_inventor_regions(scan):
+    """Exclude only a combined form block explicitly marked inventor-only.
+
+    The combined heading by itself cannot establish that the person is not an
+    applicant. Require the aligned printed role value, and retain its source IDs.
+    """
+    regions=[]
+    for page in scan['pages']:
+        lines=[l for l in scan['lines'] if l['page']==page['page']]
+        for heading in lines:
+            if heading['rect'][0]>page['width']*.34 or not re.fullmatch(
+                    r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+            stops=[l['rect'][1] for l in lines if l['rect'][1]>heading['rect'][1]+8
+                   and abs(l['rect'][0]-heading['rect'][0])<15 and SECTION_STOP.search(l['text'])
+                   and not QUALIFIED_ROLE.search(l['text'])]
+            bottom=min(stops) if stops else page['height']
+            labels=[l for l in lines if re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+                    and abs(l['rect'][0]-heading['rect'][0])<15
+                    and heading['rect'][1]<l['rect'][1]<min(bottom,heading['rect'][1]+40)]
+            for label in labels:
+                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder',l['text'],re.I)
+                        and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
+                if len(values)!=1:continue
+                ids=[l['id'] for l in lines if '@' in l['text'] and heading['rect'][1]<l['rect'][1]<bottom]
+                regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
+                                'role_value_id':values[0]['id'],'email_ids':ids,'reason':'Explicit inventor-only source role'})
+    return regions
+
+
+def required_email_ids(scan):
+    excluded={i for region in excluded_inventor_regions(scan) for i in region['email_ids']}
+    return {l['id'] for l in scan['lines'] if '@' in l['text']} - excluded
+
+
 def table_blocks(scan):
     """Recognize explicit label/value rows; ambiguity goes to the model mapper.
 
@@ -188,7 +222,7 @@ def table_blocks(scan):
                     block['country']=[i];break
             covered.update(block['email']);blocks.append(block)
     # A line missed by the geometric parser must never become a silent absence.
-    all_emails={l['id'] for l in scan['lines'] if '@' in l['text']}
+    all_emails=required_email_ids(scan)
     if not blocks or not all_emails.issubset(covered):return None
     return blocks
 
@@ -414,6 +448,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         record['ocr_engine']=scan.get('engine','windows_en')
         record['pages_scanned']=[p['page'] for p in scan['pages']]
         record['ocr_seconds']=scan['seconds']
+        record['excluded_contact_regions']=excluded_inventor_regions(scan)
         step(f"[AI Verification] OCR scanned all {len(scan['pages'])} pages in {scan['seconds']}s; checking source contact regions with local Qwen")
         lines=compact_regions(scan)
         if not lines:raise RuntimeError('ollama_no_confirmed_contact_region')
@@ -428,7 +463,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         record['blocks']=blocks
         lookup={l['id']:l for l in scan['lines']};fields=[];issues=[];unresolved_emails=[]
         assigned={i for block in blocks for i in block['email']}
-        candidates={l['id'] for l in scan['lines'] if '@' in l['text']}
+        candidates=required_email_ids(scan)
         if not candidates.issubset(assigned):
             raise RuntimeError('ollama_unassigned_email_region')
         rules=ai.load_rules()

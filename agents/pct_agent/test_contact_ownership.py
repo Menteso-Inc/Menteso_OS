@@ -13,6 +13,9 @@ def test_country_spacing_repair_requires_exact_known_characters():
     assert ai.policy.country_code('Chlna')==''
     assert ai.policy.country_code('1 Example Road Germany')==''
     assert ai.policy.country_code('Germany France')==''
+    assert ai.policy.country_code('Netherlands (Kingdom of the)')=='NL'
+    assert ai.policy.country_code('Iran (Islamic Republic of)')=='IR'
+    assert ai.policy.country_code('Netherlands (Republic of)')==''
 
 
 def contact(kind, value, **kwargs):

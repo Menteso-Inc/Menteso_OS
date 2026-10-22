@@ -41,6 +41,34 @@ def test_unassigned_email_forces_fallback_instead_of_silently_missing_it():
     assert local.table_blocks(scan) is None
 
 
+def inventor_form(role):
+    scan=form()
+    scan['lines'] += [line(101,'Applicant and/or inventor',50,600),
+                      line(102,'This person is',50,620),line(103,role,250,621),
+                      line(104,'inventor@example.net',250,660)]
+    return scan
+
+
+def test_explicit_inventor_only_email_does_not_invalidate_valid_applicant():
+    scan=inventor_form('Inventor only')
+    assert local.required_email_ids(scan)=={16}
+    assert local.table_blocks(scan)[0]['email']==[16]
+    proof=local.excluded_inventor_regions(scan)[0]
+    assert proof['role_label_id']==102 and proof['role_value_id']==103 and proof['email_ids']==[104]
+
+
+def test_combined_role_without_inventor_only_confirmation_remains_required():
+    for role in ['Applicant only','Applicant and inventor','Unknown']:
+        scan=inventor_form(role)
+        assert local.required_email_ids(scan)=={16,104}
+        assert local.table_blocks(scan) is None
+
+
+def test_inventor_role_from_other_position_cannot_exclude_an_email():
+    scan=inventor_form('Inventor only');scan['lines'][-2]['rect'][1]+=20
+    assert 104 in local.required_email_ids(scan)
+
+
 def test_two_owners_keep_different_blocks():
     scan=form();second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
     second[0]['text']='Agent'

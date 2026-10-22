@@ -20,6 +20,12 @@ def country_code(value):
     try:
         return pycountry.countries.lookup(aliases.get(value.strip().casefold(), value.strip())).alpha_2
     except LookupError:
+        parenthetic=re.fullmatch(r'(.+?)\s*\(([^()]+)\)',value.strip())
+        if parenthetic:
+            try:
+                return pycountry.countries.lookup(parenthetic[2]+' '+parenthetic[1].strip()).alpha_2
+            except LookupError:
+                pass
         # OCR can insert whitespace inside a country word. Accept only an
         # exact character match to one known country after spacing/formatting
         # normalization; never guess from a phone prefix or a fuzzy spelling.
