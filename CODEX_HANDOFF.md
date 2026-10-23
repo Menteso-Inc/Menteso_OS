@@ -2,6 +2,37 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## PCT two-worker release candidate - 23 October 2026
+
+The user's follow-up authorizes two stable row owners on one uploaded sheet.
+Use round-robin ownership, one coordinator/writer and independent bounded
+pending queues. Two local Ollama servers are required; a single Qwen35 server
+still serializes requests. The proposed local profile is two PDF workers, two
+API slots, four pending PDFs, two threads per model and timeout scale 2, with
+worker endpoints 127.0.0.1:11434 and 127.0.0.1:11435. Preserve the installed
+model digest, local document provider and separate GPT-4o CAPTCHA configuration.
+Keep PCT_OLLAMA_CYRILLIC_OCR_MODEL empty: the experimental Russian form mapping
+did not qualify for deployment. Read the latest activation receipt/logbook
+before assuming this candidate is live. This supersedes earlier one-worker
+guidance only after that recorded activation; it does not change AWS compute.
+
+The new 200-publication test retained 24 missing original PDFs. First pass:
+172 found, 28 errors, 8561.656 seconds. Seven source-based rechecks recovered
+three rows: 175 found, 25 errors, 8969.578 seconds active including rechecks.
+Email agreement is 171/171 returned (100%), 171/176 available sources (97.16%),
+171/200 whole sample (85.5%). Four emails were withheld for disagreeing source
+readings. One Russian form remains unresolved. A further 458.969-second
+experimental recheck recovered an email but mapped owner fields incorrectly;
+its result is preserved separately and excluded from the qualified report.
+Do not describe these results as 100% complete extraction or a speed-target win.
+
+All 200 row IDs/owners, input columns, output order and report styles passed.
+312 scoped regressions passed. Tests used original saved PDFs with fresh
+OCR/Qwen, excluding live downloads, CAPTCHA and bibliography capture. Fair
+queue scheduling was regression-tested and exercised in the seven-row recheck;
+the full 200 were not rerun under the final repair revision. Human answers were
+held separately. The two-worker profile still needs live throughput measurement.
+
 ## PCT combined release - 22 October 2026
 
 The subsequent person/category change separates the report's greeting Name

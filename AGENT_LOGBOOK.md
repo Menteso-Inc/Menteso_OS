@@ -1,5 +1,49 @@
 # Menteso Agent Operations Logbook
 
+## 2026-10-23 - New 200-row two-worker qualification
+
+- User requested two concurrent workers on the same sheet, stable assignment,
+  preservation of accuracy/formatting and 200 different human-reference rows.
+  Seeded sampling excluded the previous 100 and 14 reviewed publications.
+  Collected input cells E-L were blank; human answers stayed outside extraction.
+  Sample selection preceded source availability checks: 176 original PDFs were
+  available, 24 unavailable, and none were replaced with easier publications.
+- First pass f7a9390: 100 original rows assigned to each worker, 172 found/28
+  errors, 8561.656 seconds. Corrected separate bounded pending queues, exact
+  Portuguese/French applicant/inventor/signatory labels, and image-confirmed
+  at-sign branding in Name cells. No relaxed contact acceptance or model training.
+  Seven source-selected rows rechecked under c06f897: 407.922 seconds, three
+  errors recovered. All other first-pass rows and evidence were retained.
+- Qualified combined result: 175 found/25 errors (24 missing PDFs, one Russian
+  form); 183 original-PDF attempts, 8969.578 seconds active (2h29m30s), 51.255
+  elapsed seconds/successful row, 70.24 successful rows/hour. Individual row
+  verification overlaps and must not be summed as batch duration. No fresh full
+  200-row pass under the final repair revision; fair queues have regression and
+  seven-row execution coverage. The 25-35-second target remains unmet.
+- Human-sheet agreement: email 171/171 returned (100%), 171/176 available PDFs
+  (97.16%), 171/200 overall (85.5%). Four emails were withheld because source
+  readings disagreed. Name exact 108/124 returned (87.10%), 108/143 available
+  person references (75.52%), 108/161 overall (67.08%); formatting normalization
+  gives 116/124 (93.55%). Country 170/172 returned (98.84%). Category 161/171
+  returned (94.15%) is a management label, excluded from extraction accuracy.
+  Comparable email/name/country fields: 449/495 available (90.71%), 449/561 whole
+  sample (80.04%); complete comparable rows 135/200 (67.5%). Phones cannot be
+  scored because every human phone cell is blank. Generic greetings: 11/39 agree.
+- 312 scoped regressions passed; 200 unique rows, stable worker ownership,
+  original columns A-D/order, thirteen report headers/styles and frozen
+  input/reference/source hashes passed. Results and per-row timing remain private
+  in Downloads/PCT_Blind_Test_200_23-October-2026/two-worker/source-recovery.
+- Further isolated f950ddb Cyrillic recheck took 458.969 seconds and recovered
+  its email, but incorrectly mapped narrative/fax source lines to owner fields.
+  Image checks withheld the name/phone. Preserve that experiment but exclude it
+  from qualified counts, and leave optional Cyrillic OCR disabled in production.
+  Total active extraction including that rejected experiment: 9428.547 seconds
+  (2h37m9s), plus preparation/diagnostics/investigation outside those timers.
+- Benchmark used saved original PDFs with fresh OCR/Qwen, excluding live WIPO
+  downloads, CAPTCHA and bibliography. Automatic approval review rejected the
+  shell/CDP browser-control route; no bypass was attempted. Human agreement is
+  not independent source adjudication or a guarantee. Activation recorded below.
+
 ## 2026-10-22 - PCT person greetings and management categories activated
 
 - The user clarified that human names usually identify people from bibliography
