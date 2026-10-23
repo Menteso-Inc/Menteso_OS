@@ -195,6 +195,9 @@ def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypat
                                    max_pending=4, min_interval=0, completed_rows=saved,
                                    verification_workers=4, api_concurrency=3)
     expected = [2, 4, 5, 6] if stop_after_four else [2, 4, 5, 6, 7, 8, 9]
+    if stop_after_four and distribution == 'round_robin':
+        expected = sorted(int(doc_id.rsplit('_row', 1)[1]) for _, doc_id in browser.calls)
+        assert len(expected) == 4 and not set(expected) & saved
     assert [r['row'] for r in results] == expected
     assert len(browser.calls) == len(expected)
     assert results[0]['status'] == 'error' and results[0]['reason'].startswith('verification_exception:')
@@ -269,6 +272,43 @@ def test_two_workers_keep_equal_row_ownership_and_endpoint_after_resume(monkeypa
     assert pids[1].isdisjoint(pids[2])
     allocation = [parallel_verifier.assigned_worker(n, 2) for n in range(1, 201)]
     assert allocation.count(1) == allocation.count(2) == 100
+
+
+def test_slow_worker_cannot_fill_queue_and_starve_other_worker(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    released = threading.Event()
+    writer = threading.get_ident()
+    recorded = []
+    class OfflineOwnedPools:
+        def __init__(self, *args):
+            self.pools = [ThreadPoolExecutor(max_workers=1) for _ in range(2)]
+        def __enter__(self):return self
+        def __exit__(self, *args):
+            released.set()
+            for pool in self.pools:pool.shutdown()
+        def drain_messages(self):return []
+        def submit(self, path, row):
+            index = row['_row_idx']
+            def verify():
+                if index == 2:
+                    assert released.wait(3), 'Other worker was starved behind this slow PDF'
+                if index == 9:released.set()
+                return contacts(index)
+            return self.pools[(index - 1) % 2].submit(verify)
+    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION','round_robin')
+    monkeypatch.setattr(parallel_verifier,'ProcessVerifier',OfflineOwnedPools)
+    browser=FakeBrowser()
+    def record(row):
+        assert threading.get_ident()==writer
+        recorded.append(row['row'])
+    results=overlap.process_rows(source_rows(10),browser,None,make_result,record,
+        lambda _:None,lambda _:None,lambda:False,'fair-queue',max_pending=4,min_interval=0,
+        verification_workers=2,api_concurrency=2)
+    submitted=[int(doc_id.rsplit('_row',1)[1]) for _,doc_id in browser.calls]
+    assert submitted.index(9)<submitted.index(6)
+    assert [r['row'] for r in results]==list(range(1,11))
+    assert all(r['status']=='found' and r['assigned_worker']==(r['row']-1)%2+1 for r in results)
+    assert sorted(recorded)==list(range(1,11))
 
 
 def test_excel_invalid_controls_do_not_block_export_or_mutate_evidence(tmp_path, monkeypatch):

@@ -117,7 +117,9 @@ def verification_revision():
         mode = get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages")
         material["local_document_mode"] = mode
         if mode == "source_regions":
-            from . import local_evidence
+            from . import local_evidence, cyrillic_ocr
+            material['cyrillic_ocr_hash'] = hashlib.sha256(Path(cyrillic_ocr.__file__).read_bytes()).hexdigest()
+            material['cyrillic_ocr'] = cyrillic_ocr.cache_material()
             material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
             material["field_ocr_gate"] = get_env("PCT_OLLAMA_FIELD_OCR_GATE",default="false")
             if material["field_ocr_gate"] == "true":

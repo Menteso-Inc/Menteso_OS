@@ -8,6 +8,7 @@ import json
 import os
 import queue
 import time
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime, timezone
 from pathlib import Path
@@ -132,6 +133,32 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
             'worker_pid': os.getpid(),
         }}
 
+    def scheduled_rows():
+        remaining = [(index, source) for index, source in enumerate(rows, 1)
+                     if index not in completed_rows]
+        if distribution != 'round_robin' or verification_workers == 1:
+            yield from remaining
+            return
+        owned = {worker_id: deque() for worker_id in range(1, verification_workers + 1)}
+        for index, source in remaining:
+            owned[assigned_worker(index, verification_workers)].append((index, source))
+        per_worker_limit = (max_pending + verification_workers - 1) // verification_workers
+        while any(owned.values()):
+            collect()
+            if stop_requested():
+                return
+            in_flight = Counter(assigned_worker(row['_row_idx'], verification_workers)
+                                for row, _ in pending.values())
+            ready = [(items[0][0], worker_id) for worker_id, items in owned.items()
+                     if items and in_flight[worker_id] < per_worker_limit]
+            if not ready:
+                collect(block=True)
+                continue
+            # Keep stable row ownership while allowing the other worker to
+            # continue when one PDF is slow. Output remains in source order.
+            _, worker_id = min(ready)
+            yield owned[worker_id].popleft()
+
     if verification_workers > 1:
         from .parallel_verifier import ProcessVerifier
         executor = ProcessVerifier(verification_workers, api_concurrency)
@@ -141,7 +168,7 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
         if verification_workers > 1:
             process_worker = worker
         try:
-            for index, source in enumerate(rows, 1):
+            for index, source in scheduled_rows():
                 if index in completed_rows:
                     continue
                 while len(pending) >= max_pending and not stop_requested():

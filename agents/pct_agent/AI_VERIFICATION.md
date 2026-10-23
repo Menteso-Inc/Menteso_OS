@@ -295,3 +295,32 @@ preparation and original-PDF extraction are timed separately. Missing sources
 remain in whole-sample scores. This is not a live download/CAPTCHA benchmark
 or a company-disjoint holdout. Results and any activation decision must be
 recorded after the run; no deployment is implied by this configuration.
+
+### Queue fairness and source-layout recovery
+
+Round-robin ownership uses separate bounded pending queues. A slow document
+cannot fill the whole pending queue with one worker's rows while the other
+worker waits. Submission can advance to a later original row owned by the
+available worker; the single writer still merges by original row number.
+Stopping drains submitted PDFs, and resume preserves the same ownership.
+
+Portuguese combined applicant/inventor sections require the aligned printed
+role value before they can establish applicant ownership. Inventor-only
+values are excluded only with that explicit source evidence. The Portuguese
+printed-signatory label is accepted inside the existing bounded signature
+table; it does not allow guessing a person from an email address.
+
+An at-sign inside a printed Name cell is not automatically an email. A
+non-email-shaped value must pass the original-image name check before its
+marker is exempted from email coverage. A valid or unconfirmed email marker
+still requires an applicant/agent owner; a missing role is not ignored.
+
+`PCT_OLLAMA_CYRILLIC_OCR_MODEL` optionally points to a separately installed
+Cyrillic PP-OCRv5 recognizer. Its SHA256 is pinned in `cyrillic_ocr.py`; no
+runtime download is performed. The fallback is considered only when ordinary
+OCR confirms no role heading. It must preserve all original pages and email
+regions, find confidently recognized exact role headings, and retain both
+declared applicant/agent roles in classic forms. Contact values still pass
+the same original-image verification and selection policy. The optional
+model and acceptance code are included in the verification fingerprint, so
+older verification results are not silently reused under changed rules.

@@ -115,9 +115,9 @@ def agree(first, second, ocr_emails=None):
     return first.model_copy(update={'fields': kept}), list(dict.fromkeys(issues))
 
 
-FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
-AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|^IV\b', re.I)
-APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|^II\b', re.I)
+FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스|факс', re.I)
+AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|\bагент\b|общий\s+представитель|^IV\b', re.I)
+APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|\bзаявител[ьи]\b|^II\b', re.I)
 
 
 EMAIL_RE = re.compile(

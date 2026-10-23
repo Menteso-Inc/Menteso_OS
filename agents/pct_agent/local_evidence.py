@@ -25,6 +25,7 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
+CYRILLIC_ROLE_HEADING = re.compile(r'(?:Заявител[ьи]|Агент(?:\s+или\s+общий\s+представитель)?|Общий\s+представитель)\s*:?', re.I)
 ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|assinatura|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
@@ -43,7 +44,9 @@ def role_headings(lines,width):
     result=[]
     combined={r['heading_id'] for r in confirmed_combined_applicants(lines,width)}
     for line in lines:
-        if (line['rect'][0]>width*.34 or len(line['text'])>=100 or not ROLE_HEADING.search(line['text'])
+        if (line['rect'][0]>width*.34 or len(line['text'])>=100
+            or not .95 <= line.get('ocr_confidence', 1.0) <= 1.0
+            or not (ROLE_HEADING.search(line['text']) or CYRILLIC_ROLE_HEADING.fullmatch(line['text']))
             or (EXCLUDED_HEADING.search(line['text']) and line['id'] not in combined)
             or qualified_role(line['text'])):continue
         # A wrapped "common representative" after "Signature of applicant,
@@ -59,14 +62,14 @@ def confirmed_combined_applicants(lines,width):
     regions=[]
     for heading in lines:
         if heading['rect'][0]>width*.34 or not re.fullmatch(
-                r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+                r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor',heading['text'],re.I):continue
         labels=[l for l in lines if l['page']==heading['page']
-                and re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+                and re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé])\s*:?',l['text'],re.I)
                 and abs(l['rect'][0]-heading['rect'][0])<15
                 and 0<l['rect'][1]-heading['rect'][1]<40]
         for label in labels:
             values=[l for l in lines if l['page']==heading['page']
-                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?',l['text'],re.I)
+                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?|Apenas requerente|Requerente e inventor',l['text'],re.I)
                     and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
             if len(values)==1:
                 regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
@@ -105,7 +108,7 @@ def atomic_json(path, value):
             time.sleep(.1 * (attempt + 1))
 
 
-def scan_pdf(path, secondary=False, page_numbers=None):
+def scan_pdf(path, secondary=False, page_numbers=None, cyrillic=False):
     import winocr
     lines, pages = [], []
     started = time.monotonic()
@@ -118,7 +121,10 @@ def scan_pdf(path, secondary=False, page_numbers=None):
             scale = 2.5
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
             image=Image.open(io.BytesIO(pix.tobytes('png')))
-            if secondary:
+            if cyrillic:
+                from .cyrillic_ocr import recognize
+                ocr=recognize(image)
+            elif secondary:
                 from .secondary_ocr import recognize
                 ocr=recognize(image)
             else:ocr=winocr.recognize_pil_sync(image, 'en')
@@ -131,17 +137,19 @@ def scan_pdf(path, secondary=False, page_numbers=None):
                         max(b['x']+b['width'] for b in boxes)/scale,
                         max(b['y']+b['height'] for b in boxes)/scale]
                 line = {'id':len(lines)+1, 'page':number, 'rect':rect, 'text':item['text'].strip()}
+                if 'confidence' in item:
+                    line['ocr_confidence'] = item['confidence']
                 lines.append(line); page_lines.append(line)
             pages.append({'page':number, 'width':page.rect.width, 'height':page.rect.height,
                           'line_ids':[line['id'] for line in page_lines]})
-    if not secondary and os.getenv('PCT_OLLAMA_SECONDARY_OCR')=='true' and not any(
+    if not secondary and not cyrillic and os.getenv('PCT_OLLAMA_SECONDARY_OCR')=='true' and not any(
             ROLE_HEADING.search(l['text']) and not EXCLUDED_HEADING.search(l['text']) for l in lines):
         result=scan_pdf(path,secondary=True)
         result['primary_scan_seconds']=round(time.monotonic()-started-result['seconds'],3)
         result['seconds']=round(time.monotonic()-started,3)
         return result
     return {'pages':pages, 'lines':lines, 'seconds':round(time.monotonic()-started,3),
-            'engine':'rapidocr' if secondary else 'windows_en'}
+            'engine':'rapidocr_cyrillic' if cyrillic else 'rapidocr' if secondary else 'windows_en'}
 
 
 def compact_regions(scan):
@@ -185,16 +193,16 @@ def excluded_inventor_regions(scan):
         lines=[l for l in scan['lines'] if l['page']==page['page']]
         for heading in lines:
             if heading['rect'][0]>page['width']*.34 or not re.fullmatch(
-                    r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+                    r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor',heading['text'],re.I):continue
             stops=[l['rect'][1] for l in lines if l['rect'][1]>heading['rect'][1]+8
                    and abs(l['rect'][0]-heading['rect'][0])<15 and SECTION_STOP.search(l['text'])
                    and not qualified_role(l['text'])]
             bottom=min(stops) if stops else page['height']
-            labels=[l for l in lines if re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+            labels=[l for l in lines if re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé])\s*:?',l['text'],re.I)
                     and abs(l['rect'][0]-heading['rect'][0])<15
                     and heading['rect'][1]<l['rect'][1]<min(bottom,heading['rect'][1]+40)]
             for label in labels:
-                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder',l['text'],re.I)
+                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder|Apenas inventor',l['text'],re.I)
                         and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
                 if len(values)!=1:continue
                 ids=[l['id'] for l in lines if '@' in l['text'] and heading['rect'][1]<l['rect'][1]<bottom]
@@ -204,17 +212,16 @@ def excluded_inventor_regions(scan):
 
 
 def non_email_name_regions(scan):
-    """Potential at-sign branding, subject to a blind name-image check later."""
+    """Non-email at-sign text in a labelled Name cell; image proof is required."""
     regions=[]
     for line in scan['lines']:
         if '@' not in line['text'] or alternate_ocr_values('email',line['text']):continue
-        if not re.search(r'\b(?:Ltd|Limited|Inc|LLC|GmbH|Corp|Corporation|Company)\.?$',line['text'],re.I):continue
         page=next(p for p in scan['pages'] if p['page']==line['page'])
         labels=[l for l in scan['lines'] if l['page']==line['page'] and l['rect'][0]<page['width']*.34
                 and FIELD_LABELS['name'].search(l['text']) and abs(l['rect'][1]-line['rect'][1])<4
                 and line['rect'][0]>l['rect'][2]+8]
         if len(labels)==1:regions.append({'line_id':line['id'],'label_id':labels[0]['id'],
-                                         'reason':'At-sign in a printed company Name field; image confirmation required'})
+                                         'reason':'Non-email at-sign text in a printed Name field; image confirmation required'})
     return regions
 
 
@@ -421,7 +428,8 @@ def map_blocks(lines,on_step=None):
         blocks=[];calls=[]
         for page in pages:
             page_lines=[l for l in lines if l['page']==page]
-            if not role_headings(page_lines,600) and not any('@' in l['text'] for l in page_lines):continue
+            if not role_headings(page_lines,600) and not any(
+                    l.get('_contact_marker_required', '@' in l['text']) for l in page_lines):continue
             values,meta=map_blocks(page_lines,on_step)
             blocks.extend(values);calls.append(meta)
         return blocks,{'phase':'source layout pages','seconds':round(sum(c.get('seconds',0) for c in calls),3),'pages':calls}
@@ -435,7 +443,11 @@ def map_blocks(lines,on_step=None):
     for number in sorted({l['page'] for l in lines}):
         page_lines=[l for l in lines if l['page']==number]
         headings.extend(l['id'] for l in role_headings(page_lines,600))
-    if not headings:raise RuntimeError('ollama_source_role_unconfirmed')
+    if not headings:
+        if any('@' in line['text'] for line in lines) and all('_contact_marker_required' in line for line in lines) and not any(
+                line['_contact_marker_required'] for line in lines):
+            return [], {'phase':'source layout not required','seconds':0}
+        raise RuntimeError('ollama_source_role_unconfirmed')
     schema=json.loads(json.dumps(LAYOUT_SCHEMA))
     schema['properties']['blocks']['items']['properties']['section']={'type':'integer','enum':headings}
     for kind in ['name','address','email','phone','country']:
@@ -615,6 +627,12 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         if fallback:
             atomic_json(folder/'ocr_primary.json',primary)
             record['secondary_layout_scan']=fallback
+        from . import cyrillic_ocr
+        original_scan = scan
+        scan, cyrillic = cyrillic_ocr.choose_scan(pdf_path, scan, step)
+        if cyrillic:
+            atomic_json(folder/'ocr_before_cyrillic.json', original_scan)
+            record['cyrillic_ocr'] = cyrillic
         atomic_json(folder/'ocr_source.json',scan)
         record['ocr_engine']=scan.get('engine','windows_en')
         record['pages_scanned']=[p['page'] for p in scan['pages']]
@@ -631,7 +649,9 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 raise RuntimeError('ollama_at_sign_name_unconfirmed')
             region['image_confirmed']=True
         step(f"[AI Verification] OCR scanned all {len(scan['pages'])} pages in {scan['seconds']}s; checking source contact regions with local Qwen")
-        lines=compact_regions(scan)
+        required_markers = required_email_ids(scan)
+        lines=[{**line, '_contact_marker_required': line['id'] in required_markers}
+               for line in compact_regions(scan)]
         if not lines:raise RuntimeError('ollama_no_confirmed_contact_region')
         record['model_source_line_ids']=[l['id'] for l in lines]
         blocks=table_blocks(scan)

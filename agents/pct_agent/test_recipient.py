@@ -105,6 +105,7 @@ def test_bibliography_accepts_unique_download_name_but_reads_actual_publication(
     ('出願人、代理人又は共通の代表者の署名','名称','署名者の氏名','権限'),
     ('Firma del solicitante','Nombre','Nombre del firmante','Calidad'),
     ('Signature du déposant','Nom •','Nom du signataire','Qualité'),
+    ('Assinatura do requerente','Nome','Nome de quem assina','Qualidade'),
 ])
 def test_signature_labels_keep_capacity_out_of_person_field(heading,name_label,person_label,capacity):
     from agents.pct_agent.test_local_evidence import line
