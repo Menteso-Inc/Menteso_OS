@@ -753,7 +753,10 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
             step(f"[Output] Sheet update failed ({report_error}); every result is saved in {journal.path.name}")
 
     def record(result):
+        if result['row'] in completed_rows:
+            raise RuntimeError('Duplicate completed source row refused')
         journal.append(result)
+        completed_rows.add(result['row'])
         results.append(result)
         completed_at.append(time.time() * 1000)
         del completed_at[:-20]
@@ -788,6 +791,12 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
     step(f"[Pipeline] {total} rows: one WIPO browser, {verification_workers} PDF verification worker(s), up to {pending_limit} pending PDFs, two independent AI readings per PDF")
     if verification_workers > 1:
         step(f"[Pipeline] Isolated PDF processes; at most {api_concurrency} concurrent AI requests; all accuracy checks retained")
+    from .parallel_verifier import distribution_mode, assigned_worker
+    distribution = distribution_mode()
+    if distribution == 'round_robin':
+        for worker_id in range(1, verification_workers + 1):
+            owned = [n for n in range(1, total + 1) if assigned_worker(n, verification_workers) == worker_id]
+            step(f'[Worker {worker_id}] Assigned {len(owned)} source rows: start {owned[0] if owned else "none"}, stride {verification_workers}; retained rows are skipped')
     step(f"[Pipeline] Minimum {interval:g}s between patent lookups; automatic backoff on failed lookups")
     browser = PatentBrowser(headless=_resolve_headless(fast_profile), on_step=step,
                             stop_requested=stop_requested)
@@ -826,6 +835,13 @@ def _run_chunked_sequential_mode(patent_rows, file_path, agent_name, strategy,
     )
     agent_result["progress_file"] = str(journal.path)
     agent_result["resumed_rows"] = resumed_count
+    if distribution == 'round_robin':
+        agent_result['worker_distribution'] = {
+            'mode': distribution, 'workers': verification_workers,
+            'assignments': {str(w): [n for n in range(1, total + 1) if assigned_worker(n, verification_workers) == w]
+                            for w in range(1, verification_workers + 1)},
+            'completed': {str(w): sum(assigned_worker(r['row'], verification_workers) == w for r in results)
+                          for w in range(1, verification_workers + 1)}}
     if fatal_error or report_error:
         agent_result["error"] = fatal_error or f"report_write_failed: {report_error}"
     test_result = tests.run(agent_result)

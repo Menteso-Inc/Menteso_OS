@@ -168,8 +168,10 @@ def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeyp
     assert any('[Timing]' in message for message in messages)
 
 
+@pytest.mark.parametrize('distribution', ['dynamic', 'round_robin'])
 @pytest.mark.parametrize('stop_after_four', [False, True])
-def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypatch, stop_after_four):
+def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypatch, stop_after_four, distribution):
+    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', distribution)
     real_pool = parallel_verifier.ProcessVerifier
     monkeypatch.setattr(parallel_verifier, 'ProcessVerifier',
                         lambda workers, slots: real_pool(workers, slots, failing_verify))
@@ -199,9 +201,12 @@ def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypat
     assert all(r['status'] == 'found' for r in results[1:])
     entries = [json.loads(line) for line in journal.path.read_text().splitlines()][1:]
     assert sorted(r['row'] for r in entries) == expected
+    if distribution == 'round_robin':
+        assert all(r['assigned_worker'] == (r['row'] - 1) % 4 + 1 for r in entries)
 
 
 def test_parallel_agent_rebuilds_ordered_sheets_with_retained_contacts(tmp_path, monkeypatch):
+    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', 'round_robin')
     from concurrent.futures import ThreadPoolExecutor
     class OfflinePool:
         def __init__(self, *args): self.pool = ThreadPoolExecutor(max_workers=4)
@@ -230,6 +235,40 @@ def test_parallel_agent_rebuilds_ordered_sheets_with_retained_contacts(tmp_path,
     values = workbook_contents(result['output_file'])['values']
     assert values[0] == tuple(agent.WORK_REPORT_HEADERS)
     assert [r[0] for r in values[1:]] == [r['id'] for r in rows]
+    assert result['worker_distribution']['completed'] == {'1': 2, '2': 2, '3': 2, '4': 2}
+
+
+def fixed_worker_verify(path, on_step, context):
+    index = context['_row_idx']
+    if index == 1:
+        time.sleep(.3)
+    return {**contacts(index), '_worker_url': os.getenv('PCT_OLLAMA_BASE_URL')}
+
+
+def test_two_workers_keep_equal_row_ownership_and_endpoint_after_resume(monkeypatch):
+    from agents.pct_agent import ai_verifier, ollama_provider
+    urls = ['http://127.0.0.1:11435', 'http://127.0.0.1:11436']
+    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', 'round_robin')
+    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS', ','.join(urls))
+    monkeypatch.setattr(ai_verifier, 'provider_name', lambda: 'ollama')
+    monkeypatch.setattr(ollama_provider, 'settings', lambda: {})
+    monkeypatch.setattr(ollama_provider, 'model_identity', lambda _: {'digest': 'identical-fixture'})
+    pids = {1: set(), 2: set()}
+    # Nonconsecutive source rows model a resume. Ownership uses original indices.
+    indices = [1, 2, 17, 32, 199, 200]
+    with parallel_verifier.ProcessVerifier(2, 2, fixed_worker_verify) as pool:
+        futures = [(i, pool.submit('unused.pdf', {'_row_idx': i})) for i in indices]
+        for index, future in futures:
+            result = future.result(timeout=30)
+            worker = 1 if index % 2 else 2
+            timing = result['_pipeline_timing']
+            assert timing['worker_id'] == worker
+            assert result['_worker_url'] == urls[worker - 1]
+            pids[worker].add(timing['worker_pid'])
+    assert all(len(values) == 1 for values in pids.values())
+    assert pids[1].isdisjoint(pids[2])
+    allocation = [parallel_verifier.assigned_worker(n, 2) for n in range(1, 201)]
+    assert allocation.count(1) == allocation.count(2) == 100
 
 
 def test_excel_invalid_controls_do_not_block_export_or_mutate_evidence(tmp_path, monkeypatch):

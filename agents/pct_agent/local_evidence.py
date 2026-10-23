@@ -10,6 +10,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import threading
@@ -350,6 +351,13 @@ def merge_page_scans(primary, rescanned, replaced_pages):
 def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='model'):
     """Bounded streaming request. Every call records prompt/generation timings."""
     config=ollama_provider.settings()
+    try:
+        scale = float(os.getenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', '1'))
+        if not math.isfinite(scale) or not 1 <= scale <= 4:
+            raise ValueError('out_of_range')
+        timeout *= scale
+    except (TypeError, ValueError):
+        raise ValueError('invalid_ollama_compact_timeout_scale') from None
     ollama_provider.model_identity(config)
     payload={'model':config['model'],'messages':messages,'think':False,'stream':True,
              'format':schema,'keep_alive':'30m','options':{'num_ctx':8192,

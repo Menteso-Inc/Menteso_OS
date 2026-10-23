@@ -265,3 +265,33 @@ environment, keeper and tunnel were not changed. Keep the live single-worker
 configuration; the trial has not qualified for rollout. Private first-pass,
 recovery, per-row timing and comparison files are under
 `Downloads/PCT_Blind_Test_100_21-October-2026/parallel-20261023`.
+
+### Two-worker follow-up configuration
+
+`PCT_PDF_WORKER_DISTRIBUTION=round_robin` gives each original source row a
+stable owner: `(row - 1) % workers + 1`. With two workers, odd and even rows
+are assigned separately (100 each for 200 rows). Resume skips completed rows
+without renumbering or reassigning the remaining rows. Each process retains
+its own model endpoint. One coordinator journals results and writes ordered
+workbooks; a duplicate completion is refused before it can overwrite data.
+The default distribution remains `dynamic` for existing installations.
+
+`PCT_OLLAMA_COMPACT_TIMEOUT_SCALE` accepts finite values from 1 through 4;
+default 1 preserves existing deadlines. A test value of 2 allows slow CPU
+requests more time without changing prompts, evidence checks or acceptance
+rules. It does not itself make inference faster. Invalid values fail closed.
+
+The signature parser now accepts punctuation after an exact Name/Nom label
+inside a bounded signature table. It still requires independent person and
+owner verification. A fresh original-PDF check on the previously missed
+development row recovered the person while preserving the selected email.
+278 scoped regressions passed, including Windows-spawn ownership/endpoint,
+resume/error handling, single-writer ordering and signature-boundary checks.
+
+The new 200-publication evaluation excludes the previous 100 and 14 reviewed
+publications. Selection is seeded before source availability is checked;
+human collected fields are blank in the input and held separately. Source
+preparation and original-PDF extraction are timed separately. Missing sources
+remain in whole-sample scores. This is not a live download/CAPTCHA benchmark
+or a company-disjoint holdout. Results and any activation decision must be
+recorded after the run; no deployment is implied by this configuration.

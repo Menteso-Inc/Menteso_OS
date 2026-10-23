@@ -59,6 +59,8 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
     interval = min_interval
     completed_rows = set(completed_rows)
     process_worker = None
+    from .parallel_verifier import distribution_mode, assigned_worker
+    distribution = distribution_mode()
 
     def relay():
         if process_worker is not None:
@@ -87,6 +89,8 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
         if '_row_started_at' in row:
             timing['row_wall_seconds'] = round(time.monotonic() - row['_row_started_at'], 3)
         result['timing'] = timing
+        if distribution == 'round_robin':
+            result['assigned_worker'] = assigned_worker(row['_row_idx'], verification_workers)
         # Persist and update reports on the coordinator, never worker threads.
         on_result(result)
         results.append(result)

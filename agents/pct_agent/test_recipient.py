@@ -104,6 +104,7 @@ def test_bibliography_accepts_unique_download_name_but_reads_actual_publication(
     ('Unterschrift des Anmelders','Name','Name der unterzeichnenden Person','Eigenschaft'),
     ('出願人、代理人又は共通の代表者の署名','名称','署名者の氏名','権限'),
     ('Firma del solicitante','Nombre','Nombre del firmante','Calidad'),
+    ('Signature du déposant','Nom •','Nom du signataire','Qualité'),
 ])
 def test_signature_labels_keep_capacity_out_of_person_field(heading,name_label,person_label,capacity):
     from agents.pct_agent.test_local_evidence import line
@@ -114,3 +115,15 @@ def test_signature_labels_keep_capacity_out_of_person_field(heading,name_label,p
     values=signer_evidence.labelled_values(scan)
     person=next(v for v in values if v['kind']=='signer_name')
     assert person['text']=='Alex Green' and person['bounds']['rect'][3]<170
+    owner=next(v for v in values if v['kind']=='signer_entity')
+    assert owner['text']=='Example LLP' and owner['block_id']==person['block_id']
+
+
+def test_signature_name_label_requires_exact_label_and_signature_section():
+    assert signer_evidence.NAME_LABEL.fullmatch('Nom •')
+    assert not signer_evidence.NAME_LABEL.fullmatch('Nom du destinataire •')
+    from agents.pct_agent.test_local_evidence import line
+    scan={'pages':[{'page':1,'width':600,'height':800}], 'lines':[
+        line(1,'Other contacts',50,100), line(2,'Nom •',50,120),
+        line(3,'Unrelated Company',260,120)]}
+    assert signer_evidence.labelled_values(scan)==[]

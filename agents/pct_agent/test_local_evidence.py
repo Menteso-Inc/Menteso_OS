@@ -8,7 +8,9 @@ import pytest
 from agents.pct_agent import local_evidence as local
 
 
-def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch):
+@pytest.mark.parametrize('scale', [1, 2, 4])
+def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch, scale):
+    monkeypatch.setenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', str(scale))
     clock = {'now': 0.0}
     class Slot:
         def __enter__(self): clock['now'] += 200
@@ -24,7 +26,9 @@ def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch):
     class Session:
         def __enter__(self): return self
         def __exit__(self, *args): pass
-        def post(self, *args, **kwargs): return Response()
+        def post(self, *args, **kwargs):
+            assert kwargs['timeout'] == (10, 180 * scale)
+            return Response()
     monkeypatch.setattr(local, '_LOCK', Slot())
     monkeypatch.setattr(local.time, 'monotonic', lambda: clock['now'])
     monkeypatch.setattr(local.requests, 'Session', Session)
@@ -35,6 +39,14 @@ def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch):
     assert value == {}
     assert meta['queue_seconds'] == 200 and meta['request_seconds'] == 1
     assert meta['seconds'] == 201 and meta['first_token_seconds'] == 1
+
+
+@pytest.mark.parametrize('value', ['nan', 'inf', '0', '-1', '5', 'bad'])
+def test_invalid_compact_timeout_scale_refused_before_request(monkeypatch, value):
+    monkeypatch.setenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', value)
+    monkeypatch.setattr(local.ollama_provider, 'settings', lambda: {})
+    with pytest.raises(ValueError, match='invalid_ollama_compact_timeout_scale'):
+        local.chat([], {})
 
 
 def test_duplicate_pdf_rows_keep_independent_evidence_files(tmp_path, monkeypatch):
