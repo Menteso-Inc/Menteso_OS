@@ -362,6 +362,8 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
         raise RuntimeError('ollama_compact_context_capacity')
     started=time.monotonic();parts=[];final=None;first=None
     with _LOCK, requests.Session() as session:
+        request_started=time.monotonic()
+        queue_seconds=request_started-started
         session.trust_env=False
         try:
             with session.post(config['base_url']+'/api/chat',json=payload,stream=True,
@@ -369,14 +371,14 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
                 if response.status_code!=200:
                     raise RuntimeError(f'ollama_http_{response.status_code}')
                 for raw in response.iter_lines():
-                    if time.monotonic()-started>timeout:
+                    if time.monotonic()-request_started>timeout:
                         raise RuntimeError('ollama_compact_deadline')
                     if not raw:continue
                     part=json.loads(raw)
                     if part.get('error'):raise RuntimeError('ollama_stream_error')
                     text=part.get('message',{}).get('content','')
                     if text:
-                        if first is None:first=time.monotonic()-started
+                        if first is None:first=time.monotonic()-request_started
                         parts.append(text)
                     if part.get('done'):
                         final=part;break
@@ -387,8 +389,9 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
     if not final or final.get('done_reason')!='stop':
         raise RuntimeError('ollama_incomplete_response')
     meta={k:final.get(k) for k in ['prompt_eval_count','prompt_eval_duration','eval_count','eval_duration','load_duration']}
-    meta.update(phase=phase,seconds=round(time.monotonic()-started,3),first_token_seconds=first)
-    if on_step:on_step(f"[Local Model] {phase}: {meta['seconds']}s, {meta['prompt_eval_count']} input / {meta['eval_count']} output tokens")
+    meta.update(phase=phase,seconds=round(time.monotonic()-started,3),first_token_seconds=first,
+                queue_seconds=round(queue_seconds,3),request_seconds=round(time.monotonic()-request_started,3))
+    if on_step:on_step(f"[Local Model] {phase}: {meta['seconds']}s (queue {meta['queue_seconds']}s), {meta['prompt_eval_count']} input / {meta['eval_count']} output tokens")
     try:return json.loads(''.join(parts)),meta
     except ValueError:raise RuntimeError('ollama_invalid_json') from None
 
@@ -589,9 +592,9 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
     digest=hashlib.sha256(Path(pdf_path).read_bytes()).hexdigest()
     revision=ai.verification_revision()
     base=Path(get_env('PCT_AI_EVIDENCE_DIR') or ai.ROOT/'outputs'/'pct-work-sheets'/'ai-evidence')
-    context_suffix=''
-    if (context or {}).get('_bibliography'):
-        context_suffix='-'+hashlib.sha256(json.dumps(context['_bibliography'],sort_keys=True).encode()).hexdigest()[:12]
+    # Identical PDFs can occur in different rows/runs. Keep their evidence
+    # isolated, just as the full-page verifier does, instead of racing writes.
+    context_suffix='-'+hashlib.sha256(json.dumps(context or {},sort_keys=True).encode()).hexdigest()[:12]
     folder=base/f'{digest[:24]}-{revision}{context_suffix}'
     folder.mkdir(parents=True,exist_ok=True)
     record={'created_at':datetime.now(timezone.utc).isoformat(),'provider':'ollama','method':VERSION,

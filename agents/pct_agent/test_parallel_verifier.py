@@ -58,6 +58,44 @@ def failing_verify(path, on_step, context):
     return contacts(context['_row_idx'])
 
 
+def offline_local_slot_verify(path, on_step, context):
+    from agents.pct_agent import local_evidence
+    base = Path(os.environ['PCT_PARALLEL_TEST_DIR'])
+    index = context['_row_idx']
+    (base / f'ready-{index}').write_text(str(os.getpid()))
+    deadline = time.monotonic() + 20
+    while len(list(base.glob('ready-*'))) < 3:
+        if time.monotonic() > deadline:
+            raise RuntimeError('Local workers did not start together')
+        time.sleep(.02)
+    with local_evidence._LOCK:
+        start = time.monotonic()
+        time.sleep(.15)
+        end = time.monotonic()
+        (base / f'local-{index}.json').write_text(json.dumps([start, end]))
+    return contacts(index)
+
+
+@pytest.mark.parametrize('slots', [1, 2])
+def test_local_source_requests_share_budget_across_processes(tmp_path, monkeypatch, slots):
+    monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))
+    with parallel_verifier.ProcessVerifier(3, slots, offline_local_slot_verify) as pool:
+        futures = [pool.submit('unused.pdf', {'_row_idx': i, '_submitted_at': time.monotonic()})
+                   for i in range(1, 4)]
+        results = [future.result(timeout=30) for future in futures]
+    transitions = []
+    for path in tmp_path.glob('local-*.json'):
+        start, end = json.loads(path.read_text())
+        transitions.extend([(start, 1), (end, -1)])
+    active = peak = 0
+    for _, delta in sorted(transitions):
+        active += delta
+        peak = max(peak, active)
+    assert len(transitions) == 6 and peak == slots
+    assert len({r['_pipeline_timing']['worker_pid'] for r in results}) == 3
+    assert all(r['_pipeline_timing']['queue_seconds'] >= 0 for r in results)
+
+
 @pytest.mark.parametrize('api_slots', [1, 3])
 def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeypatch, api_slots):
     monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))

@@ -1,10 +1,56 @@
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from agents.pct_agent import local_evidence as local
+
+
+def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch):
+    clock = {'now': 0.0}
+    class Slot:
+        def __enter__(self): clock['now'] += 200
+        def __exit__(self, *args): pass
+    class Response:
+        status_code = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_lines(self):
+            clock['now'] += 1
+            yield json.dumps({'message': {'content': '{}'}, 'done': True,
+                              'done_reason': 'stop'}).encode()
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def post(self, *args, **kwargs): return Response()
+    monkeypatch.setattr(local, '_LOCK', Slot())
+    monkeypatch.setattr(local.time, 'monotonic', lambda: clock['now'])
+    monkeypatch.setattr(local.requests, 'Session', Session)
+    monkeypatch.setattr(local.ollama_provider, 'settings', lambda: {
+        'model': 'offline', 'num_thread': 4, 'base_url': 'http://127.0.0.1:11434'})
+    monkeypatch.setattr(local.ollama_provider, 'model_identity', lambda c: {})
+    value, meta = local.chat([{'content': 'Read source'}], {}, timeout=180)
+    assert value == {}
+    assert meta['queue_seconds'] == 200 and meta['request_seconds'] == 1
+    assert meta['seconds'] == 201 and meta['first_token_seconds'] == 1
+
+
+def test_duplicate_pdf_rows_keep_independent_evidence_files(tmp_path, monkeypatch):
+    from agents.pct_agent import ai_verifier
+    source = tmp_path/'same.pdf'
+    source.write_bytes(b'identical original PDF bytes')
+    monkeypatch.setenv('PCT_AI_EVIDENCE_DIR', str(tmp_path/'evidence'))
+    monkeypatch.setattr(ai_verifier, 'verification_revision', lambda:'offline')
+    def unavailable(*args):raise RuntimeError('ollama_offline_fixture')
+    monkeypatch.setattr(local, 'scan_pdf', unavailable)
+    first = local.verify(source, {}, context={'_row_idx':1})
+    original = Path(first['evidence_file']).read_bytes()
+    second = local.verify(source, {}, context={'_row_idx':2})
+    assert first['evidence_file'] != second['evidence_file']
+    assert Path(first['evidence_file']).read_bytes() == original
+    assert Path(first['evidence_file']).parent.joinpath('source.pdf').read_bytes() == source.read_bytes()
 
 
 def line(i,text,x,y,page=1,width=90):

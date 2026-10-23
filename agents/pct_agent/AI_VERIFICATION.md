@@ -179,3 +179,30 @@ only to 127.0.0.1 and starts a missing Ollama process without killing an existin
 listener. The PCT dashboard keeper and reverse tunnel remain separate. Authorized
 remote dashboard users still depend on this local machine being awake, online,
 and running all three services; installing Ollama does not remove that dependency.
+
+## Bounded local parallel experiment - 23 October 2026
+
+The existing coordinator assigns rows to isolated PDF worker processes and is
+the sole journal/Excel writer. Source-region Qwen requests now share the global
+`PCT_PDF_API_CONCURRENCY` semaphore across those processes, matching the bound
+already used for full-page requests. Waiting for a slot is measured separately
+from the model response deadline. Model weights, image coverage, prompts and
+acceptance checks are unchanged. Each row has a separate evidence directory,
+including repeated PDFs, so simultaneous rows cannot overwrite each other's
+source images, crops or verification record.
+
+Results include download, worker queue, verification and row wall durations;
+overlapping row wall times must not be summed to claim batch duration. The
+existing output columns and run-wide duplicate classification are unchanged.
+`keep-pct-ollama.ps1 -ParallelRequests N` can configure 1-4 model slots on a
+separately authorized startup; its default remains one. Changing PDF worker
+count alone cannot increase an Ollama server's configured slots or CPU capacity.
+
+The experiment is isolated from the production service and starts from remote
+checkpoint `pct-before-parallel-20261023-095142` / `8021abd`. Private tests use
+the same application-validated original PDFs with fresh OCR/model readings,
+never prior contact answers. Seventeen of the 100 sample PDFs are unavailable
+after earlier source-access failures; count those separately. These cached-PDF
+tests do not measure WIPO downloading or the live bibliography capture. Read
+the current logbook before assuming a faster configuration was accepted or
+deployed; preserve production configuration and newer results during rollback.

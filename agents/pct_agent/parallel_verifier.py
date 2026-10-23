@@ -1,5 +1,6 @@
 """Isolated PDF workers; the parent alone owns the browser and output sheets."""
 import multiprocessing
+import os
 import queue
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -11,11 +12,14 @@ _verify = None
 
 def _initialize(messages, api_slots, verify_function):
     global _messages, _verify
-    from . import ai_verifier
+    from . import ai_verifier, local_evidence
     from .pdf_extractor import extract_contacts_from_pdf
     # Share one bound across ALL processes and their independent image readers.
     # Every prompt, model, rendering and acceptance rule stays unchanged.
     ai_verifier._API_LOCK = api_slots
+    # Source-region Qwen requests have a separate transport. They must share
+    # the same process-wide budget as full-page verification requests.
+    local_evidence._LOCK = api_slots
     _messages = messages
     _verify = verify_function or extract_contacts_from_pdf
 
@@ -26,8 +30,13 @@ def _verify_row(path, row):
     started = time.monotonic()
     log("[PDF Extractor] Extracting and verifying downloaded PDF")
     result = _verify(path, on_step=log, context=dict(row))
-    log(f"[Timing] Full PDF extraction and verification: {time.monotonic() - started:.2f}s")
-    return result
+    duration = time.monotonic() - started
+    log(f"[Timing] Full PDF extraction and verification: {duration:.2f}s")
+    return {**result, '_pipeline_timing': {
+        'verification_seconds': round(duration, 3),
+        'queue_seconds': round(max(0, started - row.get('_submitted_at', started)), 3),
+        'worker_pid': os.getpid(),
+    }}
 
 
 class ProcessVerifier:
