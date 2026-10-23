@@ -183,6 +183,28 @@ def test_portuguese_inventor_email_excluded_only_with_aligned_explicit_role():
     assert local.required_email_ids(scan)=={16,104}
 
 
+@pytest.mark.parametrize('role', ['Déposant seulement','Déposant et inventeur'])
+def test_french_combined_applicant_requires_explicit_aligned_role(role):
+    scan=inventor_form(role)
+    scan['lines'][-4]['text']='Déposant et/ou inventeur'
+    scan['lines'][-3]['text']='Cette personne est :'
+    assert local.confirmed_combined_applicants(scan['lines'],600)[0]['role_value_id']==103
+    scan['lines'][-2]['rect'][1]+=20
+    assert not local.confirmed_combined_applicants(scan['lines'],600)
+
+
+@pytest.mark.parametrize('role,excluded', [('Inventeur seulement',True),
+    ('Déposant et inventeur',False),('Inconnu',False)])
+def test_french_inventor_only_email_is_excluded_only_with_printed_proof(role,excluded):
+    scan=inventor_form(role)
+    scan['lines'][-4]['text']='Déposant et/ou inventeur'
+    scan['lines'][-3]['text']='Cette personne est :'
+    assert bool(local.excluded_inventor_regions(scan)) is excluded
+    assert (104 not in local.required_email_ids(scan)) is excluded
+    scan['lines'][-2]['rect'][1]+=20
+    assert 104 in local.required_email_ids(scan)
+
+
 def test_two_owners_keep_different_blocks():
     scan=form();second=[dict(l,page=2,id=l['id']+100) for l in scan['lines']]
     second[0]['text']='Agent'

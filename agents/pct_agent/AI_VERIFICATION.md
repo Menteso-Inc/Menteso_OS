@@ -304,7 +304,7 @@ worker waits. Submission can advance to a later original row owned by the
 available worker; the single writer still merges by original row number.
 Stopping drains submitted PDFs, and resume preserves the same ownership.
 
-Portuguese combined applicant/inventor sections require the aligned printed
+Portuguese and French combined applicant/inventor sections require the aligned printed
 role value before they can establish applicant ownership. Inventor-only
 values are excluded only with that explicit source evidence. The Portuguese
 printed-signatory label is accepted inside the existing bounded signature

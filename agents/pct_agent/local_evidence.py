@@ -62,14 +62,14 @@ def confirmed_combined_applicants(lines,width):
     regions=[]
     for heading in lines:
         if heading['rect'][0]>width*.34 or not re.fullmatch(
-                r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor',heading['text'],re.I):continue
+                r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor|D[eé]posant et/ou inventeur',heading['text'],re.I):continue
         labels=[l for l in lines if l['page']==heading['page']
-                and re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé])\s*:?',l['text'],re.I)
+                and re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé]|Cette personne est)\s*:?',l['text'],re.I)
                 and abs(l['rect'][0]-heading['rect'][0])<15
                 and 0<l['rect'][1]-heading['rect'][1]<40]
         for label in labels:
             values=[l for l in lines if l['page']==heading['page']
-                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?|Apenas requerente|Requerente e inventor',l['text'],re.I)
+                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?|Apenas requerente|Requerente e inventor|D[eé]posant (?:seulement|et inventeur)',l['text'],re.I)
                     and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
             if len(values)==1:
                 regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
@@ -193,16 +193,16 @@ def excluded_inventor_regions(scan):
         lines=[l for l in scan['lines'] if l['page']==page['page']]
         for heading in lines:
             if heading['rect'][0]>page['width']*.34 or not re.fullmatch(
-                    r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor',heading['text'],re.I):continue
+                    r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor|D[eé]posant et/ou inventeur',heading['text'],re.I):continue
             stops=[l['rect'][1] for l in lines if l['rect'][1]>heading['rect'][1]+8
                    and abs(l['rect'][0]-heading['rect'][0])<15 and SECTION_STOP.search(l['text'])
                    and not qualified_role(l['text'])]
             bottom=min(stops) if stops else page['height']
-            labels=[l for l in lines if re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé])\s*:?',l['text'],re.I)
+            labels=[l for l in lines if re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé]|Cette personne est)\s*:?',l['text'],re.I)
                     and abs(l['rect'][0]-heading['rect'][0])<15
                     and heading['rect'][1]<l['rect'][1]<min(bottom,heading['rect'][1]+40)]
             for label in labels:
-                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder|Apenas inventor',l['text'],re.I)
+                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder|Apenas inventor|Inventeur seulement',l['text'],re.I)
                         and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
                 if len(values)!=1:continue
                 ids=[l['id'] for l in lines if '@' in l['text'] and heading['rect'][1]<l['rect'][1]<bottom]
