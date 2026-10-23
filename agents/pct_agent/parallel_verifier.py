@@ -4,13 +4,14 @@ import os
 import queue
 import time
 from concurrent.futures import ProcessPoolExecutor
+from urllib.parse import urlsplit
 
 
 _messages = None
 _verify = None
 
 
-def _initialize(messages, api_slots, verify_function):
+def _initialize(messages, api_slots, verify_function, endpoints=None):
     global _messages, _verify
     from . import ai_verifier, local_evidence
     from .pdf_extractor import extract_contacts_from_pdf
@@ -20,8 +21,36 @@ def _initialize(messages, api_slots, verify_function):
     # Source-region Qwen requests have a separate transport. They must share
     # the same process-wide budget as full-page verification requests.
     local_evidence._LOCK = api_slots
+    if endpoints is not None:
+        # Give each process its own local model runner. Some Qwen architectures
+        # deliberately force one slot even when OLLAMA_NUM_PARALLEL is larger.
+        os.environ['PCT_OLLAMA_BASE_URL'] = endpoints.get(timeout=10)
     _messages = messages
     _verify = verify_function or extract_contacts_from_pdf
+
+
+def local_worker_urls(workers):
+    value = os.getenv('PCT_OLLAMA_WORKER_URLS', '').strip()
+    if not value:
+        return []
+    urls = [url.strip().rstrip('/') for url in value.split(',')]
+    if len(urls) != workers or len(set(urls)) != workers:
+        raise ValueError('ollama_worker_urls_must_match_worker_count')
+    ports = set()
+    for url in urls:
+        try:
+            parsed = urlsplit(url)
+            valid = (parsed.scheme == 'http' and parsed.hostname in {'127.0.0.1','localhost','::1'}
+                     and parsed.port is not None and not parsed.username and not parsed.password
+                     and not parsed.path and not parsed.query and not parsed.fragment)
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError('ollama_worker_requires_loopback_url')
+        if parsed.port in ports:
+            raise ValueError('ollama_worker_urls_must_use_distinct_ports')
+        ports.add(parsed.port)
+    return urls
 
 
 def _verify_row(path, row):
@@ -49,13 +78,24 @@ class ProcessVerifier:
         self.executor = None
 
     def __enter__(self):
+        from . import ai_verifier, ollama_provider
+        urls = local_worker_urls(self.workers) if ai_verifier.provider_name() == 'ollama' else []
+        if urls:
+            config = ollama_provider.settings()
+            identities = [ollama_provider.model_identity({**config, 'base_url': url}) for url in urls]
+            if any(identity != identities[0] for identity in identities):
+                raise ValueError('ollama_worker_models_differ')
         context = multiprocessing.get_context("spawn")
         self.messages = context.Queue()
+        self.endpoints = context.Queue() if urls else None
+        if self.endpoints is not None:
+            for url in urls:
+                self.endpoints.put(url)
         self.api_slots = context.BoundedSemaphore(self.api_concurrency)
         self.executor = ProcessPoolExecutor(
             max_workers=self.workers, mp_context=context,
             initializer=_initialize,
-            initargs=(self.messages, self.api_slots, self.verify_function),
+            initargs=(self.messages, self.api_slots, self.verify_function, self.endpoints),
         )
         return self
 
@@ -74,3 +114,6 @@ class ProcessVerifier:
         self.executor.shutdown(wait=True)
         self.messages.close()
         self.messages.join_thread()
+        if self.endpoints is not None:
+            self.endpoints.close()
+            self.endpoints.join_thread()

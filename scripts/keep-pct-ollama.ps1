@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ModelsPath,
     [string]$LogsPath = (Join-Path $env:ProgramData 'Menteso\ollama'),
     [ValidateRange(1, 4)][int]$ParallelRequests = 1,
+    [ValidateRange(1024, 65535)][int]$Port = 11434,
     [switch]$ValidateOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -13,7 +14,7 @@ if (-not (Test-Path -LiteralPath $pctOllamaExe -PathType Leaf) -or
     throw 'Ollama executable or local model directory is unavailable.'
 }
 # Run independently of an interactive desktop login. No public listener/cloud use.
-$env:OLLAMA_HOST = '127.0.0.1:11434'
+$env:OLLAMA_HOST = "127.0.0.1:$Port"
 $env:OLLAMA_MODELS = $pctOllamaModels
 $env:OLLAMA_NO_CLOUD = '1'
 $env:OLLAMA_NUM_PARALLEL = [string]$ParallelRequests
@@ -25,7 +26,7 @@ if ($ValidateOnly) {
 }
 New-Item -ItemType Directory -Path $LogsPath -Force | Out-Null
 while ($true) {
-    $pctOllamaListener = Get-NetTCPConnection -State Listen -LocalPort 11434 -ErrorAction SilentlyContinue
+    $pctOllamaListener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
     if ($pctOllamaListener) {
         # An existing user-owned Ollama may already be serving. Never kill it.
         Start-Sleep -Seconds 10

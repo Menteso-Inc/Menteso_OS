@@ -206,3 +206,16 @@ after earlier source-access failures; count those separately. These cached-PDF
 tests do not measure WIPO downloading or the live bibliography capture. Read
 the current logbook before assuming a faster configuration was accepted or
 deployed; preserve production configuration and newer results during rollback.
+
+The installed Ollama scheduler explicitly forces the `qwen35` architecture to
+one model slot. A larger `OLLAMA_NUM_PARALLEL` therefore does not provide real
+parallel inference for this model (see upstream issue
+https://github.com/ollama/ollama/issues/14510). Never remove that architecture
+guard to force unsupported shared recurrent state. The experimental alternative
+is `PCT_OLLAMA_WORKER_URLS`: one distinct loopback server URL per PDF process.
+Preflight verifies the same local model identity/digest on every server. Each
+worker owns one endpoint, and the common API semaphore still bounds the total.
+The separate servers share installed model files but consume additional RAM and
+CPU. `keep-pct-ollama.ps1 -Port N` supports separate loopback listeners, each with
+its own task/log directory; the default listener and production tasks remain
+unchanged until explicit rollout. This is not a claim of linear CPU speedup.

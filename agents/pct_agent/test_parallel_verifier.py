@@ -73,7 +73,7 @@ def offline_local_slot_verify(path, on_step, context):
         time.sleep(.15)
         end = time.monotonic()
         (base / f'local-{index}.json').write_text(json.dumps([start, end]))
-    return contacts(index)
+    return {**contacts(index), '_worker_url': os.getenv('PCT_OLLAMA_BASE_URL')}
 
 
 @pytest.mark.parametrize('slots', [1, 2])
@@ -94,6 +94,42 @@ def test_local_source_requests_share_budget_across_processes(tmp_path, monkeypat
     assert len(transitions) == 6 and peak == slots
     assert len({r['_pipeline_timing']['worker_pid'] for r in results}) == 3
     assert all(r['_pipeline_timing']['queue_seconds'] >= 0 for r in results)
+
+
+@pytest.mark.parametrize('value', [
+    'https://external.example:443,http://127.0.0.1:11436',
+    'http://user:pass@127.0.0.1:11435,http://127.0.0.1:11436',
+    'http://127.0.0.1:11435/path,http://127.0.0.1:11436',
+    'http://127.0.0.1:11435,http://localhost:11435',
+    'http://127.0.0.1:11435',
+])
+def test_worker_urls_reject_external_or_ambiguous_servers(monkeypatch, value):
+    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS', value)
+    with pytest.raises(ValueError):parallel_verifier.local_worker_urls(2)
+
+
+def test_workers_reject_different_model_weights(monkeypatch):
+    from agents.pct_agent import ai_verifier, ollama_provider
+    monkeypatch.setenv('PCT_AI_PROVIDER','ollama')
+    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS','http://127.0.0.1:11435,http://127.0.0.1:11436')
+    monkeypatch.setattr(ollama_provider,'settings',lambda:{})
+    monkeypatch.setattr(ollama_provider,'model_identity',lambda c:{'digest':c['base_url']})
+    with pytest.raises(ValueError,match='models_differ'):
+        with parallel_verifier.ProcessVerifier(2,2):pass
+
+
+def test_spawned_workers_get_distinct_identical_model_servers(tmp_path, monkeypatch):
+    from agents.pct_agent import ollama_provider
+    urls=[f'http://127.0.0.1:{port}' for port in [11435,11436,11437]]
+    monkeypatch.setenv('PCT_PARALLEL_TEST_DIR',str(tmp_path))
+    monkeypatch.setenv('PCT_AI_PROVIDER','ollama')
+    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS',','.join(urls))
+    monkeypatch.setattr(ollama_provider,'settings',lambda:{})
+    monkeypatch.setattr(ollama_provider,'model_identity',lambda c:{'digest':'identical'})
+    with parallel_verifier.ProcessVerifier(3,3,offline_local_slot_verify) as pool:
+        futures=[pool.submit('unused.pdf',{'_row_idx':i}) for i in range(1,4)]
+        results=[f.result(timeout=30) for f in futures]
+    assert {r['_worker_url'] for r in results}==set(urls)
 
 
 @pytest.mark.parametrize('api_slots', [1, 3])
