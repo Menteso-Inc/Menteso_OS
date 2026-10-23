@@ -5,9 +5,11 @@ OCR supplies source lines only. Existing original-image contact verification
 and ownership checks still decide whether any value can be exported.
 """
 import hashlib
+import io
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 MODEL_SHA256 = '90f761b4bfcce0c8c561c0cb5c887b0971d3ec01c32164bdf7374a35b0982711'
@@ -65,7 +67,46 @@ def recognize(image):
     return {'text': '\n'.join(line['text'] for line in lines), 'lines': lines}
 
 
-def choose_scan(pdf_path, original, step):
+def read_heading_crop(pdf_path, line, audit_dir=None):
+    import fitz
+    from PIL import Image
+    with fitz.open(pdf_path) as document:
+        page = document[line['page'] - 1]
+        rect = fitz.Rect(line['rect']) + (-5, -5, 5, 5)
+        rect &= page.rect
+        data = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=rect, alpha=False).tobytes('png')
+    if audit_dir is not None:
+        (Path(audit_dir) / f"cyrillic-role-p{line['page']}-l{line['id']}.png").write_bytes(data)
+    return recognize(Image.open(io.BytesIO(data))), hashlib.sha256(data).hexdigest()
+
+
+def refine_role_headings(pdf_path, candidate, audit_dir=None):
+    """A borderline heading needs a matching, more confident source-crop read."""
+    from . import local_evidence as local
+    checks = []
+    for line in candidate['lines']:
+        confidence = line.get('ocr_confidence', 1.0)
+        page = next(page for page in candidate['pages'] if page['page'] == line['page'])
+        if not (line['rect'][0] <= page['width'] * .34 and .90 <= confidence < .95
+                and local.CYRILLIC_ROLE_HEADING.fullmatch(line['text'])):
+            continue
+        started = time.monotonic()
+        crop, digest = read_heading_crop(pdf_path, line, audit_dir)
+        text_key = lambda value: ' '.join(value.split()).casefold()
+        matches = [item for item in crop['lines'] if text_key(item['text']) == text_key(line['text'])
+                   and .97 <= item.get('confidence', 0) <= 1]
+        proof = {'line_id': line['id'], 'original_confidence': confidence,
+                 'crop_sha256': digest, 'matching_read': len(matches) == 1,
+                 'seconds': round(time.monotonic() - started, 3)}
+        if len(matches) == 1:
+            line['ocr_confidence'] = matches[0]['confidence']
+            proof['crop_confidence'] = matches[0]['confidence']
+            line['heading_crop_confirmation'] = proof
+        checks.append(proof)
+    return checks
+
+
+def choose_scan(pdf_path, original, step, audit_dir=None):
     from . import local_evidence as local
     if not os.getenv('PCT_OLLAMA_CYRILLIC_OCR_MODEL', '').strip():
         return original, None
@@ -75,16 +116,31 @@ def choose_scan(pdf_path, original, step):
     material = cache_material()
     step('[AI Verification] No confirmed role headings; checking original pages with Cyrillic OCR')
     candidate = local.scan_pdf(pdf_path, secondary=True, cyrillic=True)
+    if audit_dir is not None:
+        local.atomic_json(Path(audit_dir) / 'ocr_cyrillic_candidate.json', candidate)
     if [page['page'] for page in candidate['pages']] != [page['page'] for page in original['pages']]:
         raise RuntimeError('ollama_cyrillic_ocr_incomplete_pages')
+    refinements = refine_role_headings(pdf_path, candidate, audit_dir)
+    candidate['seconds'] = round(candidate['seconds'] + sum(item['seconds'] for item in refinements), 3)
     headings = [line for page in candidate['pages'] for line in local.role_headings(
         [line for line in candidate['lines'] if line['page'] == page['page']], page['width'])
         if local.CYRILLIC_ROLE_HEADING.fullmatch(line['text'])]
     receipt = {'model': material, 'seconds': candidate['seconds'],
-               'selected': bool(headings), 'confirmed_heading_ids': [line['id'] for line in headings]}
+               'selected': bool(headings), 'confirmed_heading_ids': [line['id'] for line in headings],
+               'heading_crop_checks': refinements}
     receipt['preserved_email_regions'] = local.preserves_email_regions(original, candidate)
     if not receipt['preserved_email_regions']:
         receipt['selected'] = False
+        return original, receipt
+    # Never select only the easier role when another exact role label is still
+    # below the confidence threshold. Its contacts must not change owners.
+    unconfirmed = [line['id'] for line in candidate['lines']
+                   if local.CYRILLIC_ROLE_HEADING.fullmatch(line['text'])
+                   and line['rect'][0] <= next(page['width'] for page in candidate['pages']
+                                              if page['page'] == line['page']) * .34
+                   and line['id'] not in receipt['confirmed_heading_ids']]
+    if unconfirmed:
+        receipt.update(selected=False, unconfirmed_role_heading_ids=unconfirmed)
         return original, receipt
     # In the classic form, a readable Box II/IV marker declares an applicant/
     # representative section. Never retain one role while losing the other:

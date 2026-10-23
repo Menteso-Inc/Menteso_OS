@@ -91,3 +91,35 @@ def test_cyrillic_scan_must_preserve_every_original_email_region(monkeypatch):
     chosen,receipt=cyrillic.choose_scan('unused',original,lambda _:None)
     assert chosen is original and receipt['selected'] is False
     assert receipt['preserved_email_regions'] is False
+
+
+def test_classic_agent_correspondence_header_is_exact_not_signature_or_prose():
+    header='АГЕНТ ИЛИ ОБЩИЙ ПРЕДСТАВИТЕЛЬ; ИЛИ АДРЕС ДЛЯ ПЕРЕПИСКИ'
+    assert local.CYRILLIC_ROLE_HEADING.fullmatch(header)
+    assert local.role_headings(scan(header)['lines'],600)
+    assert not local.CYRILLIC_ROLE_HEADING.fullmatch('ПОДПИСЬ '+header)
+    assert not local.CYRILLIC_ROLE_HEADING.fullmatch('АДРЕС ДЛЯ ПЕРЕПИСКИ')
+
+
+@pytest.mark.parametrize('text,confidence,accepted',[
+    ('ЗАЯВИТЕЛЬ',.98,True),('ЗАЯВИТЕЛЬ',.94,False),
+    ('АГЕНТ',.99,False),('ЗАЯВИТЕЛЬ',float('nan'),False)])
+def test_borderline_role_needs_matching_confident_original_crop(monkeypatch,text,confidence,accepted):
+    candidate=scan('ЗАЯВИТЕЛЬ',.94)
+    monkeypatch.setattr(cyrillic,'read_heading_crop',lambda *a:({'lines':[
+        {'text':text,'confidence':confidence}]},'original-pixel-digest'))
+    proof=cyrillic.refine_role_headings('unused',candidate)
+    assert proof[0]['matching_read'] is accepted
+    assert candidate['lines'][0]['ocr_confidence']==(.98 if accepted else .94)
+
+
+def test_uncertain_applicant_cannot_disappear_when_agent_header_is_readable(monkeypatch):
+    monkeypatch.setenv('PCT_OLLAMA_CYRILLIC_OCR_MODEL','configured')
+    monkeypatch.setattr(cyrillic,'cache_material',lambda:{'enabled':True})
+    candidate=scan('ЗАЯВИТЕЛЬ',.8)
+    candidate['lines'].append(line(3,'АГЕНТ',50,300))
+    original=scan()
+    monkeypatch.setattr(local,'scan_pdf',lambda *a,**k:candidate)
+    chosen,receipt=cyrillic.choose_scan('unused',original,lambda _:None)
+    assert chosen is original and receipt['selected'] is False
+    assert receipt['unconfirmed_role_heading_ids']==[1]

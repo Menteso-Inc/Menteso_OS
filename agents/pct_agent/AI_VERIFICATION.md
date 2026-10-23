@@ -324,3 +324,10 @@ declared applicant/agent roles in classic forms. Contact values still pass
 the same original-image verification and selection policy. The optional
 model and acceptance code are included in the verification fingerprint, so
 older verification results are not silently reused under changed rules.
+
+The classic Russian agent/representative/correspondence heading is recognized
+as an exact form label. A borderline exact role label is reread from a larger
+original-image crop: the text must match and the crop confidence must reach
+0.97 before it can satisfy the existing 0.95 heading check. An unresolved
+applicant label cannot disappear merely because the agent label is readable.
+Rejected Cyrillic scans and heading crops are retained with the evidence.

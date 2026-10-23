@@ -25,7 +25,7 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-CYRILLIC_ROLE_HEADING = re.compile(r'(?:Заявител[ьи]|Агент(?:\s+или\s+общий\s+представитель)?|Общий\s+представитель)\s*:?', re.I)
+CYRILLIC_ROLE_HEADING = re.compile(r'(?:Заявител[ьи]|Агент(?:\s+или\s+общий\s+представитель)?(?:\s*;\s*или\s+адрес\s+для\s+переписки)?|Общий\s+представитель)\s*:?', re.I)
 ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|assinatura|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
@@ -629,7 +629,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             record['secondary_layout_scan']=fallback
         from . import cyrillic_ocr
         original_scan = scan
-        scan, cyrillic = cyrillic_ocr.choose_scan(pdf_path, scan, step)
+        scan, cyrillic = cyrillic_ocr.choose_scan(pdf_path, scan, step, audit_dir=folder)
         if cyrillic:
             atomic_json(folder/'ocr_before_cyrillic.json', original_scan)
             record['cyrillic_ocr'] = cyrillic
