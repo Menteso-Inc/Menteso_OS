@@ -219,3 +219,49 @@ The separate servers share installed model files but consume additional RAM and
 CPU. `keep-pct-ollama.ps1 -Port N` supports separate loopback listeners, each with
 its own task/log directory; the default listener and production tasks remain
 unchanged until explicit rollout. This is not a claim of linear CPU speedup.
+
+### Completed experiment and activation decision
+
+The 23 October original-PDF development test used a four-core/eight-thread
+Xeon E3-1246 v3, 24 GB RAM and CPU-only Qwen3.5:4b. The installed pinned model
+was unchanged. Three independent servers with two CPU threads each completed
+67 newly submitted PDFs in 3,045.063 seconds, including one model-deadline
+failure. Sixteen other PDFs had completed in an earlier shared-server phase;
+19 saved rows, including three access errors, were retained after a validated
+scheduling-only handoff. Do not present the small warm-cache pilots as a full
+pipeline speed measurement.
+
+The complete 100-row accounting contains 83 extracted rows and 17 previously
+unavailable source PDFs. One model deadline and one unconfirmed DNS lookup
+were retried after the parallel pass with one idle worker, retaining every
+other row. These were operator-orchestrated retries, not a new automatic
+fallback feature. The 83 PDFs required 85 processing attempts across all
+phases. Active processing, including failures/retries, was 4,053.391 seconds
+(67m33s): 48.836 seconds per successful row, or 73.72 successful rows/hour.
+Wall time from the first full phase, including intervening investigation and
+pilots, was 4,714.093 seconds. Neither duration includes live WIPO navigation,
+downloads or bibliography capture. The 25-35-second target was not met.
+
+Against the human reference: email 81/83 (97.59%), case/spacing-normalized
+name 56/68 (82.35%), country 79/83 (95.18%). Normalizing name accents,
+punctuation and token order gives 62/68 (91.18%). The comparable extraction
+fields email/name/country total 216/234 (92.31%); including unavailable rows
+gives 216/280 (77.14%). Category agrees on 83/83 but is a management label,
+excluded from that combined score. Phone accuracy is unscorable because the
+reference has no phone values. This is human-sheet agreement on a development
+sample, not independent proof of source accuracy or a 100% guarantee.
+
+Final primary emails and phones match the saved baseline exactly. One formerly
+withheld name was recovered, one former name was missed, another differs only
+in case, and one additional-email owner differs only by a line break. The
+missed name exposed a strict signature-label parser failing on an OCR bullet
+after a French label; it remains a recorded limitation, not a reference-answer
+substitution. Original input/human files, all 100 row identities, source columns
+A-D, order, thirteen headers and existing output styles passed validation.
+
+All 265 scoped regression checks passed. The experimental source is pushed on
+`pct-parallel-trial-20261023` (tested source `5cc65f0`). Production source,
+environment, keeper and tunnel were not changed. Keep the live single-worker
+configuration; the trial has not qualified for rollout. Private first-pass,
+recovery, per-row timing and comparison files are under
+`Downloads/PCT_Blind_Test_100_21-October-2026/parallel-20261023`.

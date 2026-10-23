@@ -256,6 +256,32 @@ report headers, source-row alignment and saved-row counts. Roll back only the
 target code/configuration from a compatible backup, retaining newer data; an
 older policy may refuse a newer resume file, so check compatibility first.
 
+## 23 October 2026: parallel PCT experiment remains isolated
+
+The rollback checkpoint `8021abd` is pushed as branch
+`checkpoint/pct-before-parallel-20261023-095142` and annotated tag
+`pct-before-parallel-20261023-095142`. Its tree matches live source `5ebad13`.
+The private runtime backup and receipt are under
+`C:\ProgramData\Menteso\pct-before-parallel-20261023-095142`.
+Preserve newer runtime data when rolling source/configuration back.
+
+Experimental source is on `pct-parallel-trial-20261023`, tested at `5cc65f0`.
+It adds bounded independent PDF/model workers, isolated row evidence and
+timing, retaining a single coordinator/writer. It is not enabled on production.
+The 100-row original-PDF test extracted 83 rows, with 17 earlier source-access
+failures. Total active processing plus two operational retries was 67m33s,
+48.836 seconds per successful row; the 25-35-second target was not met.
+Email agreement is 81/83 (97.59%), name 56/68 (82.35%), and comparable
+email/name/country agreement 216/234 (92.31%). Live download/bibliography
+timing and independent holdout accuracy were not measured. One name-parser
+limitation remains. See `agents/pct_agent/AI_VERIFICATION.md` for definitions.
+
+Do not turn on multiple model servers or change production worker settings
+based only on the small pilots. The current CPU shares its capacity across
+model copies; this is not threefold inference capacity. Production source and
+environment stayed unchanged, and all 265 scoped regressions passed. The
+test-only local dashboard uses port 8012; production remains on 8010/11434.
+
 ## Safety boundary
 
 - Invoice Request: `invoicerequest@menteso.com`
