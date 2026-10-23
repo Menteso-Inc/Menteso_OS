@@ -42,7 +42,24 @@
 - Benchmark used saved original PDFs with fresh OCR/Qwen, excluding live WIPO
   downloads, CAPTCHA and bibliography. Automatic approval review rejected the
   shell/CDP browser-control route; no bypass was attempted. Human agreement is
-  not independent source adjudication or a guarantee. Activation recorded below.
+  not independent source adjudication or a guarantee.
+- All-agent idle preflight passed immediately before local activation of
+  1ca7533. Fast-forward preserved teammate history and dirty runtime files.
+  Only the idle dashboard restarted (10880 to 2808). Activated two fixed PDF
+  workers/two API slots/four pending/two model threads/timeout scale 2, endpoints
+  11434 and 11435. Kept Cyrillic OCR disabled, Qwen documents, pinned digest,
+  GPT-4o CAPTCHA and every unrelated environment value unchanged. Seventeen
+  source files match (two differ only in Git-managed line endings); 138
+  protected data files are byte-identical. Local and os.menteso.com authenticated
+  PCT status/config routes returned HTTP 200/idle. No WIPO run was started.
+- Added SYSTEM boot task Menteso PCT Ollama Worker 2 Keeper, adopting existing
+  11435/PID 10788 without stopping it. Retained original 11434/PID 7608 and
+  reverse tunnel; unloaded/stopped only receipt-verified temporary 11436/PID
+  10120 after testing. Keeper tasks are running; reboot behavior remains untested.
+  Scoped private source/env/index/task backups and verification receipts are in
+  C:\ProgramData\Menteso\pct-two-worker-release-20261023. Roll back source/config
+  only while idle and retain all newer reports, journals, uploads and runtime
+  state. No email, AWS service restart or new cloud resource was involved.
 
 ## 2026-10-22 - PCT person greetings and management categories activated
 

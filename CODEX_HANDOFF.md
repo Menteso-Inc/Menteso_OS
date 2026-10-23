@@ -2,19 +2,29 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
-## PCT two-worker release candidate - 23 October 2026
+## PCT two-worker release activated - 23 October 2026
+
+Local activation completed from source `1ca7533`, preserving teammate history.
+The idle dashboard reloaded to PID 2808; no active run was stopped. Both local
+and public authenticated PCT status/config routes returned HTTP 200/idle.
+Seventeen source files and 138 protected data files passed verification; all
+unrelated environment values were retained. The second model listener 11435
+(PID 10788) is now supervised by the SYSTEM startup task `Menteso PCT Ollama
+Worker 2 Keeper`. Original model 11434/PID 7608 and the reverse tunnel remained
+running. Temporary test server 11436 was unloaded and stopped. Reboot recovery
+and live WIPO throughput are not tested. Private backup/receipts/rollback notes:
+`C:\ProgramData\Menteso\pct-two-worker-release-20261023`.
 
 The user's follow-up authorizes two stable row owners on one uploaded sheet.
 Use round-robin ownership, one coordinator/writer and independent bounded
 pending queues. Two local Ollama servers are required; a single Qwen35 server
-still serializes requests. The proposed local profile is two PDF workers, two
+still serializes requests. The activated local profile is two PDF workers, two
 API slots, four pending PDFs, two threads per model and timeout scale 2, with
 worker endpoints 127.0.0.1:11434 and 127.0.0.1:11435. Preserve the installed
 model digest, local document provider and separate GPT-4o CAPTCHA configuration.
 Keep PCT_OLLAMA_CYRILLIC_OCR_MODEL empty: the experimental Russian form mapping
-did not qualify for deployment. Read the latest activation receipt/logbook
-before assuming this candidate is live. This supersedes earlier one-worker
-guidance only after that recorded activation; it does not change AWS compute.
+did not qualify for deployment. This recorded local activation supersedes
+earlier one-worker guidance; it does not change AWS compute.
 
 The new 200-publication test retained 24 missing original PDFs. First pass:
 172 found, 28 errors, 8561.656 seconds. Seven source-based rechecks recovered
