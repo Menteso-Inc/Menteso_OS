@@ -456,6 +456,27 @@ def withhold_email(result, email):
                                    if value_key('email', item['email']) != key]
 
 
+def check_email_domains(result, *, source):
+    """Annotate already source-verified emails without losing them to DNS outages.
+
+    Call only after visual/OCR corroboration and contact selection. Unknown
+    routing does not invalidate a literal reading of the original document;
+    confirmed negative routing keeps the existing withholding policy.
+    """
+    result['email_checks'] = {}
+    issues = []
+    for email in result_emails(result):
+        status = email_domain_status(email)
+        result['email_checks'][email] = {
+            'source': source, 'domain': status, 'mailbox': 'not_tested'}
+        if status == 'unconfirmed':
+            issues.append('Source-verified email retained; domain mail routing unconfirmed')
+        elif status not in {'mx', 'implicit_mx'}:
+            withhold_email(result, email)
+            issues.append('Email withheld: domain mail routing ' + status)
+    return issues
+
+
 def format_additional_emails(result):
     labels = {'agent': 'Agent email', 'applicant': 'Applicant email'}
     return '\n'.join(f"{labels[item['role']]} ({item['owner']}): {item['email']}"

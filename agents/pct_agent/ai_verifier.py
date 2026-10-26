@@ -121,6 +121,10 @@ def verification_revision():
             material['cyrillic_ocr_hash'] = hashlib.sha256(Path(cyrillic_ocr.__file__).read_bytes()).hexdigest()
             material['cyrillic_ocr'] = cyrillic_ocr.cache_material()
             material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
+            material['combined_contacts'] = get_env('PCT_OLLAMA_COMBINED_CONTACTS',default='false')
+            if material['combined_contacts']=='true':
+                from . import combined_contact
+                material['combined_contact_hash']=hashlib.sha256(Path(combined_contact.__file__).read_bytes()).hexdigest()
             material["field_ocr_gate"] = get_env("PCT_OLLAMA_FIELD_OCR_GATE",default="false")
             if material["field_ocr_gate"] == "true":
                 from . import field_ocr
@@ -138,6 +142,8 @@ def validate_configuration(check_api=False):
         return
     load_rules()
     if provider_name() == "ollama":
+        if get_env('PCT_OLLAMA_COMBINED_CONTACTS',default='false') not in {'false','true'}:
+            raise ValueError('ollama_invalid_combined_contacts_setting')
         if get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") not in {"full_pages", "source_regions"}:
             raise ValueError("ollama_invalid_document_mode")
         ollama_provider.validate_configuration(check_api=check_api)
@@ -643,13 +649,9 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                 result.update(ai_status='needs_review', category='')
         result['email_checks'] = {}
         if str(get_env('PCT_EMAIL_DNS_CHECK', default='true')).lower() in {'true', '1', 'yes'}:
-            for email in policy.result_emails(result):
-                status = policy.email_domain_status(email)
-                result['email_checks'][email] = {'source': 'independent_verification',
-                                                 'domain': status, 'mailbox': 'not_tested'}
-                if status not in {'mx', 'implicit_mx'}:
-                    policy.withhold_email(result, email)
-                    result['reason'] += '; Email withheld: domain mail routing ' + status
+            routing_issues = policy.check_email_domains(result, source='independent_verification')
+            if routing_issues:
+                result['reason'] = '; '.join(dict.fromkeys([result.get('reason', '')] + routing_issues)).strip('; ')
             if result['status'] == 'found' and not policy.result_emails(result) and not result['phones']:
                 result.update(status='not_found', ai_status='needs_review', category='')
         if total_pages > len(pages) and result["status"] != "found":

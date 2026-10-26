@@ -2,6 +2,37 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## PCT combined contact release qualified - 26 October 2026
+
+The qualified local profile adds `PCT_OLLAMA_COMBINED_CONTACTS=true` to the
+existing two-worker profile below. It combines original field images from one
+confirmed contact block in one Qwen request; independent acceptance checks and
+individual fallback remain. Unknown DNS routing now annotates source-verified
+emails without erasing them. An uncertain preferred-applicant email keeps the
+primary email blank while preserving verified agent phone/name and explicitly
+labelled Additional Email. No OCR-only promotion or ownership guessing.
+
+Matched 200-row timing: 8,546.953 seconds before, 5,996.860 seconds combined
+first pass. Five fresh source repairs took 237.218 seconds: final active time
+6,234.078 seconds (27.06% less), 175 found/25 errors, 35.623 elapsed seconds per
+successful row. The 24 unavailable source PDFs and one unresolved Russian form
+remain. Email 171/171 returned matches, 171/200 whole sample; names 108/125
+exact or 117/125 with formatting normalization. Overall exact comparable
+email/name/country fields: 449/495 available, 449/561 whole sample. All baseline
+matching fields and verified contacts were preserved; 347 regressions passed.
+
+This is a saved-original-PDF comparison, excluding live WIPO/CAPTCHA/bibliography.
+The final composite includes five fresh repairs, not a full 200-row run under
+the final repair revision. Do not claim 100% complete extraction or attainment
+of 500–1,000 rows/hour. Read `docs/PCT_COMBINED_CONTACT_20261026.md` for details.
+
+Actual local activation is recorded separately in
+`C:\ProgramData\Menteso\pct-combined-contact-release-20261026\verification.json`.
+Check that receipt and the live environment/source before assuming deployment.
+Rollback checkpoint `pct-before-combined-contact-20261026` is `5a45adc`.
+Preserve Qwen document verification, GPT-4o CAPTCHA-only configuration, pinned
+model digest, two worker endpoints, collected data and all teammate history.
+
 ## PCT two-worker release activated - 23 October 2026
 
 Local activation completed from source `1ca7533`, preserving teammate history.

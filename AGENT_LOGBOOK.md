@@ -1,5 +1,51 @@
 # Menteso Agent Operations Logbook
 
+## 2026-10-26 - Combined contact reads and verified-data retention qualified
+
+- Implemented one local Qwen request for ordered original name/phone/email
+  crops within a confirmed source contact block. Preserve original pixels,
+  independent OCR agreement, individual fallback, signer/recipient rules,
+  stable row ownership and the 13-column report. Repository flag defaults off.
+- Controlled full 200-row off/on comparison on frozen `89771d8`: two workers,
+  two model threads, identical synthetic warm-up after runner reset. Same 176
+  original PDFs, 24 unavailable sources, blank collected input fields and
+  post-extraction human scoring. No regression suite competed with timed runs.
+  Baseline 8,546.953 seconds/175 found/25 errors/704 model requests; combined
+  5,996.860 seconds/173 found/27 errors/414 requests, a 29.84% time reduction.
+- Source review exposed existing loss paths: uncertain DNS erased correctly
+  read emails, and uncertain applicant email cleared verified agent fields.
+  Retain source-verified email with unknown-routing metadata; confirmed negative
+  routing policy is unchanged. Keep uncertain primary email blank and preserve
+  verified agent details and role/owner-labelled Additional Email for review.
+  No human answers or OCR guesses were copied into extraction outputs.
+- All 347 scoped regressions passed. Five fresh source-selected rechecks
+  (`ea1f086`, original rows 19/25/82/123/197) passed in 237.218 seconds. Final
+  composite: 175 found/25 errors, 181 PDF attempts, 6,234.078 seconds active,
+  27.06% less time, 101.06 successes/hour, 35.623 elapsed seconds/success.
+  Twenty-four missing PDFs and one unresolved Russian form remain. No complete
+  200-row rerun under the final repair revision; raw comparisons are preserved.
+- Email 171/171 returned (100%), 171/176 available (97.16%), 171/200 overall
+  (85.5%), versus 169 primary matches in the matched baseline. Two verified
+  agent emails additionally retained in column M. Name 108/125 exact (86.4%),
+  117/125 formatting-normalized (93.6%); exact available coverage 108/143.
+  Country 170/172 returned (98.84%). Overall email/name/country 449/495 available
+  (90.71%), 449/561 whole sample (80.04%); complete comparable rows 135/200.
+  Phone unscorable: empty human reference column. Category 161/171 returned,
+  excluded from extraction accuracy because it is a management label.
+- Full source/workbook audit preserves every baseline primary/additional email,
+  phone, country/category/role and previously matching reference field. All 200
+  row identities, source input columns, order, headers/styles and values pass.
+  Newly retained person/agent-name metadata was independently checked against
+  original images. No claim of universally accurate extraction or live WIPO
+  throughput. No model training, CAPTCHA change, AWS change or email sent.
+- Private artifacts: Downloads/PCT_Combined_Contact_Test_26-October-2026.
+  Owned temporary model servers 11436/11437 were unloaded/stopped after repairs;
+  production 11434/11435 remained unchanged. Local release backup/activation
+  receipts are recorded separately in
+  C:\ProgramData\Menteso\pct-combined-contact-release-20261026. Verify those
+  receipts before treating qualification as deployment. Rollback checkpoint
+  pct-before-combined-contact-20261026 points to 5a45adc; preserve all newer data.
+
 ## 2026-10-23 - New 200-row two-worker qualification
 
 - User requested two concurrent workers on the same sheet, stable assignment,
