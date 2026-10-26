@@ -121,6 +121,10 @@ def verification_revision():
             material['cyrillic_ocr_hash'] = hashlib.sha256(Path(cyrillic_ocr.__file__).read_bytes()).hexdigest()
             material['cyrillic_ocr'] = cyrillic_ocr.cache_material()
             material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
+            material['combined_contacts'] = get_env('PCT_OLLAMA_COMBINED_CONTACTS',default='false')
+            if material['combined_contacts']=='true':
+                from . import combined_contact
+                material['combined_contact_hash']=hashlib.sha256(Path(combined_contact.__file__).read_bytes()).hexdigest()
             material["field_ocr_gate"] = get_env("PCT_OLLAMA_FIELD_OCR_GATE",default="false")
             if material["field_ocr_gate"] == "true":
                 from . import field_ocr
@@ -138,6 +142,8 @@ def validate_configuration(check_api=False):
         return
     load_rules()
     if provider_name() == "ollama":
+        if get_env('PCT_OLLAMA_COMBINED_CONTACTS',default='false') not in {'false','true'}:
+            raise ValueError('ollama_invalid_combined_contacts_setting')
         if get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") not in {"full_pages", "source_regions"}:
             raise ValueError("ollama_invalid_document_mode")
         ollama_provider.validate_configuration(check_api=check_api)

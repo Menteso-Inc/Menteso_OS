@@ -520,12 +520,12 @@ def exact_values(kind,text):
     return [text.strip()] if text.strip() else []
 
 
-def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
-    """No spelling supplied to vision. Disputes require a new crop and OCR."""
+def prepare_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
+    """Prepare original pixels and the unchanged optional whole-field OCR gate."""
     source=' '.join(lookup[i]['text'] for i in ids)
     if kind=='name' and re.fullmatch(r'\s*(?:Name|Nom|Nombre|Name of signatory)\s*:?\s*',source,re.I):
-        return [],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
-                   'withheld':'Field label is not a contact name'}
+        return {'result':([],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                   'withheld':'Field label is not a contact name'})}
     data=crop(pdf,ids,lookup,bounds=bounds)
     label=f"{kind}-{'-'.join(map(str,ids))}"
     (evidence_dir/(label+'.png')).write_bytes(data)
@@ -544,16 +544,34 @@ def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
                 # recovery is retained verbatim from the independently read crop.
                 value=source if ' '.join(source.split()).casefold()==' '.join(accepted.split()).casefold() else accepted
                 if on_step:on_step(f'[Field OCR] {kind}: whole-field agreement ({field_check["seconds"]}s); vision call avoided')
-                return [value],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                return {'result':([value],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
                     'bounds':bounds,'field_ocr':field_check,'accepted':value,
-                    'resolution':'Two independent whole-field OCR readings agree'}
+                    'resolution':'Two independent whole-field OCR readings agree'})}
         except Exception as exc:
             field_check={'error':type(exc).__name__,'fallback':'original vision verifier'}
-    reading,meta=read_crop(data,kind,on_step)
+    return {'result':None,'source':source,'data':data,'label':label,'field_check':field_check}
+
+
+def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None,*,prepared=None,initial_read=None):
+    """No spelling supplied to vision. Disputes require a new crop and OCR.
+
+    A combined read may supply the first visual observation only. It cannot
+    replace source comparison, OCR gates, or fresh individual dispute reads.
+    """
+    prepared=prepared if prepared is not None else prepare_value(pdf,ids,lookup,kind,evidence_dir,on_step,bounds)
+    if prepared['result'] is not None:return prepared['result']
+    source=prepared['source'];data=prepared['data'];label=prepared['label'];field_check=prepared['field_check']
+    if initial_read is None:
+        reading,meta=read_crop(data,kind,on_step)
+        calls=[meta]
+    else:
+        reading=initial_read['reading']
+        calls=[]  # The one shared request is recorded once on the block.
     observed=exact_values(kind,reading.get('text','')) if reading.get('legible') is True else []
     original=exact_values(kind,source)
     key=lambda values:{policy.value_key(kind,v) for v in values}
-    trace={'kind':kind,'source_ids':ids,'ocr':source,'visual':reading,'calls':[meta]}
+    trace={'kind':kind,'source_ids':ids,'ocr':source,'visual':reading,'calls':calls}
+    if initial_read is not None:trace['initial_read_ref']=initial_read['record_id']
     if bounds is not None:trace['bounds']=bounds
     if field_check is not None:trace['field_ocr']=field_check
     if observed and key(observed)==key(original):
@@ -684,6 +702,11 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 issues.append('Contact withheld: source heading does not establish role');continue
             block_id=f"p{lookup[block['section']]['page']}-b{index}"
             entity=' '.join(lookup[i]['text'] for i in block['name']) or '[unnamed contact]'
+            combined_values={}
+            if os.getenv('PCT_OLLAMA_COMBINED_CONTACTS','false')=='true' and record['layout_method']=='explicit_table_labels':
+                from .combined_contact import verify_block
+                combined_values,batch_record=verify_block(pdf_path,scan,block,block_id,folder,step)
+                record.setdefault('combined_contact_checks',[]).append(batch_record)
             for kind in ['name','address','country','phone','email']:
                 ids=block[kind]
                 if not ids:continue
@@ -693,7 +716,10 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                     if record['layout_method']=='explicit_table_labels' and os.getenv('PCT_OLLAMA_FIELD_OCR_GATE')=='true':
                         from .field_ocr import bounds_for
                         bounds=bounds_for(scan,block,kind)
-                    values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step,bounds=bounds)
+                    if kind in combined_values:
+                        values,trace=combined_values[kind]
+                    else:
+                        values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step,bounds=bounds)
                     record['checks'].append(trace)
                     if not values:
                         issues.append(f'{kind} withheld: source readings disagree')
