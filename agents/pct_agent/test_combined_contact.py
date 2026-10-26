@@ -150,13 +150,25 @@ def test_failed_combination_falls_back_for_every_field_and_records_cost(monkeypa
 
 def test_prompt_contains_pixels_and_field_names_only(monkeypatch):
     captured={}
-    def chat(messages,schema,**kwargs):captured.update(messages=messages,schema=schema);return {},{}
+    def chat(messages,schema,**kwargs):captured.update(messages=messages,schema=schema);return {'name':None,'email':None},{}
     monkeypatch.setattr(local,'chat',chat)
     batch.read_fields(image_bytes(),['name','email'])
     serialized=json.dumps(captured)
     assert 'person@example.test' not in serialized
     assert captured['schema']['required']==['name','email']
     assert captured['messages'][1]['images']
+
+
+def test_compact_response_keeps_uncertainty_and_exact_characters():
+    result=batch.normalize_response({'name':None,'phone':'','email':' l1.I-1@example.test '},['name','phone','email'])
+    assert result['name']=={'text':'','legible':False}
+    assert result['phone']=={'text':'','legible':False}
+    assert result['email']=={'text':' l1.I-1@example.test ','legible':True}
+
+
+@pytest.mark.parametrize('raw',[{'email':True},{'email':123},{'email':['a@example.test']},{'phone':None},{}])
+def test_compact_response_rejects_type_or_field_substitution(raw):
+    with pytest.raises(ValueError,match='invalid_field_response'):batch.normalize_response(raw,['email'])
 
 
 def test_mode_changes_verification_fingerprint_and_rejects_invalid_setting(monkeypatch):

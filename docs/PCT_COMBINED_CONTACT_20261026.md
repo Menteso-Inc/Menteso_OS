@@ -12,6 +12,10 @@ white margins may be trimmed; pixels are not scaled and faint ink is retained.
 OCR strings, reference-sheet answers and previous extracted values are not
 supplied to the model. Each panel stays within one verified source role/block.
 
+The compact response uses a string for each literal transcription and null for
+an unclear field. This retains the legibility decision while reducing repeated
+JSON keys/output tokens. Invalid types or missing/extra keys trigger fallback.
+
 Each returned field must independently agree with its OCR source. A disputed
 field follows the existing enlarged-crop and independent-reading rules.
 Malformed responses, capacity failures or model errors fall back to individual
