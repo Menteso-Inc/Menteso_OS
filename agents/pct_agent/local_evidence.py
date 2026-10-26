@@ -752,14 +752,9 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             # An optional greeting failure must not discard verified contacts.
             record['recipient_review_error']=type(exc).__name__
             step('[Recipient] Printed person could not be confirmed; verified contacts retained')
-        if preferred_email_unconfirmed(result,unresolved_emails):
-            raise RuntimeError('ollama_preferred_email_unconfirmed')
-        result['email_checks']={}
-        for email in policy.result_emails(result):
-            status=policy.email_domain_status(email)
-            result['email_checks'][email]={'source':'original_crop_and_ocr_agreement','domain':status,'mailbox':'not_tested'}
-            if status not in {'mx','implicit_mx'}:
-                policy.withhold_email(result,email);issues.append('Email withheld: domain mail routing '+status)
+        if defer_preferred_email(result,unresolved_emails):
+            issues.append('Primary email withheld: preferred applicant email unconfirmed; verified agent details retained for review')
+        issues.extend(policy.check_email_domains(result,source='original_crop_and_ocr_agreement'))
         if result['status']=='found' and not policy.result_emails(result) and not result['phones']:
             result.update(status='not_found',ai_status='needs_review',category='')
         if not fields or issues:
@@ -799,3 +794,33 @@ def preferred_email_unconfirmed(result,unresolved):
     return bool(result.get('emails') and result.get('contact_role')=='agent'
                 and result.get('signer_selection',{}).get('status')!='confirmed'
                 and any(item['role']=='applicant' for item in unresolved))
+
+
+def defer_preferred_email(result,unresolved):
+    """An uncertain primary choice cannot erase independently verified details.
+
+    Do not promote an agent email when the preferred applicant reading failed.
+    Preserve source-confirmed agent emails with their original role/owner in
+    Additional Email, together with independently verified phone/name fields.
+    """
+    if not preferred_email_unconfirmed(result,unresolved):return False
+    selected={policy.value_key('email',value) for value in result['emails']}
+    fields=[f for f in result.get('field_evidence',[])
+            if f.get('kind')=='email' and f.get('role')=='agent' and f.get('legible')
+            and f.get('entity') and f.get('block_id')
+            and policy.value_key('email',f.get('value','')) in selected]
+    if {policy.value_key('email',f['value']) for f in fields}!=selected:
+        raise RuntimeError('ollama_preferred_email_unconfirmed')
+    additional=list(result.get('additional_emails',[]))
+    seen={(policy.value_key('email',item['email']),item['role'],policy.words(item['owner']))
+          for item in additional}
+    for field in fields:
+        key=(policy.value_key('email',field['value']),field['role'],policy.words(field['entity']))
+        if key not in seen:
+            additional.append({'email':field['value'],'role':field['role'],'owner':field['entity'],
+                               'block_id':field['block_id'],'page':field.get('page'),
+                               'section':field.get('section',''),'evidence':field.get('evidence','')})
+            seen.add(key)
+    result.update(emails=[],additional_emails=additional,ai_status='needs_review',
+                  selection_reason='Primary email unresolved; independently verified agent contacts retained')
+    return True

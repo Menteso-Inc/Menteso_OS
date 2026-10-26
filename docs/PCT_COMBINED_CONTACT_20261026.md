@@ -37,3 +37,27 @@ Rollback checkpoint: `pct-before-combined-contact-20261026`, commit `5a45adc`.
 Results and source PDFs stay private. No changes to CAPTCHA, live WIPO access,
 cloud resources, model weights or production configuration are part of this
 isolated implementation.
+
+## Verified-data retention fixes under qualification
+
+The matched 200-row test exposed two existing loss paths. An `unconfirmed`
+DNS lookup discarded literal emails even after independent image/OCR agreement.
+Domain routing is now annotated separately: an unknown lookup retains an
+already verified source value and records `mailbox: not_tested`. Confirmed
+`nxdomain` and `null_mx` outcomes retain their existing withholding policy.
+This change does not infer deliverability, repair spelling or accept OCR alone.
+
+The preferred-applicant rule could also discard a verified agent phone/name
+when only the applicant email remained uncertain. Primary email selection
+still stays unresolved in that case. Already verified agent email fields move
+to the existing role/owner-labelled Additional Email column, while verified
+phone/name fields remain and the row is marked `needs_review`. Each moved
+email must have matching legible agent source-field evidence; absent evidence
+keeps the existing closed failure path. Confirmed signer selections are
+unchanged. Nothing is copied from human reference cells.
+
+These fixes are isolated from the frozen off/on timing runs. Qualify them with
+scoped regressions and fresh original-PDF rechecks after the paired test ends.
+Keep the original comparison immutable and record repaired rows/revision and
+repair time separately in any composite final report. Do not label that report
+as a full new 200-row run under the repair revision.

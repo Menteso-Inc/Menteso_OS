@@ -649,13 +649,9 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                 result.update(ai_status='needs_review', category='')
         result['email_checks'] = {}
         if str(get_env('PCT_EMAIL_DNS_CHECK', default='true')).lower() in {'true', '1', 'yes'}:
-            for email in policy.result_emails(result):
-                status = policy.email_domain_status(email)
-                result['email_checks'][email] = {'source': 'independent_verification',
-                                                 'domain': status, 'mailbox': 'not_tested'}
-                if status not in {'mx', 'implicit_mx'}:
-                    policy.withhold_email(result, email)
-                    result['reason'] += '; Email withheld: domain mail routing ' + status
+            routing_issues = policy.check_email_domains(result, source='independent_verification')
+            if routing_issues:
+                result['reason'] = '; '.join(dict.fromkeys([result.get('reason', '')] + routing_issues)).strip('; ')
             if result['status'] == 'found' and not policy.result_emails(result) and not result['phones']:
                 result.update(status='not_found', ai_status='needs_review', category='')
         if total_pages > len(pages) and result["status"] != "found":
