@@ -33,13 +33,14 @@ def prepared(source='person@example.test'):
     return {'result':None,'source':source,'data':image_bytes(),'label':'email-7','field_check':None}
 
 
-def test_panel_preserves_original_pixels_and_does_not_embed_ocr_text():
+def test_field_images_preserve_original_pixels_and_do_not_embed_ocr_text():
     values={'name':prepared('DO NOT EMBED THIS OCR STRING'),'email':prepared()}
-    data,places=batch.panel(values)
-    image=Image.open(io.BytesIO(data)).convert('RGB')
-    for place in places:
+    data,places=batch.field_images(values)
+    for index,place in enumerate(places):
+        image=Image.open(io.BytesIO(data[index])).convert('RGB')
         original=Image.open(io.BytesIO(values[place['kind']]['data'])).convert('RGB')
-        assert image.crop(place['panel_rect']).tobytes()==original.crop(place['retained_rect']).tobytes()
+        assert image.tobytes()==original.crop(place['retained_rect']).tobytes()
+        assert place['image_index']==index+1
         assert place['scale']==1
         assert (253,253,253) in original.crop(place['retained_rect']).getdata()
 
@@ -152,11 +153,12 @@ def test_prompt_contains_pixels_and_field_names_only(monkeypatch):
     captured={}
     def chat(messages,schema,**kwargs):captured.update(messages=messages,schema=schema);return {'name':None,'email':None},{}
     monkeypatch.setattr(local,'chat',chat)
-    batch.read_fields(image_bytes(),['name','email'])
+    batch.read_fields([image_bytes(),image_bytes()],['name','email'])
     serialized=json.dumps(captured)
     assert 'person@example.test' not in serialized
     assert captured['schema']['required']==['name','email']
-    assert captured['messages'][1]['images']
+    assert len(captured['messages'][1]['images'])==2
+    assert captured['messages'][1]['content']=='Images in order: 1=name, 2=email.'
 
 
 def test_compact_response_keeps_uncertainty_and_exact_characters():

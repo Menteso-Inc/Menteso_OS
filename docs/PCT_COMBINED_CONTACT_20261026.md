@@ -7,10 +7,13 @@ qualified for production. Keep the existing two-worker scheduling profile.
 Full-document OCR, role/field mapping, whole-field OCR agreement shortcuts,
 contact selection, recipient/signature checks, DNS checks and output formatting
 remain in place. A block with at least two unresolved fields combines their
-original image crops into one labelled panel for a single Qwen request. Pure
+original image crops, in an explicit field order, in a single Qwen request. Pure
 white margins may be trimmed; pixels are not scaled and faint ink is retained.
 OCR strings, reference-sheet answers and previous extracted values are not
-supplied to the model. Each panel stays within one verified source role/block.
+supplied to the model. Each request stays within one verified source role/block.
+Fields remain separate images to avoid the extra vision area of a stitched
+panel. Image indexes, original crop bounds and saved cropped images retain
+field identity; disagreement still triggers an individual source check.
 
 The compact response uses a string for each literal transcription and null for
 an unclear field. This retains the legibility decision while reducing repeated
