@@ -1,0 +1,14 @@
+# Isolated Lexmom worker only; do not install into other agents' environments.
+crewai==1.15.23
+langchain==1.4.3
+python-dotenv>=1.0.0
+pycountry>=24.6.1
+pydantic>=2.0.0
+dnspython>=2.6.1
+anthropic>=0.69.0,<1.0.0
+tiktoken==0.12.0
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+boto3>=1.35.24,<2.0.0
+imageio-ffmpeg>=0.6.0,<0.7

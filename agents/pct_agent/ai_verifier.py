@@ -21,19 +21,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from shared.config import get_env
 from . import contact_policy as policy
+from . import ollama_provider
 
 ROOT = Path(__file__).resolve().parents[2]
 RULES_PATH = Path(__file__).with_name("contact_rules.json")
 ENGINE_VERSION = "pct-vision-5-cropped-character-check"
 API_URL = "https://api.openai.com/v1/responses"
 _API_LOCK = threading.Semaphore(2)
+_OLLAMA_LOCK = threading.Semaphore(1)
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-Role = Literal["applicant", "agent", "inventor", "patent_office", "other", "unknown"]
+Role = Literal["applicant", "agent", "correspondence", "inventor", "patent_office", "other", "unknown"]
 
 
 class TeachingExample(StrictModel):
@@ -52,7 +54,7 @@ class ContactRules(StrictModel):
 
 
 class ContactField(StrictModel):
-    kind: Literal["email", "phone", "name", "fax", "address", "country"]
+    kind: Literal["email", "phone", "name", "fax", "address", "country", "signer_name", "signer_entity"]
     value: str
     entity: str
     role: Role
@@ -76,27 +78,68 @@ def enabled():
 
 def load_rules():
     path = Path(get_env("PCT_AI_RULES_FILE") or RULES_PATH)
-    return ContactRules.model_validate_json(path.read_text(encoding="utf-8-sig"))
+    rules = ContactRules.model_validate_json(path.read_text(encoding="utf-8-sig"))
+    if provider_name() == "ollama":
+        # Curated synthetic teaching examples, not model-weight fine-tuning.
+        teaching_path = Path(__file__).with_name("ollama_teaching_examples.json")
+        teaching = [TeachingExample.model_validate(item)
+                    for item in json.loads(teaching_path.read_text(encoding="utf-8"))]
+        rules = rules.model_copy(update={"examples": [*rules.examples, *teaching]})
+    return rules
+
+
+def provider_name():
+    provider = (get_env("PCT_AI_PROVIDER") or "openai").strip().lower()
+    if provider not in {"openai", "ollama"}:
+        raise ValueError("pct_ai_invalid_provider")
+    return provider
 
 
 def model_name():
+    if provider_name() == "ollama":
+        return ollama_provider.settings()["model"]
     return get_env("PCT_AI_MODEL", default="gpt-4o")
 
 
 def verification_revision():
-    material = json.dumps({"engine": ENGINE_VERSION, "model": model_name(),
+    from . import signer_evidence, recipient, bibliography
+    material = {"engine": ENGINE_VERSION, "model": model_name(),
                            "verifier_hash": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                            "policy_hash": hashlib.sha256(Path(policy.__file__).read_bytes()).hexdigest(),
+                           "signer_hash": hashlib.sha256(Path(signer_evidence.__file__).read_bytes()).hexdigest(),
+                           "recipient_hash": hashlib.sha256(Path(recipient.__file__).read_bytes()).hexdigest(),
+                           "bibliography_hash": hashlib.sha256(Path(bibliography.__file__).read_bytes()).hexdigest(),
                            "dns_check": get_env("PCT_EMAIL_DNS_CHECK", default="true"),
                            "max_pages": get_env("PCT_AI_MAX_PAGES", default="5"),
-                           "rules": load_rules().model_dump()}, sort_keys=True)
-    return hashlib.sha256(material.encode()).hexdigest()[:20]
+                           "rules": load_rules().model_dump()}
+    if provider_name() == "ollama":
+        material["local_provider"] = ollama_provider.cache_material()
+        mode = get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages")
+        material["local_document_mode"] = mode
+        if mode == "source_regions":
+            from . import local_evidence
+            material["local_evidence_hash"] = hashlib.sha256(Path(local_evidence.__file__).read_bytes()).hexdigest()
+            material["field_ocr_gate"] = get_env("PCT_OLLAMA_FIELD_OCR_GATE",default="false")
+            if material["field_ocr_gate"] == "true":
+                from . import field_ocr
+                material["field_ocr_hash"] = hashlib.sha256(Path(field_ocr.__file__).read_bytes()).hexdigest()
+            material["secondary_ocr_enabled"] = get_env("PCT_OLLAMA_SECONDARY_OCR",default="false")
+            if material["secondary_ocr_enabled"] == "true":
+                from . import secondary_ocr
+                material["secondary_ocr"] = secondary_ocr.cache_material()
+                material["secondary_ocr_hash"] = hashlib.sha256(Path(secondary_ocr.__file__).read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()[:20]
 
 
 def validate_configuration(check_api=False):
     if not enabled():
         return
     load_rules()
+    if provider_name() == "ollama":
+        if get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") not in {"full_pages", "source_regions"}:
+            raise ValueError("ollama_invalid_document_mode")
+        ollama_provider.validate_configuration(check_api=check_api)
+        return
     if not (get_env("PCT_OPENAI_API_KEY") or get_env("OPENAI_API_KEY")):
         raise ValueError("PCT AI verification needs PCT_OPENAI_API_KEY or the shared OPENAI_API_KEY")
     if check_api:
@@ -130,6 +173,9 @@ def _render_pages(pdf_path):
         # Include the contact page, first page, then other pages up to the limit.
         order = ([1] if len(doc) > 1 else []) + [0] + list(range(2, min(len(doc), max_pages)))
         order = order[:max_pages]
+        # Signature identities commonly appear on the final or penultimate page.
+        # Keep the existing contact-page budget and append these selection pages.
+        order = list(dict.fromkeys(order + list(range(max(0, len(doc) - 2), len(doc)))))
         for index in order:
             page = doc[index]
             scale = min(300 / 72, 2800 / max(page.rect.width, page.rect.height))
@@ -180,8 +226,9 @@ def _high_res_ocr_emails(pdf_path, page_numbers):
 
 
 def _request(pages, rules, context):
-    key = get_env("PCT_OPENAI_API_KEY") or get_env("OPENAI_API_KEY")
-    if not key:
+    provider = provider_name()
+    key = (get_env("PCT_OPENAI_API_KEY") or get_env("OPENAI_API_KEY")) if provider == "openai" else None
+    if provider == "openai" and not key:
         raise RuntimeError("openai_key_missing")
     focus = (context or {}).get("_verification_focus", "")
     public_context = {key: value for key, value in (context or {}).items()
@@ -192,7 +239,10 @@ def _request(pages, rules, context):
         "Transcribe email and phone exactly; inspect 1/l/I, 0/O and rn/m. Never guess a correction or domain. "
         "Fax/Telefax/Facsimile must be kind=fax, never phone. Registration numbers are not phone numbers. "
         "Use the name in the contact block's Name field as entity and kind=name. For a firm named in IV-1 "
-        "use the firm, NOT the individual signing later. Do not extract signature blocks as contacts. "
+        "retain the firm as the contact owner. Separately record printed signing identity as kind=signer_entity "
+        "for its explicitly named organisation and kind=signer_name for the printed signer name, role=other, "
+        "block_id beginning signature-, with the actual signature heading as section. "
+        "Signature observations are selection evidence only: do not invent email, affiliation or contact blocks from a signature. "
         "If no name is printed, use entity='[unnamed contact]' and omit kind=name; never invent a name. "
         "Use unique block_id per visible contact block and repeat entity, role and entity_type within it. "
         "section must quote its labeled heading INCLUDING its number such as II or IV-1 or IV-2. "
@@ -214,6 +264,18 @@ def _request(pages, rules, context):
             "Inspect the image character-by-character, especially doubled letters, and transcribe what is visibly "
             "printed. Candidate spellings are hints to the disputed location only, never proof: " + str(focus)
         )
+    if provider == "ollama":
+        # Preserve both independent readings and all images. Serialize local
+        # inference so an ordinary CPU server is not flooded with image jobs.
+        with _API_LOCK, _OLLAMA_LOCK:
+            text = ollama_provider.request(pages, instruction, context, VisualExtraction.model_json_schema())
+        try:
+            extraction = VisualExtraction.model_validate_json(text)
+        except ValueError:
+            raise RuntimeError("ollama_invalid_extraction") from None
+        if set(extraction.reviewed_pages) != {number for number, _ in pages}:
+            raise RuntimeError("ollama_incomplete_page_review")
+        return extraction
     content = [{"type": "input_text", "text": "Filing metadata (context only, not proof): "
                 + json.dumps(public_context)}]
     for page, data in pages:
@@ -447,11 +509,14 @@ def _read_original_pages(pages, rules, context, on_step=None):
         first = readers.submit(_request, pages, rules, context)
         second = readers.submit(_request, list(reversed(pages)), rules, context)
         if on_step:
-            on_step("[AI Verification] Independent second reading running alongside the first")
+            on_step("[AI Verification] Independent original/reversed page readings scheduled")
         return first.result(), second.result()
 
 
 def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
+    if provider_name() == "ollama" and get_env("PCT_OLLAMA_DOCUMENT_MODE", default="full_pages") == "source_regions":
+        from .local_evidence import verify
+        return verify(pdf_path, ocr_result, on_step=on_step, context=context)
     evidence_dir = None
     try:
         rules = load_rules()
@@ -475,8 +540,11 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
         page_numbers = [p for p, _ in pages]
         first_groups, first_issues = policy.valid_fields(extraction, rules, page_numbers)
         second_groups, second_issues = policy.valid_fields(second, rules, page_numbers)
-        first_valid = extraction.model_copy(update={"fields": [f for fs in first_groups.values() for f in fs]})
-        second_valid = second.model_copy(update={"fields": [f for fs in second_groups.values() for f in fs]})
+        from .signer_evidence import signature_fields
+        first_valid = extraction.model_copy(update={"fields": [f for fs in first_groups.values() for f in fs]
+                                                    + signature_fields(extraction, page_numbers)})
+        second_valid = second.model_copy(update={"fields": [f for fs in second_groups.values() for f in fs]
+                                                   + signature_fields(second, page_numbers)})
         original_ocr_emails = [str(value) for value in ocr_result.get('emails', [])]
         email_pages = {field.page for field in first_valid.fields + second_valid.fields
                        if field.kind == 'email'}
@@ -558,7 +626,8 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                     'Email withheld: focused third reading unavailable (' + type(exc).__name__ + ')'
                 )
         result = select_contacts(confirmed, rules, page_numbers)
-        if result.get('contact_role') == 'agent' and _unresolved_applicant_email(
+        if (result.get('contact_role') == 'agent'
+                and result.get('signer_selection', {}).get('status') != 'confirmed') and _unresolved_applicant_email(
                 first_valid, second_valid, confirmed):
             result = _empty_contacts(
                 reason='Applicant email was unresolved; agent fallback withheld under applicant-priority rule'
@@ -572,14 +641,14 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                 result.update(ai_status='needs_review', category='')
         result['email_checks'] = {}
         if str(get_env('PCT_EMAIL_DNS_CHECK', default='true')).lower() in {'true', '1', 'yes'}:
-            for email in list(result['emails']):
+            for email in policy.result_emails(result):
                 status = policy.email_domain_status(email)
                 result['email_checks'][email] = {'source': 'independent_verification',
                                                  'domain': status, 'mailbox': 'not_tested'}
                 if status not in {'mx', 'implicit_mx'}:
-                    result['emails'].remove(email)
+                    policy.withhold_email(result, email)
                     result['reason'] += '; Email withheld: domain mail routing ' + status
-            if result['status'] == 'found' and not result['emails'] and not result['phones']:
+            if result['status'] == 'found' and not policy.result_emails(result) and not result['phones']:
                 result.update(status='not_found', ai_status='needs_review', category='')
         if total_pages > len(pages) and result["status"] != "found":
             result["ai_status"] = "needs_review"
@@ -588,6 +657,7 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
         result.update({"verification_revision": revision, "evidence_file": str(record_path),
                        "text_length": ocr_result.get("text_length", 0)})
         record = {"created_at": datetime.now(timezone.utc).isoformat(), "model": model_name(),
+                  "provider": provider_name(),
                   "rules": rules.model_dump(), "pdf_sha256": digest, "pages_reviewed": [p for p, _ in pages],
                   "total_pages": total_pages, "ocr_candidates": ocr_result,
                   "high_resolution_ocr_emails": high_res_ocr_emails,
@@ -595,12 +665,15 @@ def verify_contacts(pdf_path, ocr_result, on_step=None, context=None):
                   "tie_break_reading": third.model_dump() if third else None,
                   "fourth_reading": fourth.model_dump() if fourth else None,
                   "confirmed_extraction": confirmed.model_dump(), "validation_issues": issues, "result": result}
+        if provider_name() == "ollama":
+            record["provider_details"] = ollama_provider.cache_material()
         record_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
         if on_step:
             on_step(f"[AI Verification] {result['ai_status']}: {result['reason'] or 'Contact fields read from PDF image'}")
         return result
     except Exception as exc:
-        reason = str(exc) if isinstance(exc, RuntimeError) and str(exc).startswith('openai_') else type(exc).__name__
+        reason = (str(exc) if isinstance(exc, RuntimeError)
+                  and re.fullmatch(r"(?:openai|ollama)_[a-z0-9_]{1,120}", str(exc)) else type(exc).__name__)
         result = _empty_contacts(status="error", reason=f"AI verification failed: {reason}")
         result["error"] = result["reason"]
         result["evidence_file"] = str(evidence_dir / "source.pdf") if evidence_dir else ""
@@ -613,4 +686,6 @@ def result_metadata(contacts):
     return {key: contacts[key] for key in ("ai_status", "reason", "evidence_file", "verification_revision",
                                           "agent_name", "country", "category", "contact_role", "contact_block_id",
                                           "display_name", "name_is_placeholder", "contact_owner", "selection_reason",
-                                          "field_evidence", "agent_name_evidence", "email_checks") if key in contacts}
+                                          "field_evidence", "agent_name_evidence", "email_checks",
+                                          "additional_emails", "signer_selection", "recipient_role",
+                                          "recipient_evidence", "recipient_status", "category_basis") if key in contacts}

@@ -1,0 +1,66 @@
+{
+  "preserved": [
+    "rollback",
+    "private state",
+    "secrets",
+    "source",
+    "SSM helper",
+    "previously blocked verification copy"
+  ],
+  "local": {
+    "status": "cleanup blocked by automatic approval review; no deletion performed",
+    "retained": [
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-completion-check.py",
+        "bytes": 1637
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-completion-start.py",
+        "bytes": 1371
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-completion-results.py",
+        "bytes": 982
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\build-research-completion-deploy.py",
+        "bytes": 3732
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\build-research-query-deploy.py",
+        "bytes": 3737
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-completion-deploy.py",
+        "bytes": 89332
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-query-audit.py",
+        "bytes": 262
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-archive-audit.py",
+        "bytes": 845
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\research-closeout.py",
+        "bytes": 2451
+      }
+    ],
+    "free_bytes_observed": 10981986304
+  },
+  "aws": {
+    "removed": [
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/completion-20261009/stage",
+        "bytes": 1576229
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/discovery-query-20261009/stage",
+        "bytes": 1583839
+      }
+    ],
+    "free_bytes_before": 78478172160,
+    "free_bytes_after": 78481805312
+  }
+}

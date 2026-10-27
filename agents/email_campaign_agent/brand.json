@@ -1,0 +1,12 @@
+{
+  "observed_at": "2026-10-13",
+  "source_pages": ["https://lexmom.com/launch/", "https://lexmom.com/manage/"],
+  "logo": "lexmom-logo-v1.webp",
+  "purple": "#472ed1", "ink": "#1c1b1f", "lavender": "#eeeafb", "white": "#ffffff",
+  "launch_heading_font": "Poppins, Arial, sans-serif",
+  "manage_heading_font": "Playfair Display, Georgia, serif",
+  "email_body_font": "Arial, Helvetica, sans-serif",
+  "art_direction": "AI robotics and connected digital workflows; no plants or leaves; official logo; concise headlines and readable subtitle/points",
+  "images_are": "AI-generated campaign illustrations, not actual product screenshots",
+  "excluded_claims": ["adoption counts", "testimonials", "percentage growth", "guaranteed clients", "guaranteed compliance", "unlimited AI", "unverified integration or security claims"]
+}

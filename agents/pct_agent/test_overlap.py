@@ -203,6 +203,31 @@ def test_failed_downloads_are_retried_and_never_reported_as_missing_contacts(mon
     assert len(browser.calls) == attempts
 
 
+def test_denied_remote_row_remains_pending_for_checkpoint_resume():
+    browser=FakeBrowser();published=[]
+    def denied(*args,**kwargs):
+        browser.calls.append(args);browser.last_failure_reason='wipo_access_denied';return None
+    browser.scrape_patent=denied
+    with pytest.raises(overlap.BrowserAccessDenied):
+        overlap.process_rows(source_rows(3),browser,lambda *a,**kw:pytest.fail('No PDF'),
+            make_result,published.append,lambda _:None,lambda _:None,lambda:False,'denied',min_interval=0)
+    assert len(browser.calls)==1 and published==[]
+
+
+def test_validated_cache_can_continue_after_a_remote_denial():
+    browser=FakeBrowser();browser.continue_from_cache_after_access_denied=True;published=[]
+    def scrape(*args,**kwargs):
+        browser.calls.append(args)
+        if len(browser.calls)==1:
+            browser.last_failure_reason='wipo_access_denied';return None
+        return 'cached.pdf'
+    browser.scrape_patent=scrape
+    results=overlap.process_rows(source_rows(2),browser,lambda *a,**kw:contacts(2),make_result,
+        published.append,lambda _:None,lambda _:None,lambda:False,'cached',min_interval=0)
+    assert [(r['row'],r['status']) for r in results]==[(1,'error'),(2,'found')]
+    assert results[0]['reason']=='wipo_access_denied' and len(browser.calls)==2
+
+
 def workbook_contents(path):
     workbook = openpyxl.load_workbook(path)
     sheet = workbook.active
@@ -318,7 +343,7 @@ def test_upload_entry_point_uses_single_browser_and_preserves_source_cells(tmp_p
     assert len(browsers) == 1 and browsers[0].closed
     cells = workbook_contents(result["output_file"])["values"][1]
     assert cells[:4] == ("WO/2026/001", "Original title", "US2026/001", "Original Applicant Ltd.")
-    assert cells[10:] == ("Aneeq", "Original date")
+    assert cells[10:] == ("Aneeq", "Original date", None)
 
 
 def handoff_fixture(tmp_path, rows, saved):

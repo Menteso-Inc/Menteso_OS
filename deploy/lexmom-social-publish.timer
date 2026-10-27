@@ -1,0 +1,11 @@
+[Unit]
+Description=Lexmom approved social queue cadence (not enabled by setup)
+
+[Timer]
+OnCalendar=*-*-* *:*:00 UTC
+AccuracySec=5s
+Persistent=true
+Unit=lexmom-social-publish.service
+
+[Install]
+WantedBy=timers.target

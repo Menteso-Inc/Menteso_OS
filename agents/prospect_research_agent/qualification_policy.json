@@ -1,0 +1,17 @@
+{
+  "version": "2026-10-16.1",
+  "products": {
+    "manage": {
+      "context": "A legal-practice workspace for clients, matters, tasks, documents and financial workflows. Public operational clues establish a hypothesis, not buying intent.",
+      "buyer_roles": ["owner", "founder", "partner", "administrator", "operations"],
+      "query_terms": ["boutique law firm our team contact", "solo law practice attorney contact", "law firm expansion managing partner"],
+      "question": "Would a connected workspace for matters, tasks and documents be useful for your firm?"
+    },
+    "launch": {
+      "context": "Law-firm website creation and client intake. A recent new practice, explicit website/intake need, or current first-party website-under-construction notice can establish relevance. A missing search result cannot prove there is no website.",
+      "buyer_roles": ["owner", "founder", "partner"],
+      "query_terms": ["new law firm launched founder contact", "law firm website under construction contact", "independent solo attorney law practice contact", "law firm new website launch"],
+      "question": "Is building or updating your firm's website and inquiry intake a priority?"
+    }
+  }
+}

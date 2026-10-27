@@ -1,0 +1,26 @@
+[Unit]
+Description=Lexmom email mailbox and delivery-event monitor (no campaign sending)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/lexmom_sub_manager/app
+ExecStart=/home/menteso_os/agents/lexmom_sub_manager/.venv/bin/python -m agents.email_campaign_agent.monitor
+UMask=0077
+TimeoutStartSec=300
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/menteso_os/agents/lexmom_sub_manager
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=CREWAI_TELEMETRY_ENABLED=false
+Environment=OTEL_SDK_DISABLED=true
+Environment=DO_NOT_TRACK=1
+MemoryMax=512M
+TasksMax=64

@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-09",
+  "removed": [
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-inspect-pause.py",
+      "bytes": 2377
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-copy.py",
+      "bytes": 3310
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-progress.py",
+      "bytes": 1575
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-restore.py",
+      "bytes": 6070
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\build-migration-dashboard-deploy.py",
+      "bytes": 4659
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-dashboard-deploy.py",
+      "bytes": 70630
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-verify.py",
+      "bytes": 3644
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-pause-page.py",
+      "bytes": 1652
+    },
+    {
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-deploy\\migrate-pin-images.py",
+      "bytes": 2511
+    }
+  ],
+  "free_bytes_before": 10265436160,
+  "free_bytes_after": 10265550848,
+  "retained": [
+    "Private source/destination database backups and original source data",
+    "Destination restored bind-mount data and credential .env files",
+    "Pinned images required by the paused stack",
+    "Dashboard release rollback files and test evidence",
+    "Existing PCT and Lexmom source, environments, uploads, runtime state"
+  ],
+  "remote_note": "Temporary decrypted credential export deleted after dotenv verification; no disposable remote staging archive remains. The 705233143-byte archive is a required rollback backup.",
+  "prior_cleanup_exception": "The previously blocked local-sync-20261009/verification cleanup was not retried."
+}

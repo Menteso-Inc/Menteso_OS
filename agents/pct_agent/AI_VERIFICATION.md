@@ -1,6 +1,6 @@
 # PCT source verification and contact selection
 
-Updated 23 September 2026. Source applicant/title/application/publication fields are preserved. Reports retain exactly Aneeq's 12 columns, including Priorty Date.
+Updated 22 October 2026. Source applicant/title/application/publication fields are preserved. Reports retain Aneeq's original 12 columns, including Priorty Date, and append Additional Email as column M.
 
 ## Verification
 
@@ -20,13 +20,42 @@ Verification cache includes model, rules, verifier code, policy code, page limit
 
 Extract applicant and agent blocks independently. Never assume that a contact email/phone belongs to an agent. Preserve each field's role, owner and evidence in the audit. Agent Name is sourced independently from an actual agent block.
 
-The process rule is implemented as follows: prefer a verified applicant email when applicant and agent contacts differ; if the applicant has no email, use the independently verified agent email block. When contacts are shared, compare addresses (same address selects applicant, different addresses select agent). If the address comparison is unavailable, retain only the identical shared email/phone and withhold owner-dependent fields. A matching email or phone with no conflicting shared value counts as shared contact information; an omitted optional phone is not a conflicting value.
+Preserve applicant/agent role priority: prefer a verified applicant email when applicant and agent contacts differ; if the applicant has no email, use the independently verified agent email block. When contacts are shared, compare addresses (same address selects applicant, different addresses select agent). If the address comparison is unavailable, retain only the identical shared email/phone and withhold owner-dependent fields. A matching email or phone with no conflicting shared value counts as shared contact information; an omitted optional phone is not a conflicting value.
 
 For multiple contacts in one role, an explicit primary PCT block is deterministic: IV-1 precedes IV-2 additional agents, and the unique earliest applicant block precedes continuation applicants. When no primary block exists, a single independently verified email shared across ambiguous blocks may be retained while owner, category, country, name and unrelated phone values stay blank. Multiple distinct peer emails still require review.
 
-Identical complete contacts printed under a primary agent firm and an additional attorney can use the primary source block without merging people. An actual contact-block Name takes precedence over a later signature. Missing agent names display Sir/Ma'am, with name_is_placeholder=true; that display text is never treated as a real person or a contact owner.
+After role priority selects agent contacts, an independently verified signing organisation or exact signer name can select a uniquely matching agent block. A signer never overrides an otherwise preferred applicant email. Its email, phone and country stay together. An ambiguous or absent link falls back to the existing applicant/primary-agent policy. Signature metadata never creates an email or inferred employer, and does not replace the contact-block Name. Missing agent names display Sir/Ma'am; that display text is never treated as a real person or contact owner.
 
-Cat uses source-supported Slf/Corp/Ind. The legal company suffix of an applicant can support Corp; a corporate suffix on an agent does not establish whether the business is a legal practice. Unresolved classification remains blank. No Info means neither reading found usable wanted contact information in the reviewed complete document; uncertainty stays in review evidence.
+The final report column, `Additional Email`, retains other verified applicant/agent addresses as `Agent email (owner): address` or `Applicant email (owner): address`. It excludes duplicate main addresses, patent-office and inventor-only contacts. Original columns A-L keep their order. Both normal rows and resume handoffs carry the structured additional-email ownership evidence. In the local source-region path, signer image checks run only when distinct verified agent-email choices exist and role priority selected agents.
+
+The report's Name is a greeting person, stored separately from `agent_name` and
+`contact_owner`. Prefer a selected applicant individual or an associated named
+representative; otherwise read an explicit signatory whose signature block names
+that owner. A shared verified email can link a representative to the applicant
+for greeting purposes without changing contact ownership or phone selection.
+Different or ambiguous signing owners cannot supply the greeting. Printed
+surname-first names are reordered; titles and trailing registration numbers are
+excluded. Source accents are retained. Never infer a name from an email address
+or select an inventor solely because they are listed.
+
+The browser captures the already-loaded WIPO bibliography before opening
+Documents, checks the publication identity and passes it with that row only.
+A single explicitly named bibliography agent can supply a missing greeting;
+ambiguous lists and address layouts stay unresolved. There is no extra WIPO
+navigation. Saved-PDF tests do not establish the live bibliography fallback's
+coverage. Local signatures use two independent OCR readings where they agree
+at the existing confidence threshold; disagreements retain the original-image
+Qwen checks. Complete thin table rules may be removed for signature OCR only;
+the original evidence crop is retained. These additional person checks do not
+change the email acceptance rules or the CAPTCHA provider.
+
+Cat is an assigned management label, not literal PDF text: Slf for a verified
+representative, Corp for a corporate applicant contact, and Ind for an individual
+applicant contact. A company's individual signatory does not change Corp to Ind.
+Unknown classification remains blank. Compare category consistency separately
+from contact extraction accuracy. No Info means neither reading found usable
+wanted contact information in the reviewed complete document; uncertainty stays
+in review evidence.
 
 Repeated marks later duplicate patent IDs or matching verified contact tuples (same owner, role, email set and phone set) within one input/run. Every patent row is retained. Matching applicant name alone does not mean Repeated. Original category and repeated_of row remain in metadata. This operational interpretation was stated to the user; refine it if they clarify a different duplicate criterion.
 
@@ -34,7 +63,7 @@ Repeated marks later duplicate patent IDs or matching verified contact tuples (s
 
 The single-browser pipeline downloads ahead while one separate worker extracts and verifies PDFs. PDF rendering/OCR stay on one worker, and Playwright stays on its owning thread. `PCT_PIPELINE_PENDING_PDFS` defaults to two (one active plus one waiting). `PCT_PIPELINE_MIN_ROW_INTERVAL_SECONDS` defaults to ten seconds; failed lookups increase backoff and retry the same row once. Navigation, CAPTCHA, download, and unconfirmed document lookup failures are errors rather than claims that no contacts exist. Legacy fast-mode inputs cannot introduce extra browsers.
 
-Every completed row is written to a local JSONL checkpoint before it is reported complete. A single writer updates the same two Excel files every 25 completed rows and at the end, using temporary files and atomic replacement. The exact 12 columns, styles, source fields, original row order, and repeated-contact policy are retained. Stopping accepts no new downloads and drains at most the bounded pending PDFs before saving partial output. A failed final workbook write is reported as partial, with the JSONL location, rather than successful completion.
+Every completed row is written to a local JSONL checkpoint before it is reported complete. A single writer updates the same two Excel files every 25 completed rows and at the end, using temporary files and atomic replacement. The original 12 columns, source fields and row order are retained; Additional Email is appended with wrapped role/owner-labelled entries. Stopping accepts no new downloads and drains at most the bounded pending PDFs before saving partial output. A failed final workbook write is reported as partial, with the JSONL location, rather than successful completion.
 
 An explicit `resume_path` accepts a local handoff from a gracefully stopped run. It verifies the original sheet hash, row count, source cells, unique original row numbers and contact-policy fingerprint before starting the browser. Existing completed results, including errors and their evidence, are retained; only unfinished row numbers are downloaded. Policy fingerprints normalize text line endings so an unchanged Windows checkout is compatible. `scripts/handoff_pct_run.py` captures a specifically identified run without killing the dashboard and refuses a handoff if saved rows are missing. A service restart must happen only after this capture succeeds and all local agents are idle.
 
@@ -81,3 +110,72 @@ unchanged. This handles a pre-existing control character in a phone field that
 otherwise prevented all subsequent workbook checkpoints from being written.
 Tabs, carriage returns, newlines, visible characters, column order and formatting
 are preserved. The regression suite includes this export failure and 100 tests.
+
+## Local Qwen provider - 21 October 2026
+
+`PCT_AI_PROVIDER=openai` remains the repository default. `ollama` uses the local
+Qwen3.5 vision server and `PCT_OLLAMA_MODEL` (default `qwen3.5:4b`); it does not
+require an OpenAI key and never falls back to a paid provider. CAPTCHA handling
+is a separate subsystem and is not switched by this contact-verification setting.
+Existing shared credentials must remain available to unrelated agents.
+
+Only the AI transport changes. The original images, page numbers/order, strict
+contact schema, two independent readings, focused rereads, contact selection,
+DNS checks, journal and exact twelve-column report writer remain in use. Qwen
+requests are serialized within each PDF process. On the current CPU-only server
+use one PDF worker, one API slot and two pending PDFs; both readings still run.
+The shared API bound now accepts one slot when using multiple worker processes.
+
+Ollama preflight checks the loopback server, installed model digest, Qwen3.5
+family and vision capability. Cloud models and redirects are refused. An optional
+`PCT_OLLAMA_MODEL_DIGEST` pin blocks replacement weights. Cache and resume identity
+include the local provider, actual model digest, context settings and transport
+revision. Existing OpenAI handoff fingerprints retain their original calculation;
+switching providers requires a new test run, not reuse of a differently verified
+handoff. Old journals and workbooks are preserved.
+
+The default context is 65,536 tokens with the original 7,000-token output budget.
+A conservative image/text budget rejects oversized requests before inference;
+it does not shrink images or skip pages to fit. The request timeout is 1,800
+seconds, configurable for CPU testing. Missing page acknowledgments, malformed
+JSON, token-limit stops and transport failures cannot export unverified OCR.
+They are errors, not evidence that a contact is absent. Error codes exclude raw
+response bodies. A failed row remains in the normal journal/error report for
+review or a separate retry sheet.
+
+`ollama_teaching_examples.json` adds eight synthetic examples to the existing
+rules when Ollama is selected. They teach exact characters, punctuation, unusual
+domains, uncertainty and contact ownership. They do not contain real test-row
+answers. This is prompt-based teaching, NOT model-weight fine-tuning. Any future
+learned corrections must be source-verified, reviewed and versioned; do not train
+automatically on a human workbook or on Qwen's own predictions. Keep training
+and evaluation filings separate, including duplicate/contact-family leakage.
+Private examples belong in an ignored `PCT_AI_RULES_FILE`, never public Git.
+
+The initial three-page email-only trial passed its three selected transcriptions
+but averaged 169.4 seconds per page on the four-core Xeon without a GPU. It does
+not prove full contact accuracy or production throughput. GPU/full-sheet accuracy
+acceptance remains separate from successful transport integration.
+
+Live Windows activation completed on 21 October with a pinned Qwen3.5 4B digest
+and one verification worker/API slot. A real synthetic document passed the full
+two-reading/provider/schema/report contract in 194.33 seconds; all 137 scoped
+regressions passed. Existing result files were preserved. Neither this synthetic
+test nor replay of old evidence establishes full-sheet model accuracy or the
+requested hourly throughput. No bulk extraction was started during activation.
+The run log identifies the selected provider/model. The SYSTEM Ollama keeper
+task is installed; reboot recovery has not been tested.
+
+Offline regression checks include `test_ollama_provider.py` alongside the five
+existing PCT suites. The opt-in `scripts/check_pct_ollama.py` performs real local
+inference on a synthetic PDF and writes isolated evidence and both report types.
+It checks the local service is idle and disables DNS only in that test process
+because its addresses use reserved example domains. It does not access WIPO,
+send emails or change production configuration.
+
+`scripts/keep-pct-ollama.ps1` can run in a dedicated Windows startup task with the
+installed executable and model-directory paths supplied explicitly. It binds
+only to 127.0.0.1 and starts a missing Ollama process without killing an existing
+listener. The PCT dashboard keeper and reverse tunnel remain separate. Authorized
+remote dashboard users still depend on this local machine being awake, online,
+and running all three services; installing Ollama does not remove that dependency.

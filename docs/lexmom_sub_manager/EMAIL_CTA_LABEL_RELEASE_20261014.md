@@ -1,0 +1,16 @@
+# Full product names in email links — 14 October 2026
+
+The owner requested full LexMom product names in Explore and Book a demo link text.
+
+- Version `20261014-conversation-v3.1` keeps all fifteen image-free drafts paused. Labels now read “Explore LexMom Launch,” “Book a LexMom Manage demo,” and “Explore LexMom Manage / Book a LexMom Manage demo” for the combined route. Links, body copy, proposed timing, references and opt-out behavior are unchanged.
+- All 34 existing campaign tests passed locally. The isolated AWS standalone agent passed its five self-tests, with fifteen previews and zero sends. Live dashboard data verified all current labels, current version, connected mailbox and zero prospect campaign sends. Both application sending flags remain false.
+- Only the versioned campaign JSON was deployed, guarded against any intervening source changes. Previous JSON and a consistent private SQLite backup were preserved. Source replacement was atomic. No service restarted; static dashboard code, shared container, credentials, PCT and other agents were untouched.
+- Current local review HTML/text and product-tab HTML mirrors use the full labels. Existing native Google Doc edits used scoped Find and Replace across all tabs. After Chrome reconnection and refreshing the stale original Doc tab, saved readback verified ten Launch links, five Manage demo links and five combined Manage links with full product names. All fifteen subject/body variants, original destinations, audience guidance and five sections per tab were preserved. Version notes match the deployed JSON. Receipt: `EMAIL_CTA_DOC_VERIFICATION_20261014.json`; screenshot: `GOOGLE_DOC_CTA_LABELS_20261014.png`.
+
+## Separate Google setup recheck
+
+The owner completed Google verification in the first setup tab. Its Cloud session was confirmed under the Lexmom office account. One dedicated reply-notification topic already exists; there are no attached subscriptions and only an inherited Owner role was displayed. Gmail publisher access was prepared in an unsaved form; no Save operation occurred. No mailbox watch, authenticated subscription, new OAuth client or broader Gmail access was configured in this recheck.
+
+Read-only AWS verification confirmed live Gmail authorization, cached mailbox synchronization every 120 seconds, fifteen paused drafts and zero campaign sends. One obsolete verification tab was confirmed closed; three other old setup tabs could not be cleared through intermittent browser control. No further password is needed for reconnection. The connected Drive tool cannot edit this private office Doc with its current account (403); access was not widened as a workaround.
+
+The native Doc correction is complete. Pub/Sub remains unfinished: only its existing topic was verified, and no permission grant was submitted. The office browser connection recovered enough to complete and verify the document. Required source, old-template archive, protected operation receipts and unfinished Google setup evidence are retained. Exact disposable CTA-helper cleanup paths and measured free space are in `EMAIL_CTA_LABEL_CLEANUP_20261014.json`. No new email, service restart, paid generation, billing activation, credential grant or Git push occurred.

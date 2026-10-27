@@ -1,0 +1,22 @@
+[Unit]
+Description=Lexmom reviewed social publication queue (disabled during setup)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=menteso_os
+Group=menteso_os
+WorkingDirectory=/home/menteso_os/agents/lexmom_sub_manager/app
+EnvironmentFile=/home/menteso_os/agents/lexmom_sub_manager/.env
+ExecStart=/home/menteso_os/agents/lexmom_sub_manager/.venv/bin/python -m agents.social_media_posting_agent.publish_run
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OTEL_SDK_DISABLED=true
+UMask=0077
+TimeoutStartSec=240
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/menteso_os/agents/lexmom_sub_manager
+MemoryMax=256M
+TasksMax=32

@@ -106,7 +106,7 @@ def test_domain_failure_withholds_email(tmp_path,monkeypatch,status):
 
 
 def test_unknown_company_type_does_not_guess_corp():
-    assert select(contact('email','mail@example.org',entity_type='unknown'))['category']==''
+    assert select(contact('email','mail@example.org',entity_type='unknown',role='applicant',section='II Applicant'))['category']==''
 
 
 def test_country_read_from_confirmed_address_tail_only():

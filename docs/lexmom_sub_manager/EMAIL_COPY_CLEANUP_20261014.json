@@ -1,0 +1,21 @@
+{
+  "free_after": 11251728384,
+  "worktrees_archived": [],
+  "preserved": [
+    "Source and screenshot",
+    "Environment and private state",
+    "Required rollback release",
+    "Earlier blocked-cleanup files"
+  ],
+  "local_removed": [],
+  "retained": [
+    "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-copy-20261014\\deploy.py"
+  ],
+  "new_archives_created": false,
+  "status": "Automatic approval review rejected removal before execution",
+  "retained_file_bytes": 4844,
+  "new_remote_staging_created": false,
+  "free_before": 11251728384,
+  "processes_stopped_for_cleanup": [],
+  "reason": "blocked by policy"
+}

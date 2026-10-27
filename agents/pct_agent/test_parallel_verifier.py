@@ -58,12 +58,13 @@ def failing_verify(path, on_step, context):
     return contacts(context['_row_idx'])
 
 
-def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeypatch):
+@pytest.mark.parametrize('api_slots', [1, 3])
+def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeypatch, api_slots):
     monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))
     monkeypatch.setenv('PCT_AI_EVIDENCE_DIR', str(tmp_path / 'evidence'))
     monkeypatch.setenv('PCT_OPENAI_API_KEY', 'offline-test-placeholder')
     monkeypatch.setenv('PCT_AI_MODEL', 'gpt-4o')
-    with parallel_verifier.ProcessVerifier(4, 3, offline_verify) as pool:
+    with parallel_verifier.ProcessVerifier(4, api_slots, offline_verify) as pool:
         futures = []
         for index, row in enumerate(source_rows(4), 1):
             path = tmp_path / f'row{index}.pdf'
@@ -88,7 +89,8 @@ def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeyp
     for _, delta in sorted(transitions):
         active += delta
         peak = max(peak, active)
-    assert len(transitions) == 16 and 1 < peak <= 3
+    assert len(transitions) == 16 and 1 <= peak <= api_slots
+    assert peak == 1 if api_slots == 1 else peak > 1
     assert any('[Timing]' in message for message in messages)
 
 

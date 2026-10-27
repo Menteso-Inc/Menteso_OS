@@ -1,0 +1,144 @@
+{
+  "verified_at": "2026-10-13T08:23:38.4095250Z",
+  "remote": {
+    "removed": [
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/two-product-20261013/staging",
+        "file_bytes": 680167,
+        "file_count": 39
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/two-product-20261013/payload-prefix.txt",
+        "file_bytes": 60000,
+        "file_count": 1
+      },
+      {
+        "path": "/home/menteso_os/agents/lexmom_sub_manager/releases/two-product-20261013/fix-prefix.txt",
+        "file_bytes": 30000,
+        "file_count": 1
+      }
+    ],
+    "free_bytes_before": 78466179072,
+    "free_bytes_after": 78467080192,
+    "preserved": [
+      "before",
+      "before-fix",
+      "before-location",
+      "test logs and release evidence",
+      "live source, environment, memory, research data and original pilot"
+    ]
+  },
+  "local": {
+    "status": "automatic approval review blocked removal",
+    "stated_reason": "blocked by policy",
+    "removed": [],
+    "retained_disposable_paths": [
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\activate.py",
+        "file_bytes": 4090,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\build_hotfix.py",
+        "file_bytes": 6186,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\build_location_fix.py",
+        "file_bytes": 8561,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\build_metadata_repair.py",
+        "file_bytes": 1759,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\build_stage_repair.py",
+        "file_bytes": 2040,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\build_stage.py",
+        "file_bytes": 6612,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\enrichment_test.py",
+        "file_bytes": 3464,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\finalize.py",
+        "file_bytes": 6845,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\inspect.py",
+        "file_bytes": 2226,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\live_test.py",
+        "file_bytes": 3308,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\location_fix.py",
+        "file_bytes": 34437,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\metadata_repair.py",
+        "file_bytes": 6148,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\operate.py",
+        "file_bytes": 4083,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\read_frontend.py",
+        "file_bytes": 556,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\repair_stage.py",
+        "file_bytes": 39148,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\stage.py",
+        "file_bytes": 46278,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\upload_fix_prefix.py",
+        "file_bytes": 30373,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\upload_prefix.py",
+        "file_bytes": 60383,
+        "file_count": 1
+      },
+      {
+        "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-pipeline-20261013\\before",
+        "file_bytes": 14020,
+        "file_count": 2
+      }
+    ],
+    "free_bytes_before": 12760743936,
+    "free_bytes_after": 12760743936,
+    "measured_delete_attempt_free_space_change": 0,
+    "preserved": [
+      "All source and uncommitted changes",
+      "Private .env and request.env operation metadata",
+      "Compact deployment and test results, diagnostic evidence and dashboard screenshot",
+      "Shared dependencies, live runtime, data, memory and earlier task cleanup exceptions"
+    ]
+  },
+  "preview_processes_stopped": [],
+  "managed_worktrees_archived": []
+}

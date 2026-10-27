@@ -1,0 +1,30 @@
+{
+  "free_after": 9565585408,
+  "owned_processes_active": false,
+  "preserved": [
+    "campaigns.seven-day.archive.json",
+    "lifecycle.pending.py",
+    "review.env",
+    "review-send.env"
+  ],
+  "free_before": 9565564928,
+  "earlier_blocked_targets_untouched": true,
+  "removed": [
+    {
+      "bytes": 4710,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-five-flow-20261014\\deploy.py"
+    },
+    {
+      "bytes": 1009,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-five-flow-20261014\\prepare_review.py"
+    },
+    {
+      "bytes": 1992,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-five-flow-20261014\\verify.py"
+    },
+    {
+      "bytes": 2823,
+      "path": "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-five-flow-20261014\\record_review.py"
+    }
+  ]
+}

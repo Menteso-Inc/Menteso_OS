@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Lexmom email replies and delivery events every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+Unit=lexmom-email-monitor.service
+
+[Install]
+WantedBy=timers.target

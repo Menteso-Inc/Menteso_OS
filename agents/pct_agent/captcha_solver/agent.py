@@ -225,6 +225,7 @@ def solve_captcha(page, on_step=None, max_seconds=None, source_url=""):
                     event="solver_succeeded",
                     tier=tier,
                     captcha_type=captcha_type,
+                    confirmed=tier == "manual",
                 )
                 _emit(
                     on_step,
@@ -243,12 +244,11 @@ def solve_captcha(page, on_step=None, max_seconds=None, source_url=""):
             )
 
         if final_outcome == "failed":
-            # Still emit cleared so the UI banner doesn't latch forever; the
-            # caller decides what to do next (re-queue / cool down / give up).
+            # Failure is distinct from clearance; do not show a success banner.
             _emit(
                 on_step,
                 "[Solver] All tiers exhausted — giving up on this captcha",
-                event="captcha_cleared",
+                event="captcha_failed",
                 captcha_active=False,
             )
 

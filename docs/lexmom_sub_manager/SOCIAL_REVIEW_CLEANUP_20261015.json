@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-15T12:51:33.786587+00:00",
+  "removed": [],
+  "new_disposable_archives": 0,
+  "new_build_stages": 0,
+  "task_preview_processes_remaining": 0,
+  "local_free_bytes_before_cleanup_check": 12630351872,
+  "local_free_bytes_after_cleanup_check": 12630351872,
+  "remote_free_bytes_before_static_patch": 78221271040,
+  "remote_free_bytes_after_static_patch": 78220959744,
+  "retained": [
+    "source and documentation",
+    "editable local review video, captures and provenance",
+    "protected environments and live state",
+    "required rollback release before-social-notice-20261015T124838Z",
+    "previously blocked cleanup paths (not retried)"
+  ],
+  "reason_no_deletions": "No newly disposable outputs; generated video and its source captures are required review deliverables."
+}

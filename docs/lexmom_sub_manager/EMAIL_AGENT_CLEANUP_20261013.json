@@ -1,0 +1,53 @@
+{
+  "local": {
+    "free_after": 11538120704,
+    "status": "Automatic approval review rejected deletion before execution",
+    "free_before": 11538120704,
+    "reason": "blocked by policy",
+    "removed": [],
+    "retained": [
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\payload.zip",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\oauth_local.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\reconcile_client_download.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\prepare_transfer.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\renew_transfer.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\transfer_with_role.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\stage_server.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\apply_server.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\verify_server.sh",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\inspect.sh",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\inspect-ui.sh",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\lexmom-ui-fragment.js",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\reconcile_review.sh",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\reconcile_local.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\patch_server.py",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\cleanup_server.sh",
+      "C:\\Users\\hp\\Desktop\\Menteso\\Menteso_OS\\runtime-data\\lexmom-email-build-20261013\\cleanup_transfer.py"
+    ],
+    "file_bytes_retained": 22036677
+  },
+  "aws": {
+    "free_after": 78374670336,
+    "file_bytes": 46106648,
+    "removed": [
+      "/home/menteso_os/agents/lexmom_sub_manager/email-build-stage-20261013"
+    ],
+    "free_before": 78328406016
+  },
+  "transfer": {
+    "bucket_removed": true,
+    "exact_uri_record": "runtime-data/lexmom-email-build-20261013/.env:EMAIL_BUILD_REMOVED_TRANSFER_URI",
+    "object_removed": true
+  },
+  "preserved": [
+    "Source and artwork",
+    "Protected environment files and backups",
+    "Mailbox/research databases",
+    "Rollback releases",
+    "Screenshots and compact receipts",
+    "operate.py and renew_aws.py needed for unfinished Pub/Sub work",
+    "Earlier blocked-cleanup targets"
+  ],
+  "cleanup_processes_stopped": [],
+  "worktrees_archived": []
+}

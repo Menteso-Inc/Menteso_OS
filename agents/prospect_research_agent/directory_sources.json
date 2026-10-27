@@ -1,0 +1,27 @@
+{
+  "version": "2026-10-20.1",
+  "discovery_queries": [
+    "lawyer directory attorney profiles law firms",
+    "(site:lawyers.justia.com OR site:avvo.com OR site:lawyers.findlaw.com OR site:martindale.com) lawyer law firm",
+    "international lawyer directory law firms worldwide",
+    "solicitor advocate lawyer directory professional profiles"
+  ],
+  "sources": [
+    {"host":"justia.com","name":"Justia","homepage":"https://lawyers.justia.com/","state":"restricted","terms_url":"https://www.justia.com/terms-of-service/","reviewed_on":"2026-10-20","note":"Commercial copying/reuse is restricted by the published terms. No collection permission for Lexmom is recorded."},
+    {"host":"avvo.com","name":"Avvo","homepage":"https://www.avvo.com/","state":"restricted","terms_url":"https://www.avvo.com/support/terms","reviewed_on":"2026-10-20","note":"Avvo website terms link to Internet Brands terms, whose section 4 restricts collection and scraping/aggregation absent an applicable written exception. API access alone is not that exception."},
+    {"host":"findlaw.com","name":"FindLaw","homepage":"https://lawyers.findlaw.com/","state":"restricted","terms_url":"https://www.internetbrands.com/ibterms","reviewed_on":"2026-10-20","note":"FindLaw links to Internet Brands terms, which restrict collection and aggregation except under an applicable written exception."},
+    {"host":"martindale.com","name":"Martindale-Hubbell","homepage":"https://www.martindale.com/","note":"Review current directory and supplemental terms; a profile/advertising subscription is not a data licence."},
+    {"host":"lawyers.com","name":"Lawyers.com","homepage":"https://www.lawyers.com/","note":"Review collection, retained data and commercial prospecting rights before fetching profiles."},
+    {"host":"nolo.com","name":"Nolo","homepage":"https://www.nolo.com/","note":"Review lawyer-profile access and reuse rights separately from consumer lead services."},
+    {"host":"lawinfo.com","name":"LawInfo","homepage":"https://www.lawinfo.com/","note":"Review current terms and any supplemental directory agreement before collection."},
+    {"host":"abogado.com","name":"Abogado","homepage":"https://www.abogado.com/","note":"Review current terms and permitted collection/storage before collection."},
+    {"host":"hg.org","name":"HG.org","homepage":"https://www.hg.org/","note":"Review directory access, commercial-use restrictions and published crawl limits."},
+    {"host":"lawzana.com","name":"Lawzana","homepage":"https://lawzana.com/","note":"Review profile collection and commercial prospecting rights before collection."},
+    {"host":"justdial.com","name":"Justdial lawyer listings","homepage":"https://www.justdial.com/","note":"General business directory: require lawyer relevance and reviewed collection/reuse rights."},
+    {"host":"lawrato.com","name":"LawRato","homepage":"https://lawrato.com/","note":"Review lawyer-profile collection, retention and commercial use before collection."},
+    {"host":"thelawyersglobal.org","name":"The Lawyers Global","homepage":"https://www.thelawyersglobal.org/","note":"Review current directory terms and permitted research use before collection."},
+    {"host":"superlawyers.com","name":"Super Lawyers","homepage":"https://www.superlawyers.com/","note":"Review current directory terms; ratings or profiles alone never establish product fit."},
+    {"host":"legal500.com","name":"The Legal 500","homepage":"https://www.legal500.com/","note":"Review ranking/directory collection and reuse rights; validate attorney counts on firm sources."},
+    {"host":"chambers.com","name":"Chambers and Partners","homepage":"https://chambers.com/","note":"Review current directory and data-licensing terms before collection."}
+  ]
+}
