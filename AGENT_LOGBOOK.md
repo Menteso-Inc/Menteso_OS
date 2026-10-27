@@ -1,5 +1,33 @@
 # Menteso Agent Operations Logbook
 
+## 2026-10-27 - User-requested return to the pre-parallel PCT checkpoint
+
+- User requested restoring the saved normal pipeline and restarting all 500
+  rows. Target: pct-before-parallel-20261023-095142 / 8021abd, whose tree equals
+  the earlier deployed 5ebad13. Restore only PCT source and its environment
+  example through a new forward commit; preserve teammate and experiment
+  history for review and future rollback.
+- Local profile returns to one PDF worker, one API slot, two pending PDFs and
+  four model threads. Remove only experiment-specific overrides; keep local
+  Qwen3.5:4b, GPT-4o CAPTCHA, model digest, source-derived name/email rules and
+  the Additional Email report column from the checkpoint.
+- The 26 October live run stopped itself on WIPO HTTP 403 with 282/500 rows
+  processed: 184 found, 3 withheld and 95 errors. Eighty-four errors were
+  unassigned email-region verification failures. Preserve that run's original
+  sheet, source PDFs, evidence, completion record, row journal and two exports.
+  No better accuracy, WIPO access or speed is inferred from this rollback.
+- Scoped backup, validation, activation and fresh-run receipts are stored at
+  C:\ProgramData\Menteso\pct-restore-normal-20261027. Only the idle dashboard may
+  reload; model services, the public reverse tunnel and other agents remain.
+  Fresh run is explicitly authorized from row 1, with no experimental resume.
+- Validation: all 250 PCT regression tests passed in the isolated restored
+  checkout in 22.41 seconds. The PCT source and environment example match the
+  checkpoint exactly; no live provider call was made by these tests.
+- Completion email is authorized only to sajan@menteso.com and
+  shweta@menteso.com with worked/error attachments and a campaign approval
+  question without a date. Campaign sending remains unapproved. The existing
+  IT SMTP credentials failed authentication; no successful email is claimed.
+
 ## 2026-10-26 - Combined contact reads and verified-data retention qualified
 
 - Implemented one local Qwen request for ordered original name/phone/email

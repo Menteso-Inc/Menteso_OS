@@ -8,7 +8,6 @@ import json
 import os
 import queue
 import time
-from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,8 +59,6 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
     interval = min_interval
     completed_rows = set(completed_rows)
     process_worker = None
-    from .parallel_verifier import distribution_mode, assigned_worker
-    distribution = distribution_mode()
 
     def relay():
         if process_worker is not None:
@@ -85,13 +82,6 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
 
     def publish(row, url, contacts):
         result = make_result(row, url, contacts)
-        timing = dict(contacts.get('_pipeline_timing', {}))
-        timing['download_seconds'] = round(row.get('_download_seconds', 0), 3)
-        if '_row_started_at' in row:
-            timing['row_wall_seconds'] = round(time.monotonic() - row['_row_started_at'], 3)
-        result['timing'] = timing
-        if distribution == 'round_robin':
-            result['assigned_worker'] = assigned_worker(row['_row_idx'], verification_workers)
         # Persist and update reports on the coordinator, never worker threads.
         on_result(result)
         results.append(result)
@@ -125,39 +115,7 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
         def log(message):
             messages.put(f"[Row {row['_row_idx']}] {message}")
         log("[PDF Extractor] Extracting and verifying downloaded PDF")
-        started = time.monotonic()
-        result = verify(path, on_step=log, context=dict(row))
-        return {**result, '_pipeline_timing': {
-            'verification_seconds': round(time.monotonic() - started, 3),
-            'queue_seconds': round(max(0, started - row.get('_submitted_at', started)), 3),
-            'worker_pid': os.getpid(),
-        }}
-
-    def scheduled_rows():
-        remaining = [(index, source) for index, source in enumerate(rows, 1)
-                     if index not in completed_rows]
-        if distribution != 'round_robin' or verification_workers == 1:
-            yield from remaining
-            return
-        owned = {worker_id: deque() for worker_id in range(1, verification_workers + 1)}
-        for index, source in remaining:
-            owned[assigned_worker(index, verification_workers)].append((index, source))
-        per_worker_limit = (max_pending + verification_workers - 1) // verification_workers
-        while any(owned.values()):
-            collect()
-            if stop_requested():
-                return
-            in_flight = Counter(assigned_worker(row['_row_idx'], verification_workers)
-                                for row, _ in pending.values())
-            ready = [(items[0][0], worker_id) for worker_id, items in owned.items()
-                     if items and in_flight[worker_id] < per_worker_limit]
-            if not ready:
-                collect(block=True)
-                continue
-            # Keep stable row ownership while allowing the other worker to
-            # continue when one PDF is slow. Output remains in source order.
-            _, worker_id = min(ready)
-            yield owned[worker_id].popleft()
+        return verify(path, on_step=log, context=dict(row))
 
     if verification_workers > 1:
         from .parallel_verifier import ProcessVerifier
@@ -168,7 +126,7 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
         if verification_workers > 1:
             process_worker = worker
         try:
-            for index, source in scheduled_rows():
+            for index, source in enumerate(rows, 1):
                 if index in completed_rows:
                     continue
                 while len(pending) >= max_pending and not stop_requested():
@@ -176,8 +134,7 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                 collect()
                 if stop_requested():
                     break
-                row = {**source, "_row_idx": index, '_row_started_at': time.monotonic(),
-                       '_download_seconds': 0.0}
+                row = {**source, "_row_idx": index}
                 url = "https://patentscope.wipo.int/search/en/" + row["id"].replace("/", "")
                 # Duplicate patents must never overwrite a PDF being verified.
                 doc_id = f"{row['id'].replace('/', '_')}_{run_id}_row{index}"
@@ -192,15 +149,12 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                                    "url": url, "patent_id": row["id"]})
                     step(f"[Row {index}/{total}] Downloading: {row['id']} (attempt {attempt + 1})")
                     try:
-                        download_started = time.monotonic()
                         pdf_path = browser.scrape_patent(url, doc_id, on_step=step)
                         failure = getattr(browser, "last_failure_reason", "") or "scrape_failed"
                     except BrowserStopRequested:
                         raise
                     except Exception as exc:
                         failure = f"scrape_exception: {type(exc).__name__}"
-                    finally:
-                        row['_download_seconds'] += time.monotonic() - download_started
                     collect()
                     if pdf_path:
                         interval = max(min_interval, interval * 0.75)
@@ -220,7 +174,6 @@ def process_rows(rows, browser, verify, make_result, on_result, step,
                     bibliography = getattr(browser, 'last_bibliography', None)
                     if bibliography:
                         row['_bibliography'] = dict(bibliography)
-                    row['_submitted_at'] = time.monotonic()
                     future = (worker.submit(pdf_path, row) if process_worker is not None
                               else worker.submit(verify_row, pdf_path, row))
                     pending[future] = (row, url)

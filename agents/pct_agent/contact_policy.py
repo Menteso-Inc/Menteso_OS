@@ -115,9 +115,9 @@ def agree(first, second, ocr_emails=None):
     return first.model_copy(update={'fields': kept}), list(dict.fromkeys(issues))
 
 
-FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스|факс', re.I)
-AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|\bагент\b|общий\s+представитель|^IV\b', re.I)
-APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|\bзаявител[ьи]\b|^II\b', re.I)
+FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
+AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|^IV\b', re.I)
+APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|^II\b', re.I)
 
 
 EMAIL_RE = re.compile(
@@ -454,27 +454,6 @@ def withhold_email(result, email):
     result['emails'] = [value for value in result.get('emails', []) if value_key('email', value) != key]
     result['additional_emails'] = [item for item in result.get('additional_emails', [])
                                    if value_key('email', item['email']) != key]
-
-
-def check_email_domains(result, *, source):
-    """Annotate already source-verified emails without losing them to DNS outages.
-
-    Call only after visual/OCR corroboration and contact selection. Unknown
-    routing does not invalidate a literal reading of the original document;
-    confirmed negative routing keeps the existing withholding policy.
-    """
-    result['email_checks'] = {}
-    issues = []
-    for email in result_emails(result):
-        status = email_domain_status(email)
-        result['email_checks'][email] = {
-            'source': source, 'domain': status, 'mailbox': 'not_tested'}
-        if status == 'unconfirmed':
-            issues.append('Source-verified email retained; domain mail routing unconfirmed')
-        elif status not in {'mx', 'implicit_mx'}:
-            withhold_email(result, email)
-            issues.append('Email withheld: domain mail routing ' + status)
-    return issues
 
 
 def format_additional_emails(result):

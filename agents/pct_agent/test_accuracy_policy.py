@@ -95,7 +95,7 @@ def test_one_reader_missing_contact_is_not_no_info(tmp_path,monkeypatch):
     assert r['ai_status']=='needs_review' and r['category']!='No Info'
 
 
-@pytest.mark.parametrize('status',['nxdomain','null_mx'])
+@pytest.mark.parametrize('status',['nxdomain','null_mx','unconfirmed'])
 def test_domain_failure_withholds_email(tmp_path,monkeypatch,status):
     monkeypatch.setenv('PCT_AI_EVIDENCE_DIR',str(tmp_path/'audit'))
     monkeypatch.setattr(ai,'_request',lambda *args:extraction(field()))
@@ -103,18 +103,6 @@ def test_domain_failure_withholds_email(tmp_path,monkeypatch,status):
     r=ai.verify_contacts(pdf(tmp_path),{})
     assert r['emails']==[] and r['ai_status']=='needs_review'
     assert r['email_checks']['johnl@example.com']['mailbox']=='not_tested'
-
-
-def test_uncertain_routing_preserves_independently_verified_email(tmp_path,monkeypatch):
-    monkeypatch.setenv('PCT_AI_EVIDENCE_DIR',str(tmp_path/'audit'))
-    monkeypatch.setenv('PCT_EMAIL_DNS_CHECK','true')
-    monkeypatch.setattr(ai,'_request',lambda *args:extraction(field()))
-    monkeypatch.setattr(policy,'email_domain_status',lambda email:'unconfirmed')
-    result=ai.verify_contacts(pdf(tmp_path),{})
-    assert result['status']=='found' and result['emails']==['johnl@example.com']
-    assert result['email_checks']['johnl@example.com']['domain']=='unconfirmed'
-    assert result['email_checks']['johnl@example.com']['mailbox']=='not_tested'
-    assert 'email retained' in result['reason'] and 'Email withheld' not in result['reason']
 
 
 def test_unknown_company_type_does_not_guess_corp():

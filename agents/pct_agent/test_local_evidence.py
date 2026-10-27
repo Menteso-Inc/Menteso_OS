@@ -1,68 +1,10 @@
 import json
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from agents.pct_agent import local_evidence as local
-
-
-@pytest.mark.parametrize('scale', [1, 2, 4])
-def test_waiting_for_shared_slot_does_not_consume_model_deadline(monkeypatch, scale):
-    monkeypatch.setenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', str(scale))
-    clock = {'now': 0.0}
-    class Slot:
-        def __enter__(self): clock['now'] += 200
-        def __exit__(self, *args): pass
-    class Response:
-        status_code = 200
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def iter_lines(self):
-            clock['now'] += 1
-            yield json.dumps({'message': {'content': '{}'}, 'done': True,
-                              'done_reason': 'stop'}).encode()
-    class Session:
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def post(self, *args, **kwargs):
-            assert kwargs['timeout'] == (10, 180 * scale)
-            return Response()
-    monkeypatch.setattr(local, '_LOCK', Slot())
-    monkeypatch.setattr(local.time, 'monotonic', lambda: clock['now'])
-    monkeypatch.setattr(local.requests, 'Session', Session)
-    monkeypatch.setattr(local.ollama_provider, 'settings', lambda: {
-        'model': 'offline', 'num_thread': 4, 'base_url': 'http://127.0.0.1:11434'})
-    monkeypatch.setattr(local.ollama_provider, 'model_identity', lambda c: {})
-    value, meta = local.chat([{'content': 'Read source'}], {}, timeout=180)
-    assert value == {}
-    assert meta['queue_seconds'] == 200 and meta['request_seconds'] == 1
-    assert meta['seconds'] == 201 and meta['first_token_seconds'] == 1
-
-
-@pytest.mark.parametrize('value', ['nan', 'inf', '0', '-1', '5', 'bad'])
-def test_invalid_compact_timeout_scale_refused_before_request(monkeypatch, value):
-    monkeypatch.setenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', value)
-    monkeypatch.setattr(local.ollama_provider, 'settings', lambda: {})
-    with pytest.raises(ValueError, match='invalid_ollama_compact_timeout_scale'):
-        local.chat([], {})
-
-
-def test_duplicate_pdf_rows_keep_independent_evidence_files(tmp_path, monkeypatch):
-    from agents.pct_agent import ai_verifier
-    source = tmp_path/'same.pdf'
-    source.write_bytes(b'identical original PDF bytes')
-    monkeypatch.setenv('PCT_AI_EVIDENCE_DIR', str(tmp_path/'evidence'))
-    monkeypatch.setattr(ai_verifier, 'verification_revision', lambda:'offline')
-    def unavailable(*args):raise RuntimeError('ollama_offline_fixture')
-    monkeypatch.setattr(local, 'scan_pdf', unavailable)
-    first = local.verify(source, {}, context={'_row_idx':1})
-    original = Path(first['evidence_file']).read_bytes()
-    second = local.verify(source, {}, context={'_row_idx':2})
-    assert first['evidence_file'] != second['evidence_file']
-    assert Path(first['evidence_file']).read_bytes() == original
-    assert Path(first['evidence_file']).parent.joinpath('source.pdf').read_bytes() == source.read_bytes()
 
 
 def line(i,text,x,y,page=1,width=90):
@@ -143,66 +85,6 @@ def test_inventor_only_or_unaligned_role_cannot_authorize_combined_applicant():
     assert not local.confirmed_combined_applicants(scan['lines'],600)
     scan=inventor_form('Applicant and inventor');scan['lines'][-2]['rect'][1]+=20
     assert not local.confirmed_combined_applicants(scan['lines'],600)
-
-
-@pytest.mark.parametrize('role', ['Apenas requerente', 'Requerente e inventor'])
-def test_portuguese_combined_role_requires_printed_applicant_value(role):
-    scan=inventor_form(role)
-    scan['lines'][-4]['text']='Requerente e/ou inventor'
-    scan['lines'][-3]['text']='Esta pessoa é:'
-    scan['lines'] += [line(105,'Nome',50,640),line(106,'SECOND, Applicant',250,641),line(107,'E-mail',50,659)]
-    proof=local.confirmed_combined_applicants(scan['lines'],600)
-    assert proof[0]['heading_id']==101 and proof[0]['role_value_id']==103
-    assert local.table_blocks(scan)[-1]['email']==[104]
-
-
-@pytest.mark.parametrize('role', ['Apenas inventor', 'Desconhecido', 'Requerente para'])
-def test_portuguese_inventor_or_unknown_role_is_not_an_applicant(role):
-    scan=inventor_form(role)
-    scan['lines'][-4]['text']='Requerente e/ou inventor'
-    scan['lines'][-3]['text']='Esta pessoa é:'
-    assert not local.confirmed_combined_applicants(scan['lines'],600)
-
-
-def test_portuguese_role_requires_same_row_value():
-    scan=inventor_form('Requerente e inventor')
-    scan['lines'][-4]['text']='Requerente e/ou inventor'
-    scan['lines'][-3]['text']='Esta pessoa é:'
-    scan['lines'][-2]['rect'][1]+=20
-    assert not local.confirmed_combined_applicants(scan['lines'],600)
-
-
-def test_portuguese_inventor_email_excluded_only_with_aligned_explicit_role():
-    scan=inventor_form('Apenas inventor')
-    scan['lines'][-4]['text']='Requerente e/ou inventor'
-    scan['lines'][-3]['text']='Esta pessoa é:'
-    proof=local.excluded_inventor_regions(scan)
-    assert proof[0]['role_value_id']==103 and proof[0]['email_ids']==[104]
-    assert local.required_email_ids(scan)=={16}
-    scan['lines'][-2]['rect'][1]+=20
-    assert local.required_email_ids(scan)=={16,104}
-
-
-@pytest.mark.parametrize('role', ['Déposant seulement','Déposant et inventeur'])
-def test_french_combined_applicant_requires_explicit_aligned_role(role):
-    scan=inventor_form(role)
-    scan['lines'][-4]['text']='Déposant et/ou inventeur'
-    scan['lines'][-3]['text']='Cette personne est :'
-    assert local.confirmed_combined_applicants(scan['lines'],600)[0]['role_value_id']==103
-    scan['lines'][-2]['rect'][1]+=20
-    assert not local.confirmed_combined_applicants(scan['lines'],600)
-
-
-@pytest.mark.parametrize('role,excluded', [('Inventeur seulement',True),
-    ('Déposant et inventeur',False),('Inconnu',False)])
-def test_french_inventor_only_email_is_excluded_only_with_printed_proof(role,excluded):
-    scan=inventor_form(role)
-    scan['lines'][-4]['text']='Déposant et/ou inventeur'
-    scan['lines'][-3]['text']='Cette personne est :'
-    assert bool(local.excluded_inventor_regions(scan)) is excluded
-    assert (104 not in local.required_email_ids(scan)) is excluded
-    scan['lines'][-2]['rect'][1]+=20
-    assert 104 in local.required_email_ids(scan)
 
 
 def test_two_owners_keep_different_blocks():
@@ -505,43 +387,6 @@ def test_company_word_in_email_field_cannot_exempt_it():
     scan=form();scan['lines'][15]['text']='RESEARCH@CREATE LTD'
     assert not local.non_email_name_regions(scan)
     assert 16 in local.required_email_ids(scan)
-
-
-def test_brand_without_legal_suffix_needs_name_label_and_image_confirmation(monkeypatch,tmp_path):
-    from agents.pct_agent import ai_verifier as ai
-    scan=form();scan['lines'][4]['text']='EXAMPLE@CITY'
-    scan['lines'].append(line(99,'UNLABELLED@CITY',250,600))
-    assert [r['line_id'] for r in local.non_email_name_regions(scan)]==[5]
-    assert local.required_email_ids(scan)=={16,99}
-    source=tmp_path/'source.pdf';source.write_bytes(b'original')
-    monkeypatch.setenv('PCT_AI_EVIDENCE_DIR',str(tmp_path/'evidence'))
-    monkeypatch.setattr(ai,'verification_revision',lambda:'offline-test')
-    monkeypatch.setattr(local,'scan_pdf',lambda path:scan)
-    monkeypatch.setattr(local,'verify_value',lambda *a,**kw:([],{'withheld':'name image unclear'}))
-    result=local.verify(source,{})
-    assert result['status']=='error' and 'ollama_at_sign_name_unconfirmed' in result['reason']
-
-
-def test_confirmed_noncontact_marker_page_cannot_abort_other_contact_mapping(monkeypatch):
-    calls=[]
-    def chat(messages,schema,**kwargs):
-        calls.append(messages)
-        return {'blocks':[]},{'seconds':1}
-    monkeypatch.setattr(local,'chat',chat)
-    rows=[{**line(1,'Applicant',50,100),'_contact_marker_required':False},
-          {**line(2,'contact@example.org',250,140),'_contact_marker_required':True},
-          {**line(3,'EXAMPLE@CITY',250,140),'page':2,'_contact_marker_required':False}]
-    local.map_blocks(rows)
-    assert len(calls)==1
-    # Unconfirmed markers cannot use that exemption.
-    rows[-1]['_contact_marker_required']=True
-    with pytest.raises(RuntimeError,match='source_role_unconfirmed'):local.map_blocks(rows)
-
-
-def test_absent_at_sign_is_not_proof_of_noncontact_page():
-    rows=[{**line(1,'Email',50,100),'_contact_marker_required':False},
-          {**line(2,'illegible source',250,100),'_contact_marker_required':False}]
-    with pytest.raises(RuntimeError,match='source_role_unconfirmed'):local.map_blocks(rows)
 
 
 def test_at_sign_company_name_needs_image_confirmation(monkeypatch,tmp_path):

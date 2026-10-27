@@ -2,6 +2,35 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## Current PCT rollback - 27 October 2026
+
+The user requested the original pre-parallel checkpoint and a fresh run of all
+500 rows. PCT source and `.env.example` are restored exactly to
+`pct-before-parallel-20261023-095142` (`8021abd`), using a new forward commit.
+Later teammate history, dashboard code and all collected runtime data remain.
+Historical two-worker and combined-contact sections below are superseded.
+
+Restore only the experiment's environment settings: one PDF worker, one API
+slot, two pending PDFs and four Qwen threads. Remove the worker URL list,
+round-robin distribution, compact timeout scale, combined-contact flag and
+optional Cyrillic OCR override introduced by the experiment. Preserve every
+other setting, the Qwen model/digest and GPT-4o CAPTCHA adapter. The second
+model keeper may remain installed but is unused by this profile.
+
+Private backup and activation receipts are in
+`C:\ProgramData\Menteso\pct-restore-normal-20261027`. Verify the receipt and
+live profile before claiming deployment. The 26 October partial run retained
+282 row results (184 found, 3 withheld, 95 errors) after WIPO HTTP 403 stopped
+downloads. All its reports, journal and original input must remain intact.
+The new user-authorized run starts all 500 original rows from row 1, without
+reusing the incompatible experimental handoff or overwriting older reports.
+This rollback is not evidence that WIPO access or extraction quality improved.
+
+The requested completion report goes only to Sajan and Shweta and asks whether
+to begin the email campaign, with no date. It does not authorize a campaign.
+The configured IT SMTP login was rejected; do not claim an email was sent
+without a successful transport receipt.
+
 ## PCT combined contact release qualified - 26 October 2026
 
 The qualified local profile adds `PCT_OLLAMA_COMBINED_CONTACTS=true` to the

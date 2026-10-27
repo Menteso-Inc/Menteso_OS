@@ -10,7 +10,6 @@ import base64
 import hashlib
 import io
 import json
-import math
 import os
 import re
 import threading
@@ -25,7 +24,6 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-CYRILLIC_ROLE_HEADING = re.compile(r'(?:Заявител[ьи]|Агент(?:\s+или\s+общий\s+представитель)?|Общий\s+представитель)\s*:?', re.I)
 ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|assinatura|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
@@ -44,9 +42,7 @@ def role_headings(lines,width):
     result=[]
     combined={r['heading_id'] for r in confirmed_combined_applicants(lines,width)}
     for line in lines:
-        if (line['rect'][0]>width*.34 or len(line['text'])>=100
-            or not .95 <= line.get('ocr_confidence', 1.0) <= 1.0
-            or not (ROLE_HEADING.search(line['text']) or CYRILLIC_ROLE_HEADING.fullmatch(line['text']))
+        if (line['rect'][0]>width*.34 or len(line['text'])>=100 or not ROLE_HEADING.search(line['text'])
             or (EXCLUDED_HEADING.search(line['text']) and line['id'] not in combined)
             or qualified_role(line['text'])):continue
         # A wrapped "common representative" after "Signature of applicant,
@@ -62,14 +58,14 @@ def confirmed_combined_applicants(lines,width):
     regions=[]
     for heading in lines:
         if heading['rect'][0]>width*.34 or not re.fullmatch(
-                r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor|D[eé]posant et/ou inventeur',heading['text'],re.I):continue
+                r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
         labels=[l for l in lines if l['page']==heading['page']
-                and re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé]|Cette personne est)\s*:?',l['text'],re.I)
+                and re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
                 and abs(l['rect'][0]-heading['rect'][0])<15
                 and 0<l['rect'][1]-heading['rect'][1]<40]
         for label in labels:
             values=[l for l in lines if l['page']==heading['page']
-                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?|Apenas requerente|Requerente e inventor|D[eé]posant (?:seulement|et inventeur)',l['text'],re.I)
+                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?',l['text'],re.I)
                     and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
             if len(values)==1:
                 regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
@@ -108,7 +104,7 @@ def atomic_json(path, value):
             time.sleep(.1 * (attempt + 1))
 
 
-def scan_pdf(path, secondary=False, page_numbers=None, cyrillic=False):
+def scan_pdf(path, secondary=False, page_numbers=None):
     import winocr
     lines, pages = [], []
     started = time.monotonic()
@@ -121,10 +117,7 @@ def scan_pdf(path, secondary=False, page_numbers=None, cyrillic=False):
             scale = 2.5
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
             image=Image.open(io.BytesIO(pix.tobytes('png')))
-            if cyrillic:
-                from .cyrillic_ocr import recognize
-                ocr=recognize(image)
-            elif secondary:
+            if secondary:
                 from .secondary_ocr import recognize
                 ocr=recognize(image)
             else:ocr=winocr.recognize_pil_sync(image, 'en')
@@ -137,19 +130,17 @@ def scan_pdf(path, secondary=False, page_numbers=None, cyrillic=False):
                         max(b['x']+b['width'] for b in boxes)/scale,
                         max(b['y']+b['height'] for b in boxes)/scale]
                 line = {'id':len(lines)+1, 'page':number, 'rect':rect, 'text':item['text'].strip()}
-                if 'confidence' in item:
-                    line['ocr_confidence'] = item['confidence']
                 lines.append(line); page_lines.append(line)
             pages.append({'page':number, 'width':page.rect.width, 'height':page.rect.height,
                           'line_ids':[line['id'] for line in page_lines]})
-    if not secondary and not cyrillic and os.getenv('PCT_OLLAMA_SECONDARY_OCR')=='true' and not any(
+    if not secondary and os.getenv('PCT_OLLAMA_SECONDARY_OCR')=='true' and not any(
             ROLE_HEADING.search(l['text']) and not EXCLUDED_HEADING.search(l['text']) for l in lines):
         result=scan_pdf(path,secondary=True)
         result['primary_scan_seconds']=round(time.monotonic()-started-result['seconds'],3)
         result['seconds']=round(time.monotonic()-started,3)
         return result
     return {'pages':pages, 'lines':lines, 'seconds':round(time.monotonic()-started,3),
-            'engine':'rapidocr_cyrillic' if cyrillic else 'rapidocr' if secondary else 'windows_en'}
+            'engine':'rapidocr' if secondary else 'windows_en'}
 
 
 def compact_regions(scan):
@@ -193,16 +184,16 @@ def excluded_inventor_regions(scan):
         lines=[l for l in scan['lines'] if l['page']==page['page']]
         for heading in lines:
             if heading['rect'][0]>page['width']*.34 or not re.fullmatch(
-                    r'Applicant and/or inventor|Anmelder und/oder Erfinder|Requerente e/ou inventor|D[eé]posant et/ou inventeur',heading['text'],re.I):continue
+                    r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
             stops=[l['rect'][1] for l in lines if l['rect'][1]>heading['rect'][1]+8
                    and abs(l['rect'][0]-heading['rect'][0])<15 and SECTION_STOP.search(l['text'])
                    and not qualified_role(l['text'])]
             bottom=min(stops) if stops else page['height']
-            labels=[l for l in lines if re.fullmatch(r'(?:This person is|Diese Person ist|Esta pessoa [eé]|Cette personne est)\s*:?',l['text'],re.I)
+            labels=[l for l in lines if re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
                     and abs(l['rect'][0]-heading['rect'][0])<15
                     and heading['rect'][1]<l['rect'][1]<min(bottom,heading['rect'][1]+40)]
             for label in labels:
-                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder|Apenas inventor|Inventeur seulement',l['text'],re.I)
+                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder',l['text'],re.I)
                         and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
                 if len(values)!=1:continue
                 ids=[l['id'] for l in lines if '@' in l['text'] and heading['rect'][1]<l['rect'][1]<bottom]
@@ -212,16 +203,17 @@ def excluded_inventor_regions(scan):
 
 
 def non_email_name_regions(scan):
-    """Non-email at-sign text in a labelled Name cell; image proof is required."""
+    """Potential at-sign branding, subject to a blind name-image check later."""
     regions=[]
     for line in scan['lines']:
         if '@' not in line['text'] or alternate_ocr_values('email',line['text']):continue
+        if not re.search(r'\b(?:Ltd|Limited|Inc|LLC|GmbH|Corp|Corporation|Company)\.?$',line['text'],re.I):continue
         page=next(p for p in scan['pages'] if p['page']==line['page'])
         labels=[l for l in scan['lines'] if l['page']==line['page'] and l['rect'][0]<page['width']*.34
                 and FIELD_LABELS['name'].search(l['text']) and abs(l['rect'][1]-line['rect'][1])<4
                 and line['rect'][0]>l['rect'][2]+8]
         if len(labels)==1:regions.append({'line_id':line['id'],'label_id':labels[0]['id'],
-                                         'reason':'Non-email at-sign text in a printed Name field; image confirmation required'})
+                                         'reason':'At-sign in a printed company Name field; image confirmation required'})
     return regions
 
 
@@ -358,13 +350,6 @@ def merge_page_scans(primary, rescanned, replaced_pages):
 def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='model'):
     """Bounded streaming request. Every call records prompt/generation timings."""
     config=ollama_provider.settings()
-    try:
-        scale = float(os.getenv('PCT_OLLAMA_COMPACT_TIMEOUT_SCALE', '1'))
-        if not math.isfinite(scale) or not 1 <= scale <= 4:
-            raise ValueError('out_of_range')
-        timeout *= scale
-    except (TypeError, ValueError):
-        raise ValueError('invalid_ollama_compact_timeout_scale') from None
     ollama_provider.model_identity(config)
     payload={'model':config['model'],'messages':messages,'think':False,'stream':True,
              'format':schema,'keep_alive':'30m','options':{'num_ctx':8192,
@@ -377,8 +362,6 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
         raise RuntimeError('ollama_compact_context_capacity')
     started=time.monotonic();parts=[];final=None;first=None
     with _LOCK, requests.Session() as session:
-        request_started=time.monotonic()
-        queue_seconds=request_started-started
         session.trust_env=False
         try:
             with session.post(config['base_url']+'/api/chat',json=payload,stream=True,
@@ -386,14 +369,14 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
                 if response.status_code!=200:
                     raise RuntimeError(f'ollama_http_{response.status_code}')
                 for raw in response.iter_lines():
-                    if time.monotonic()-request_started>timeout:
+                    if time.monotonic()-started>timeout:
                         raise RuntimeError('ollama_compact_deadline')
                     if not raw:continue
                     part=json.loads(raw)
                     if part.get('error'):raise RuntimeError('ollama_stream_error')
                     text=part.get('message',{}).get('content','')
                     if text:
-                        if first is None:first=time.monotonic()-request_started
+                        if first is None:first=time.monotonic()-started
                         parts.append(text)
                     if part.get('done'):
                         final=part;break
@@ -404,9 +387,8 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
     if not final or final.get('done_reason')!='stop':
         raise RuntimeError('ollama_incomplete_response')
     meta={k:final.get(k) for k in ['prompt_eval_count','prompt_eval_duration','eval_count','eval_duration','load_duration']}
-    meta.update(phase=phase,seconds=round(time.monotonic()-started,3),first_token_seconds=first,
-                queue_seconds=round(queue_seconds,3),request_seconds=round(time.monotonic()-request_started,3))
-    if on_step:on_step(f"[Local Model] {phase}: {meta['seconds']}s (queue {meta['queue_seconds']}s), {meta['prompt_eval_count']} input / {meta['eval_count']} output tokens")
+    meta.update(phase=phase,seconds=round(time.monotonic()-started,3),first_token_seconds=first)
+    if on_step:on_step(f"[Local Model] {phase}: {meta['seconds']}s, {meta['prompt_eval_count']} input / {meta['eval_count']} output tokens")
     try:return json.loads(''.join(parts)),meta
     except ValueError:raise RuntimeError('ollama_invalid_json') from None
 
@@ -428,8 +410,7 @@ def map_blocks(lines,on_step=None):
         blocks=[];calls=[]
         for page in pages:
             page_lines=[l for l in lines if l['page']==page]
-            if not role_headings(page_lines,600) and not any(
-                    l.get('_contact_marker_required', '@' in l['text']) for l in page_lines):continue
+            if not role_headings(page_lines,600) and not any('@' in l['text'] for l in page_lines):continue
             values,meta=map_blocks(page_lines,on_step)
             blocks.extend(values);calls.append(meta)
         return blocks,{'phase':'source layout pages','seconds':round(sum(c.get('seconds',0) for c in calls),3),'pages':calls}
@@ -443,11 +424,7 @@ def map_blocks(lines,on_step=None):
     for number in sorted({l['page'] for l in lines}):
         page_lines=[l for l in lines if l['page']==number]
         headings.extend(l['id'] for l in role_headings(page_lines,600))
-    if not headings:
-        if any('@' in line['text'] for line in lines) and all('_contact_marker_required' in line for line in lines) and not any(
-                line['_contact_marker_required'] for line in lines):
-            return [], {'phase':'source layout not required','seconds':0}
-        raise RuntimeError('ollama_source_role_unconfirmed')
+    if not headings:raise RuntimeError('ollama_source_role_unconfirmed')
     schema=json.loads(json.dumps(LAYOUT_SCHEMA))
     schema['properties']['blocks']['items']['properties']['section']={'type':'integer','enum':headings}
     for kind in ['name','address','email','phone','country']:
@@ -520,12 +497,12 @@ def exact_values(kind,text):
     return [text.strip()] if text.strip() else []
 
 
-def prepare_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
-    """Prepare original pixels and the unchanged optional whole-field OCR gate."""
+def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
+    """No spelling supplied to vision. Disputes require a new crop and OCR."""
     source=' '.join(lookup[i]['text'] for i in ids)
     if kind=='name' and re.fullmatch(r'\s*(?:Name|Nom|Nombre|Name of signatory)\s*:?\s*',source,re.I):
-        return {'result':([],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
-                   'withheld':'Field label is not a contact name'})}
+        return [],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                   'withheld':'Field label is not a contact name'}
     data=crop(pdf,ids,lookup,bounds=bounds)
     label=f"{kind}-{'-'.join(map(str,ids))}"
     (evidence_dir/(label+'.png')).write_bytes(data)
@@ -544,34 +521,16 @@ def prepare_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None):
                 # recovery is retained verbatim from the independently read crop.
                 value=source if ' '.join(source.split()).casefold()==' '.join(accepted.split()).casefold() else accepted
                 if on_step:on_step(f'[Field OCR] {kind}: whole-field agreement ({field_check["seconds"]}s); vision call avoided')
-                return {'result':([value],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
+                return [value],{'kind':kind,'source_ids':ids,'ocr':source,'calls':[],
                     'bounds':bounds,'field_ocr':field_check,'accepted':value,
-                    'resolution':'Two independent whole-field OCR readings agree'})}
+                    'resolution':'Two independent whole-field OCR readings agree'}
         except Exception as exc:
             field_check={'error':type(exc).__name__,'fallback':'original vision verifier'}
-    return {'result':None,'source':source,'data':data,'label':label,'field_check':field_check}
-
-
-def verify_value(pdf,ids,lookup,kind,evidence_dir,on_step=None,bounds=None,*,prepared=None,initial_read=None):
-    """No spelling supplied to vision. Disputes require a new crop and OCR.
-
-    A combined read may supply the first visual observation only. It cannot
-    replace source comparison, OCR gates, or fresh individual dispute reads.
-    """
-    prepared=prepared if prepared is not None else prepare_value(pdf,ids,lookup,kind,evidence_dir,on_step,bounds)
-    if prepared['result'] is not None:return prepared['result']
-    source=prepared['source'];data=prepared['data'];label=prepared['label'];field_check=prepared['field_check']
-    if initial_read is None:
-        reading,meta=read_crop(data,kind,on_step)
-        calls=[meta]
-    else:
-        reading=initial_read['reading']
-        calls=[]  # The one shared request is recorded once on the block.
+    reading,meta=read_crop(data,kind,on_step)
     observed=exact_values(kind,reading.get('text','')) if reading.get('legible') is True else []
     original=exact_values(kind,source)
     key=lambda values:{policy.value_key(kind,v) for v in values}
-    trace={'kind':kind,'source_ids':ids,'ocr':source,'visual':reading,'calls':calls}
-    if initial_read is not None:trace['initial_read_ref']=initial_read['record_id']
+    trace={'kind':kind,'source_ids':ids,'ocr':source,'visual':reading,'calls':[meta]}
     if bounds is not None:trace['bounds']=bounds
     if field_check is not None:trace['field_ocr']=field_check
     if observed and key(observed)==key(original):
@@ -630,9 +589,9 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
     digest=hashlib.sha256(Path(pdf_path).read_bytes()).hexdigest()
     revision=ai.verification_revision()
     base=Path(get_env('PCT_AI_EVIDENCE_DIR') or ai.ROOT/'outputs'/'pct-work-sheets'/'ai-evidence')
-    # Identical PDFs can occur in different rows/runs. Keep their evidence
-    # isolated, just as the full-page verifier does, instead of racing writes.
-    context_suffix='-'+hashlib.sha256(json.dumps(context or {},sort_keys=True).encode()).hexdigest()[:12]
+    context_suffix=''
+    if (context or {}).get('_bibliography'):
+        context_suffix='-'+hashlib.sha256(json.dumps(context['_bibliography'],sort_keys=True).encode()).hexdigest()[:12]
     folder=base/f'{digest[:24]}-{revision}{context_suffix}'
     folder.mkdir(parents=True,exist_ok=True)
     record={'created_at':datetime.now(timezone.utc).isoformat(),'provider':'ollama','method':VERSION,
@@ -645,12 +604,6 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
         if fallback:
             atomic_json(folder/'ocr_primary.json',primary)
             record['secondary_layout_scan']=fallback
-        from . import cyrillic_ocr
-        original_scan = scan
-        scan, cyrillic = cyrillic_ocr.choose_scan(pdf_path, scan, step)
-        if cyrillic:
-            atomic_json(folder/'ocr_before_cyrillic.json', original_scan)
-            record['cyrillic_ocr'] = cyrillic
         atomic_json(folder/'ocr_source.json',scan)
         record['ocr_engine']=scan.get('engine','windows_en')
         record['pages_scanned']=[p['page'] for p in scan['pages']]
@@ -667,9 +620,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 raise RuntimeError('ollama_at_sign_name_unconfirmed')
             region['image_confirmed']=True
         step(f"[AI Verification] OCR scanned all {len(scan['pages'])} pages in {scan['seconds']}s; checking source contact regions with local Qwen")
-        required_markers = required_email_ids(scan)
-        lines=[{**line, '_contact_marker_required': line['id'] in required_markers}
-               for line in compact_regions(scan)]
+        lines=compact_regions(scan)
         if not lines:raise RuntimeError('ollama_no_confirmed_contact_region')
         record['model_source_line_ids']=[l['id'] for l in lines]
         blocks=table_blocks(scan)
@@ -702,11 +653,6 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                 issues.append('Contact withheld: source heading does not establish role');continue
             block_id=f"p{lookup[block['section']]['page']}-b{index}"
             entity=' '.join(lookup[i]['text'] for i in block['name']) or '[unnamed contact]'
-            combined_values={}
-            if os.getenv('PCT_OLLAMA_COMBINED_CONTACTS','false')=='true' and record['layout_method']=='explicit_table_labels':
-                from .combined_contact import verify_block
-                combined_values,batch_record=verify_block(pdf_path,scan,block,block_id,folder,step)
-                record.setdefault('combined_contact_checks',[]).append(batch_record)
             for kind in ['name','address','country','phone','email']:
                 ids=block[kind]
                 if not ids:continue
@@ -716,10 +662,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                     if record['layout_method']=='explicit_table_labels' and os.getenv('PCT_OLLAMA_FIELD_OCR_GATE')=='true':
                         from .field_ocr import bounds_for
                         bounds=bounds_for(scan,block,kind)
-                    if kind in combined_values:
-                        values,trace=combined_values[kind]
-                    else:
-                        values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step,bounds=bounds)
+                    values,trace=verify_value(pdf_path,ids,lookup,kind,folder,step,bounds=bounds)
                     record['checks'].append(trace)
                     if not values:
                         issues.append(f'{kind} withheld: source readings disagree')
@@ -752,9 +695,14 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             # An optional greeting failure must not discard verified contacts.
             record['recipient_review_error']=type(exc).__name__
             step('[Recipient] Printed person could not be confirmed; verified contacts retained')
-        if defer_preferred_email(result,unresolved_emails):
-            issues.append('Primary email withheld: preferred applicant email unconfirmed; verified agent details retained for review')
-        issues.extend(policy.check_email_domains(result,source='original_crop_and_ocr_agreement'))
+        if preferred_email_unconfirmed(result,unresolved_emails):
+            raise RuntimeError('ollama_preferred_email_unconfirmed')
+        result['email_checks']={}
+        for email in policy.result_emails(result):
+            status=policy.email_domain_status(email)
+            result['email_checks'][email]={'source':'original_crop_and_ocr_agreement','domain':status,'mailbox':'not_tested'}
+            if status not in {'mx','implicit_mx'}:
+                policy.withhold_email(result,email);issues.append('Email withheld: domain mail routing '+status)
         if result['status']=='found' and not policy.result_emails(result) and not result['phones']:
             result.update(status='not_found',ai_status='needs_review',category='')
         if not fields or issues:
@@ -794,33 +742,3 @@ def preferred_email_unconfirmed(result,unresolved):
     return bool(result.get('emails') and result.get('contact_role')=='agent'
                 and result.get('signer_selection',{}).get('status')!='confirmed'
                 and any(item['role']=='applicant' for item in unresolved))
-
-
-def defer_preferred_email(result,unresolved):
-    """An uncertain primary choice cannot erase independently verified details.
-
-    Do not promote an agent email when the preferred applicant reading failed.
-    Preserve source-confirmed agent emails with their original role/owner in
-    Additional Email, together with independently verified phone/name fields.
-    """
-    if not preferred_email_unconfirmed(result,unresolved):return False
-    selected={policy.value_key('email',value) for value in result['emails']}
-    fields=[f for f in result.get('field_evidence',[])
-            if f.get('kind')=='email' and f.get('role')=='agent' and f.get('legible')
-            and f.get('entity') and f.get('block_id')
-            and policy.value_key('email',f.get('value','')) in selected]
-    if {policy.value_key('email',f['value']) for f in fields}!=selected:
-        raise RuntimeError('ollama_preferred_email_unconfirmed')
-    additional=list(result.get('additional_emails',[]))
-    seen={(policy.value_key('email',item['email']),item['role'],policy.words(item['owner']))
-          for item in additional}
-    for field in fields:
-        key=(policy.value_key('email',field['value']),field['role'],policy.words(field['entity']))
-        if key not in seen:
-            additional.append({'email':field['value'],'role':field['role'],'owner':field['entity'],
-                               'block_id':field['block_id'],'page':field.get('page'),
-                               'section':field.get('section',''),'evidence':field.get('evidence','')})
-            seen.add(key)
-    result.update(emails=[],additional_emails=additional,ai_status='needs_review',
-                  selection_reason='Primary email unresolved; independently verified agent contacts retained')
-    return True

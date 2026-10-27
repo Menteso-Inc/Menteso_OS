@@ -58,80 +58,6 @@ def failing_verify(path, on_step, context):
     return contacts(context['_row_idx'])
 
 
-def offline_local_slot_verify(path, on_step, context):
-    from agents.pct_agent import local_evidence
-    base = Path(os.environ['PCT_PARALLEL_TEST_DIR'])
-    index = context['_row_idx']
-    (base / f'ready-{index}').write_text(str(os.getpid()))
-    deadline = time.monotonic() + 20
-    while len(list(base.glob('ready-*'))) < 3:
-        if time.monotonic() > deadline:
-            raise RuntimeError('Local workers did not start together')
-        time.sleep(.02)
-    with local_evidence._LOCK:
-        start = time.monotonic()
-        time.sleep(.15)
-        end = time.monotonic()
-        (base / f'local-{index}.json').write_text(json.dumps([start, end]))
-    return {**contacts(index), '_worker_url': os.getenv('PCT_OLLAMA_BASE_URL')}
-
-
-@pytest.mark.parametrize('slots', [1, 2])
-def test_local_source_requests_share_budget_across_processes(tmp_path, monkeypatch, slots):
-    monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))
-    with parallel_verifier.ProcessVerifier(3, slots, offline_local_slot_verify) as pool:
-        futures = [pool.submit('unused.pdf', {'_row_idx': i, '_submitted_at': time.monotonic()})
-                   for i in range(1, 4)]
-        results = [future.result(timeout=30) for future in futures]
-    transitions = []
-    for path in tmp_path.glob('local-*.json'):
-        start, end = json.loads(path.read_text())
-        transitions.extend([(start, 1), (end, -1)])
-    active = peak = 0
-    for _, delta in sorted(transitions):
-        active += delta
-        peak = max(peak, active)
-    assert len(transitions) == 6 and peak == slots
-    assert len({r['_pipeline_timing']['worker_pid'] for r in results}) == 3
-    assert all(r['_pipeline_timing']['queue_seconds'] >= 0 for r in results)
-
-
-@pytest.mark.parametrize('value', [
-    'https://external.example:443,http://127.0.0.1:11436',
-    'http://user:pass@127.0.0.1:11435,http://127.0.0.1:11436',
-    'http://127.0.0.1:11435/path,http://127.0.0.1:11436',
-    'http://127.0.0.1:11435,http://localhost:11435',
-    'http://127.0.0.1:11435',
-])
-def test_worker_urls_reject_external_or_ambiguous_servers(monkeypatch, value):
-    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS', value)
-    with pytest.raises(ValueError):parallel_verifier.local_worker_urls(2)
-
-
-def test_workers_reject_different_model_weights(monkeypatch):
-    from agents.pct_agent import ai_verifier, ollama_provider
-    monkeypatch.setenv('PCT_AI_PROVIDER','ollama')
-    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS','http://127.0.0.1:11435,http://127.0.0.1:11436')
-    monkeypatch.setattr(ollama_provider,'settings',lambda:{})
-    monkeypatch.setattr(ollama_provider,'model_identity',lambda c:{'digest':c['base_url']})
-    with pytest.raises(ValueError,match='models_differ'):
-        with parallel_verifier.ProcessVerifier(2,2):pass
-
-
-def test_spawned_workers_get_distinct_identical_model_servers(tmp_path, monkeypatch):
-    from agents.pct_agent import ollama_provider
-    urls=[f'http://127.0.0.1:{port}' for port in [11435,11436,11437]]
-    monkeypatch.setenv('PCT_PARALLEL_TEST_DIR',str(tmp_path))
-    monkeypatch.setenv('PCT_AI_PROVIDER','ollama')
-    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS',','.join(urls))
-    monkeypatch.setattr(ollama_provider,'settings',lambda:{})
-    monkeypatch.setattr(ollama_provider,'model_identity',lambda c:{'digest':'identical'})
-    with parallel_verifier.ProcessVerifier(3,3,offline_local_slot_verify) as pool:
-        futures=[pool.submit('unused.pdf',{'_row_idx':i}) for i in range(1,4)]
-        results=[f.result(timeout=30) for f in futures]
-    assert {r['_worker_url'] for r in results}==set(urls)
-
-
 @pytest.mark.parametrize('api_slots', [1, 3])
 def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeypatch, api_slots):
     monkeypatch.setenv('PCT_PARALLEL_TEST_DIR', str(tmp_path))
@@ -168,10 +94,8 @@ def test_spawned_verifiers_keep_both_reads_and_share_api_bound(tmp_path, monkeyp
     assert any('[Timing]' in message for message in messages)
 
 
-@pytest.mark.parametrize('distribution', ['dynamic', 'round_robin'])
 @pytest.mark.parametrize('stop_after_four', [False, True])
-def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypatch, stop_after_four, distribution):
-    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', distribution)
+def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypatch, stop_after_four):
     real_pool = parallel_verifier.ProcessVerifier
     monkeypatch.setattr(parallel_verifier, 'ProcessVerifier',
                         lambda workers, slots: real_pool(workers, slots, failing_verify))
@@ -195,21 +119,15 @@ def test_parallel_stop_resume_and_worker_error_preserve_rows(tmp_path, monkeypat
                                    max_pending=4, min_interval=0, completed_rows=saved,
                                    verification_workers=4, api_concurrency=3)
     expected = [2, 4, 5, 6] if stop_after_four else [2, 4, 5, 6, 7, 8, 9]
-    if stop_after_four and distribution == 'round_robin':
-        expected = sorted(int(doc_id.rsplit('_row', 1)[1]) for _, doc_id in browser.calls)
-        assert len(expected) == 4 and not set(expected) & saved
     assert [r['row'] for r in results] == expected
     assert len(browser.calls) == len(expected)
     assert results[0]['status'] == 'error' and results[0]['reason'].startswith('verification_exception:')
     assert all(r['status'] == 'found' for r in results[1:])
     entries = [json.loads(line) for line in journal.path.read_text().splitlines()][1:]
     assert sorted(r['row'] for r in entries) == expected
-    if distribution == 'round_robin':
-        assert all(r['assigned_worker'] == (r['row'] - 1) % 4 + 1 for r in entries)
 
 
 def test_parallel_agent_rebuilds_ordered_sheets_with_retained_contacts(tmp_path, monkeypatch):
-    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', 'round_robin')
     from concurrent.futures import ThreadPoolExecutor
     class OfflinePool:
         def __init__(self, *args): self.pool = ThreadPoolExecutor(max_workers=4)
@@ -238,77 +156,6 @@ def test_parallel_agent_rebuilds_ordered_sheets_with_retained_contacts(tmp_path,
     values = workbook_contents(result['output_file'])['values']
     assert values[0] == tuple(agent.WORK_REPORT_HEADERS)
     assert [r[0] for r in values[1:]] == [r['id'] for r in rows]
-    assert result['worker_distribution']['completed'] == {'1': 2, '2': 2, '3': 2, '4': 2}
-
-
-def fixed_worker_verify(path, on_step, context):
-    index = context['_row_idx']
-    if index == 1:
-        time.sleep(.3)
-    return {**contacts(index), '_worker_url': os.getenv('PCT_OLLAMA_BASE_URL')}
-
-
-def test_two_workers_keep_equal_row_ownership_and_endpoint_after_resume(monkeypatch):
-    from agents.pct_agent import ai_verifier, ollama_provider
-    urls = ['http://127.0.0.1:11435', 'http://127.0.0.1:11436']
-    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION', 'round_robin')
-    monkeypatch.setenv('PCT_OLLAMA_WORKER_URLS', ','.join(urls))
-    monkeypatch.setattr(ai_verifier, 'provider_name', lambda: 'ollama')
-    monkeypatch.setattr(ollama_provider, 'settings', lambda: {})
-    monkeypatch.setattr(ollama_provider, 'model_identity', lambda _: {'digest': 'identical-fixture'})
-    pids = {1: set(), 2: set()}
-    # Nonconsecutive source rows model a resume. Ownership uses original indices.
-    indices = [1, 2, 17, 32, 199, 200]
-    with parallel_verifier.ProcessVerifier(2, 2, fixed_worker_verify) as pool:
-        futures = [(i, pool.submit('unused.pdf', {'_row_idx': i})) for i in indices]
-        for index, future in futures:
-            result = future.result(timeout=30)
-            worker = 1 if index % 2 else 2
-            timing = result['_pipeline_timing']
-            assert timing['worker_id'] == worker
-            assert result['_worker_url'] == urls[worker - 1]
-            pids[worker].add(timing['worker_pid'])
-    assert all(len(values) == 1 for values in pids.values())
-    assert pids[1].isdisjoint(pids[2])
-    allocation = [parallel_verifier.assigned_worker(n, 2) for n in range(1, 201)]
-    assert allocation.count(1) == allocation.count(2) == 100
-
-
-def test_slow_worker_cannot_fill_queue_and_starve_other_worker(monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    released = threading.Event()
-    writer = threading.get_ident()
-    recorded = []
-    class OfflineOwnedPools:
-        def __init__(self, *args):
-            self.pools = [ThreadPoolExecutor(max_workers=1) for _ in range(2)]
-        def __enter__(self):return self
-        def __exit__(self, *args):
-            released.set()
-            for pool in self.pools:pool.shutdown()
-        def drain_messages(self):return []
-        def submit(self, path, row):
-            index = row['_row_idx']
-            def verify():
-                if index == 2:
-                    assert released.wait(3), 'Other worker was starved behind this slow PDF'
-                if index == 9:released.set()
-                return contacts(index)
-            return self.pools[(index - 1) % 2].submit(verify)
-    monkeypatch.setenv('PCT_PDF_WORKER_DISTRIBUTION','round_robin')
-    monkeypatch.setattr(parallel_verifier,'ProcessVerifier',OfflineOwnedPools)
-    browser=FakeBrowser()
-    def record(row):
-        assert threading.get_ident()==writer
-        recorded.append(row['row'])
-    results=overlap.process_rows(source_rows(10),browser,None,make_result,record,
-        lambda _:None,lambda _:None,lambda:False,'fair-queue',max_pending=4,min_interval=0,
-        verification_workers=2,api_concurrency=2)
-    submitted=[int(doc_id.rsplit('_row',1)[1]) for _,doc_id in browser.calls]
-    assert submitted.index(9)<submitted.index(6)
-    assert [r['row'] for r in results]==list(range(1,11))
-    assert all(r['status']=='found' and r['assigned_worker']==(r['row']-1)%2+1 for r in results)
-    assert sorted(recorded)==list(range(1,11))
 
 
 def test_excel_invalid_controls_do_not_block_export_or_mutate_evidence(tmp_path, monkeypatch):
