@@ -502,3 +502,137 @@ def test_failure_saves_evidence_and_no_raw_contact_fallback(monkeypatch,tmp_path
     assert result['status']=='error' and result['emails']==[]
     assert 'ollama_compact_timeout' in result['reason']
     assert json.loads(__import__('pathlib').Path(result['evidence_file']).read_text())['error']=='ollama_compact_timeout'
+
+
+def chinese_form(person=False):
+    scan=form()
+    for item in scan['lines']:
+        if item['rect'][0]==50:item['rect']=[90,item['rect'][1],140,item['rect'][3]]
+    scan['lines'][0]['text']='代理人，共同代表或通信地址'
+    scan['lines'][3]=line(4,'IV−1-1erName (LAST, First):' if person else 'IV-1-1enName:',55,140,width=105)
+    scan['lines'][5]=line(6,'IV-1-2erAddress:',55,160,width=65)
+    scan['lines'][10]['text']='电话号码'
+    scan['lines'][12]['text']='传真号码'
+    scan['lines'][14]['text']='电子邮址'
+    scan['lines'][16]=line(17,'IV-1-5(a电子邮件授权',55,270,width=85)
+    scan['lines'] += [line(31,'IV-1-1zh姓名：',55,130,width=65),
+                      line(32,'示例姓名',250,131),line(33,'IV-1-2zh地址',55,155,width=65),
+                      line(34,'示例地址',250,156)]
+    return scan
+
+
+@pytest.mark.parametrize('person',[False,True])
+def test_chinese_bilingual_codes_map_original_values_without_mutating_ocr(person):
+    scan=chinese_form(person);before=json.dumps(scan,sort_keys=True)
+    block=local.table_blocks(scan)[0]
+    assert block['name']==[5] and block['address']==[7,8]
+    assert block['email']==[16] and block['phone']==[12]
+    assert block['role']=='agent' and block['country']==[8]
+    assert json.dumps(scan,sort_keys=True)==before
+
+
+def test_chinese_repeated_email_still_maps_both_source_occurrences():
+    scan=chinese_form(True)
+    scan['lines'] += [dict(l,page=2,id=l['id']+100) for l in list(scan['lines'])]
+    scan['pages'].append({'page':2,'width':600,'height':800})
+    blocks=local.table_blocks(scan)
+    assert [b['email'] for b in blocks]==[[16],[116]]
+    assert local.required_email_ids(scan)=={16,116}
+
+
+def test_numbered_value_column_text_cannot_become_a_label():
+    heading=line(1,'Agent',90,100,width=100)
+    assert not local.contact_labels([line(2,'IV-1-1enName:',250,140)],heading)
+    assert not local.contact_labels([line(3,'IV-1-1enName:',5,140,width=140)],heading)
+    assert not local.contact_labels([line(4,'ArbitraryName:',55,140)],heading)
+
+
+def test_two_english_name_fields_are_still_ambiguous():
+    scan=chinese_form(True)
+    scan['lines'].append(line(40,'Name:',90,135,width=60))
+    assert local.table_blocks(scan) is None
+
+
+def test_chinese_field_bounds_keep_the_entire_name_and_phone_not_fax():
+    from agents.pct_agent.field_ocr import bounds_for
+    scan=chinese_form(True);block=local.table_blocks(scan)[0]
+    name=bounds_for(scan,block,'name');phone=bounds_for(scan,block,'phone')
+    assert name['label_id']==4 and name['next_label_y']==155
+    assert phone['label_id']==11 and phone['next_label_y']==230
+    assert phone['rect'][3]<scan['lines'][13]['rect'][1]
+
+
+def test_correspondence_requires_explicit_selected_value():
+    scan=chinese_form(True)
+    assert local.table_blocks(scan)[0]['role']=='agent'
+    scan['lines'].append(line(70,'通信地址 (Address for correspondence)',250,110,width=260))
+    block=local.table_blocks(scan)[0]
+    assert block['role']=='correspondence'
+    section=local.source_section(scan['lines'][0],scan['lines'])
+    assert local.policy.CORRESPONDENCE_SECTION.search(section)
+    assert not local.policy.CORRESPONDENCE_SECTION.search(scan['lines'][0]['text'])
+    scan['lines'][-1]['page']=2
+    assert local.table_blocks(scan)[0]['role']=='agent'
+
+
+def test_correspondence_not_misrepresented_as_agent_and_can_supply_contact(monkeypatch):
+    from agents.pct_agent import ai_verifier as ai
+    from agents.pct_agent.test_ai_verifier import extraction,field
+    contact=field('mail@example.org').model_copy(update={
+        'role':'correspondence','section':'IV-1 代理人，共同代表或通信地址 | 通信地址 (Address for correspondence)'})
+    result=ai.select_contacts(extraction(contact),ai.load_rules(),[1])
+    assert result['status']=='found' and result['emails']==['mail@example.org']
+    assert result['contact_role']=='correspondence' and result['agent_name']==''
+    assert result['category']!='Slf'
+    generic=contact.model_copy(update={'section':'Agent or common representative; or address for correspondence'})
+    assert ai.select_contacts(extraction(generic),ai.load_rules(),[1])['status']=='not_found'
+
+
+def test_correspondence_retained_additionally_without_replacing_applicant():
+    from agents.pct_agent import ai_verifier as ai
+    from agents.pct_agent.test_ai_verifier import extraction,field
+    app=field('applicant@example.org',role='applicant').model_copy(update={'section':'Applicant'})
+    other=field('correspondent@example.org').model_copy(update={
+        'role':'correspondence','block_id':'corr',
+        'section':'IV | Address for correspondence'})
+    result=ai.select_contacts(extraction(app,other),ai.load_rules(),[1])
+    assert result['emails']==['applicant@example.org']
+    assert result['additional_emails'][0]['role']=='correspondence'
+    assert 'Correspondence email' in local.policy.format_additional_emails(result)
+
+
+def test_registration_number_is_not_a_contact_heading():
+    lines=[line(1,'代理人',90,100),line(2,'代理人登记号',90,300),
+           line(3,'申请人在专利局的登记号',90,400)]
+    assert [l['id'] for l in local.role_headings(lines,600)]==[1]
+
+
+def test_chinese_additional_agent_names_never_join_primary_owner():
+    scan=chinese_form()
+    scan['lines'] += [line(40,'代理人登记号',90,300),line(41,'12345',250,301),
+                      line(42,'其他代理人',90,320),line(43,'IV-2-1zh名称',55,340,width=65),
+                      line(44,'示例姓名',250,341),line(45,'IV−2-1erName(s)',55,360,width=85),
+                      line(46,'EXAMPLE, Person',250,361),line(47,'国家的指定',90,380)]
+    blocks=local.table_blocks(scan)
+    assert len(blocks)==2 and blocks[0]['name']==[5] and blocks[0]['email']==[16]
+    assert blocks[1]['name']==[46] and blocks[1]['email']==[]
+
+
+@pytest.mark.parametrize('value,applicant',[
+    ('申请人(applicant only)',True),('申请人和发明人 (applicant and inventor)',True),
+    ('发明人(inventor only)',False),('Unknown',False)])
+def test_chinese_combined_role_uses_selected_value_not_generic_heading(value,applicant):
+    scan=inventor_form(value)
+    scan['lines'][-4]['text']='申请人和/或发明人'
+    scan['lines'][-3]['text']='该人是'
+    assert bool(local.confirmed_combined_applicants(scan['lines'],600)) is applicant
+    if value.startswith('发明人'):
+        assert local.required_email_ids(scan)=={16}
+    else:assert local.required_email_ids(scan)=={16,104}
+
+
+def test_chinese_combined_role_cannot_use_value_from_wrong_row():
+    scan=inventor_form('申请人(applicant only)')
+    scan['lines'][-4]['text']='申请人和/或发明人';scan['lines'][-3]['text']='该人是'
+    scan['lines'][-2]['rect'][1]+=20
+    assert not local.confirmed_combined_applicants(scan['lines'],600)

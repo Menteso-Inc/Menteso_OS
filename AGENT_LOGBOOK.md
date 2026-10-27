@@ -1,5 +1,30 @@
 # Menteso Agent Operations Logbook
 
+## 2026-10-27 - PCT bilingual source-layout and retry repair
+
+- Diagnosed real saved PDFs while preserving the active normal 500-row run.
+  Correct emails were present in OCR but unsupported Chinese labels and merged
+  field codes caused unassigned-email errors. Additional-agent headings,
+  registration labels and combined applicant/inventor role choices also needed
+  explicit source-backed handling. All 90 historical extraction-error records
+  with saved OCR now pass layout coverage; this is a layout audit, not 90 new
+  fully verified contact results. Five prior access/download errors had no
+  source available for that audit.
+- Kept one browser, one verifier and the existing local Qwen/GPT CAPTCHA split.
+  Preserved all email-character and ownership checks. Added a separate role for
+  explicitly selected correspondence addressees and retained verified email
+  when DNS is temporarily unconfirmed. Definitive invalid DNS is still withheld.
+- Added recovery helpers and 500-row retention tests. Retries receive original
+  filing metadata only. A failed retry cannot erase an earlier verified contact;
+  identity mismatches and duplicate rows fail closed. New reports have separate
+  names, leaving all original sheets and journals intact.
+- Automated validation: 279 PCT tests pass. Private source-PDF checks and the
+  deployment/recovery receipts are under
+  C:\ProgramData\Menteso\pct-source-layout-repair-20261027. Source edits remain
+  isolated until the idle activation receipt proves otherwise. No live worker
+  is stopped for this repair, and no extraction-completion/accuracy claim is
+  made from layout checks alone.
+
 ## 2026-10-27 - User-requested return to the pre-parallel PCT checkpoint
 
 - User requested restoring the saved normal pipeline and restarting all 500

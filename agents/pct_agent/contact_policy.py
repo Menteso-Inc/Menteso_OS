@@ -118,6 +118,7 @@ def agree(first, second, ocr_emails=None):
 FAX_LABEL = re.compile(r'fax|facsimile|telecop|télécop|传真|팩스', re.I)
 AGENT_SECTION = re.compile(r'agent|attorney|representative|mandataire|vertreter|anwalt|procurador|representante|mandat[aá]rio|대리인|代理|^IV\b', re.I)
 APPLICANT_SECTION = re.compile(r'applicant|anmelder|demandeur|d[eé]posant|solicitante|requerente|申请人|出願人|출원인|^II\b', re.I)
+CORRESPONDENCE_SECTION = re.compile(r'\|\s*(?:通信地址\s*\()?Address for correspondence\)?\s*$', re.I)
 
 
 EMAIL_RE = re.compile(
@@ -177,7 +178,8 @@ def valid_fields(extraction, rules, page_numbers):
             issues.append('Fax-labeled value excluded from phones')
             continue
         section_ok = (AGENT_SECTION.search(f.section) if f.role == 'agent' else
-                      APPLICANT_SECTION.search(f.section) if f.role == 'applicant' else False)
+                      APPLICANT_SECTION.search(f.section) if f.role == 'applicant' else
+                      CORRESPONDENCE_SECTION.search(f.section) if f.role == 'correspondence' else False)
         if not (f.legible and f.page in page_numbers and f.entity.strip() and f.block_id.strip() and section_ok):
             issues.append(f'{f.kind}: missing or unclear source/owner/role')
             continue
@@ -323,6 +325,10 @@ def _select_primary(extraction, rules, page_numbers, empty, preferred=None):
     agents = [fs for fs in contacts if fs[0].role == 'agent']
     app = unique_contact(applicants) or primary_contact(applicants, 'applicant')
     ag = unique_contact(agents) or primary_contact(agents, 'agent')
+    correspondents = [fs for fs in contacts if fs[0].role == 'correspondence']
+    correspondent = unique_contact(correspondents)
+    if not applicants and not agents and correspondent is None:
+        return empty(reason='Multiple correspondence owners require selection review')
     if preferred is not None:
         chosen = preferred
         selection = 'Verified signing representative linked to this printed contact owner'
@@ -380,6 +386,12 @@ def _select_primary(extraction, rules, page_numbers, empty, preferred=None):
                 return _shared_result(app, ag, issues, extraction)
             chosen = app if {words(v) for v in aa} == {words(v) for v in ga} else ag
             selection = 'Process document: shared contacts; same address selects applicant, different address selects agent'
+    if correspondent and (chosen is None or (not values(chosen, 'email')
+                          and values(correspondent, 'email'))) and preferred is None:
+        # A printed correspondence addressee is usable without pretending the
+        # person is the applicant or an appointed attorney. Keep owners apart.
+        chosen = correspondent
+        selection = 'Explicitly selected correspondence contact; no applicant or agent email available'
     names = values(chosen, 'name')
     owner = chosen[0].entity
     name = next((n for n in names if words(n) == words(owner)), '')
@@ -400,6 +412,7 @@ def _select_primary(extraction, rules, page_numbers, empty, preferred=None):
         issues.append('Country withheld: unrecognized or conflicting country')
     types = {f.entity_type for f in chosen}
     category = {'law_firm': 'Slf', 'company': 'Corp', 'individual': 'Ind'}.get(next(iter(types)), '') if len(types) == 1 else ''
+    if chosen[0].role == 'correspondence':category = ''  # Not an appointed agent/applicant classification.
     if not category and chosen[0].role == 'applicant' and re.search(r'\b(gmbh|ltd|limited|inc|incorporated|llc|plc)\.?$', owner, re.I):
         category = 'Corp'
     if not category:
@@ -457,12 +470,29 @@ def withhold_email(result, email):
 
 
 def format_additional_emails(result):
-    labels = {'agent': 'Agent email', 'applicant': 'Applicant email'}
+    labels = {'agent': 'Agent email', 'applicant': 'Applicant email', 'correspondence': 'Correspondence email'}
     return '\n'.join(f"{labels[item['role']]} ({item['owner']}): {item['email']}"
                      for item in result.get('additional_emails', []) if item.get('role') in labels)
 
 
 _DNS_CACHE = {}
+
+
+def apply_email_routing(result, source_method):
+    """Keep source accuracy distinct from a transient mail-routing lookup.
+
+    Known unusable DNS remains withheld. A resolver timeout is not evidence
+    that an independently read PDF address is incorrect or absent.
+    """
+    result['email_checks']={};issues=[]
+    for email in result_emails(result):
+        status=email_domain_status(email)
+        result['email_checks'][email]={'source':source_method,'domain':status,'mailbox':'not_tested'}
+        if status=='unconfirmed':
+            issues.append('Email source verified; mail routing could not be confirmed')
+        elif status not in {'mx','implicit_mx'}:
+            withhold_email(result,email);issues.append('Email withheld: domain mail routing '+status)
+    return issues
 
 
 def email_domain_status(email):

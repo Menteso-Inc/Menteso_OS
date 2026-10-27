@@ -1,8 +1,9 @@
 {
-  "version": 6,
+  "version": 7,
   "include_roles": [
     "applicant",
-    "agent"
+    "agent",
+    "correspondence"
   ],
   "exclude_roles": [
     "inventor",
@@ -14,6 +15,7 @@
     "wipo.int"
   ],
   "instructions": [
+    "An explicitly selected Address for correspondence is a correspondence contact, not proof of an appointed agent or applicant. Preserve that role separately. Use it when no applicant or agent email is available, keeping its name, phone and address together. The generic Box IV heading alone is not proof that this option was selected.",
     "Preserve WIPO source applicant and patent fields exactly. Extract applicant and agent blocks independently; never assume email or phone belongs to an agent.",
     "Use the printed Name field in each labeled contact block. Record signing individuals and explicitly named signing organisations separately as signature evidence; do not substitute a signer into the contact block's owner name. Never infer an employer from an email or a surname.",
     "Read email and phone characters exactly. Fax and registration numbers are excluded. Missing or unclear fields are not guessed.",

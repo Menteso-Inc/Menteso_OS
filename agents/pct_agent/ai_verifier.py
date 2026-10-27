@@ -35,7 +35,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-Role = Literal["applicant", "agent", "inventor", "patent_office", "other", "unknown"]
+Role = Literal["applicant", "agent", "correspondence", "inventor", "patent_office", "other", "unknown"]
 
 
 class TeachingExample(StrictModel):

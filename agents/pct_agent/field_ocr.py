@@ -26,10 +26,9 @@ def bounds_for(scan, block, kind):
              and len(l['text']) < 100 and local.SECTION_STOP.search(l['text'])
              and not local.qualified_role(l['text'])]
     section_end = min(stops) if stops else page['height']
-    labels = [l for l in lines if heading['rect'][1] + 4 < l['rect'][1] < section_end - 2
-              and abs(l['rect'][0] - heading['rect'][0]) < 15
-              and len(l['text']) < 100 and local.FIELD_STOP.search(l['text'])]
-    matches = [l for l in labels if local.FIELD_LABELS[kind].search(l['text'])]
+    region = [l for l in lines if heading['rect'][1] + 4 < l['rect'][1] < section_end - 2]
+    labels = local.contact_labels(region, heading)
+    matches = local.matching_labels(labels, kind)
     if len(matches) != 1:
         return None
     label = matches[0]

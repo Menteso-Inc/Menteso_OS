@@ -24,18 +24,18 @@ from . import contact_policy as policy, ollama_provider
 
 VERSION = 'local-source-lines-1'
 _LOCK = threading.Lock()
-ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|代理人|代理机构)', re.I)
+ROLE_HEADING = re.compile(r'^(?:(?:Box|Feld|Nr\.?|No\.?|[IVX0-9. -])+\s*)?(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Common representative|Vertreter|Solicitante|Requerente)\b|申请人|出願人|其他代理人|代理人|代理机构)', re.I)
 EXCLUDED_HEADING = re.compile(r'inventor|erfinder|inventeur|signature|assinatura|unterschrift|signatur|firma|发明人|発明者|签字|签名|署名', re.I)
 EMAIL_LABEL = re.compile(r'e.?mail|courriel|correo|电子邮|电子信|電子メ', re.I)
-QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|para|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認',re.I)
+QUALIFIED_ROLE = re.compile(r'\b(for|f[uü]r|pour|para|only|nur|vor|reference|registration|capacity)\b|書類記号|指定国|使用|承認|登记号',re.I)
 FIELD_LABELS = {
     'name':re.compile(r'^(?:(?:Name|Nom|Nombre)(?=\s|:|$|\()|Nome(?:\s*\([^)]*\))?\s*:?\s*$|姓名|名称)',re.I),
     'address':re.compile(r'^(?:(?:Address|Anschrif[ti]|Adresse)\b|(?:Direcci[oóö]n|Endere[çc]o)\s*:?\s*$|地址|通信地址|あて名)',re.I),
     'phone':re.compile(r'^(?:(?:(?:N[o°]\.?\s*)?de\s+)?t[eé]l[eé]phone|No\.\s+de\s+(?:tel[eé]fono|telefone)|Telephone|Telefonnr\.?|Telefon|Phone|Tel\.?)(?:\s|$|:)|电话|電話',re.I),
-    'email':re.compile(r'^(?:E.?mail|Courriel|Courrier\s+[eé]lectronique|Correo(?:\s+electr[oóö]nico)?|Endere[çc]o\s+de\s+correio\s+electr[oó]nico|电子邮件(?:地址)?|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
+    'email':re.compile(r'^(?:E.?mail|Courriel|Courrier\s+[eé]lectronique|Correo(?:\s+electr[oóö]nico)?|Endere[çc]o\s+de\s+correio\s+electr[oó]nico|电子邮件(?:地址)?|电子邮址|電子メ[-ー—]*ル)(?:\s*(?:address|Adresse))?\s*[:：]?$',re.I),
 }
-FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Endere[çc]o|Direcci[oóö]n|Nationality|Nationalit[eé]|Nacionalidad|Residence|Domicil[ei]o?|Domic[íi]lio|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|de\s+t[eé]l[eé]phone|E.?mail|Courriel|Courrier|Correo|Autori[sz]|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|国籍|居所)',re.I)
-SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|Solicitante|Requerente|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Inventor|Erfinder|Inventeur|Signature|Assinatura|Firma|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS|DESIGNACIONES|DESIGNA[ÇC][ÕO]ES|Revendication|Reivindicaci[oó]n)\b|申请人|出願人|代理人|代理机构|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
+FIELD_STOP = re.compile(r'^(?:Name|Nom|Address|Anschrif[ti]|Adresse|Endere[çc]o|Direcci[oóö]n|Nationality|Nationalit[eé]|Nacionalidad|Residence|Domicil[ei]o?|Domic[íi]lio|State of (?:nationality|residence)|Staatsangeh[oö]rigkeit|Sitz|Telephone|Telefonnr|Telefon|Phone|Tel\b|de\s+t[eé]l[eé]phone|E.?mail|Courriel|Courrier|Correo|Autori[sz]|Fax|Telefax|Facsimile|Registration|Applicant.*number|N[o°]|姓名|名称|地址|通信地址|电话|電話|あて名|ファクシミリ|電子メ|住所|传真|电子邮件|电子邮址|国籍|居所)',re.I)
+SECTION_STOP = re.compile(r'^(?:(?:Applicant|Anmelder|Demandeur|D[eé]posant|Solicitante|Requerente|(?:Additional\s+)?Agent|(?:Weitere(?:\(r\))?\s+)?Anwalt|Mandataire|Mandat[aá]rio|Representative|Inventor|Erfinder|Inventeur|Signature|Assinatura|Firma|Unterschrift|Check.?list|Kontrolliste|Priority|Priorit[aä]t|BESTIMMUNGEN|DESIGNATIONS|DESIGNACIONES|DESIGNA[ÇC][ÕO]ES|Revendication|Reivindicaci[oó]n)\b|申请人|出願人|其他代理人|代理人|代理机构|国家的指定|发明人|発明者|署名|签字|签名|优先权|清单)',re.I)
 
 
 def role_headings(lines,width):
@@ -58,14 +58,14 @@ def confirmed_combined_applicants(lines,width):
     regions=[]
     for heading in lines:
         if heading['rect'][0]>width*.34 or not re.fullmatch(
-                r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+                r'Applicant and/or inventor|Anmelder und/oder Erfinder|申请人和/或发明人',heading['text'],re.I):continue
         labels=[l for l in lines if l['page']==heading['page']
-                and re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+                and re.fullmatch(r'This person is|Diese Person ist|该人是',l['text'],re.I)
                 and abs(l['rect'][0]-heading['rect'][0])<15
                 and 0<l['rect'][1]-heading['rect'][1]<40]
         for label in labels:
             values=[l for l in lines if l['page']==heading['page']
-                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?',l['text'],re.I)
+                    and re.fullmatch(r'Applicant (?:only|and inventor)|(?:Nur )?Anmelder(?: (?:nur|und Erfinder))?|申请人\s*\(applicant only\)|申请人和发明人\s*\(applicant and inventor\)',l['text'],re.I)
                     and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
             if len(values)==1:
                 regions.append({'heading_id':heading['id'],'role_label_id':label['id'],
@@ -87,7 +87,19 @@ def source_section(heading,lines):
     margin=[l for l in lines if l['page']==heading['page'] and l['rect'][2]<heading['rect'][0]
             and abs(l['rect'][1]-heading['rect'][1])<5
             and re.fullmatch(r'[IVXⅠⅡⅢⅣ]+(?:\s*[-.]\s*[0-9I]+)*',l['text'])]
-    return ' '.join([*(l['text'] for l in margin),heading['text']])
+    section=' '.join([*(l['text'] for l in margin),heading['text']])
+    selected=correspondence_value(heading,lines)
+    return section+' | '+selected['text'] if selected else section
+
+
+def correspondence_value(heading, lines):
+    """The selected value, not the generic Box IV heading, proves this role."""
+    if not policy.AGENT_SECTION.search(heading['text']):return None
+    values=[l for l in lines if l['page']==heading['page']
+            and 0<l['rect'][1]-heading['rect'][1]<25
+            and l['rect'][0]>heading['rect'][2]+8
+            and re.fullmatch(r'通信地址\s*\(Address for correspondence\)|Address for correspondence',l['text'],re.I)]
+    return values[0] if len(values)==1 else None
 
 
 def atomic_json(path, value):
@@ -184,16 +196,16 @@ def excluded_inventor_regions(scan):
         lines=[l for l in scan['lines'] if l['page']==page['page']]
         for heading in lines:
             if heading['rect'][0]>page['width']*.34 or not re.fullmatch(
-                    r'Applicant and/or inventor|Anmelder und/oder Erfinder',heading['text'],re.I):continue
+                    r'Applicant and/or inventor|Anmelder und/oder Erfinder|申请人和/或发明人',heading['text'],re.I):continue
             stops=[l['rect'][1] for l in lines if l['rect'][1]>heading['rect'][1]+8
                    and abs(l['rect'][0]-heading['rect'][0])<15 and SECTION_STOP.search(l['text'])
                    and not qualified_role(l['text'])]
             bottom=min(stops) if stops else page['height']
-            labels=[l for l in lines if re.fullmatch(r'This person is|Diese Person ist',l['text'],re.I)
+            labels=[l for l in lines if re.fullmatch(r'This person is|Diese Person ist|该人是',l['text'],re.I)
                     and abs(l['rect'][0]-heading['rect'][0])<15
                     and heading['rect'][1]<l['rect'][1]<min(bottom,heading['rect'][1]+40)]
             for label in labels:
-                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder',l['text'],re.I)
+                values=[l for l in lines if re.fullmatch(r'Inventor only|Erfinder nur|nur Erfinder|发明人\s*\(inventor only\)',l['text'],re.I)
                         and abs(l['rect'][1]-label['rect'][1])<4 and l['rect'][0]>label['rect'][2]+8]
                 if len(values)!=1:continue
                 ids=[l['id'] for l in lines if '@' in l['text'] and heading['rect'][1]<l['rect'][1]<bottom]
@@ -223,6 +235,41 @@ def required_email_ids(scan):
     return {l['id'] for l in scan['lines'] if '@' in l['text']} - excluded
 
 
+def contact_labels(lines, heading):
+    """Read label cells without changing original OCR text, IDs or evidence.
+
+    Chinese ePCT forms sometimes join the margin code (IV-1-1en) to
+    the field label. Only a numbered code straddling the known label-column
+    boundary may be removed. Value-column text can never become a label.
+    """
+    labels=[]
+    left=heading['rect'][0]
+    prefix=re.compile(r'^[IVX]+(?:\s*[-−–—]\s*\d+)+(?:\([a-z]\)?)?(?:en|er|zh)?\s*',re.I)
+    for original in lines:
+        if len(original['text'])>=100:continue
+        label=original
+        if not abs(original['rect'][0]-left)<15:
+            if not (15<=left-original['rect'][0]<=55 and original['rect'][2]>left):continue
+            match=prefix.match(original['text'])
+            if not match:continue
+            text=original['text'][match.end():]
+            if not FIELD_STOP.search(text):continue
+            label={**original,'text':text,'rect':[left,*original['rect'][1:]]}
+        if FIELD_STOP.search(label['text']):labels.append(label)
+    return labels
+
+
+def matching_labels(labels, kind):
+    matches=[l for l in labels if FIELD_LABELS[kind].search(l['text'])]
+    if len(matches)>1 and kind in {'name','address'}:
+        # Use the explicitly printed English rendition, including the personal
+        # name label "Name (LAST, First)". Never translate the owner's value.
+        pattern=r'Name(?:\s*\(LAST,\s*First\)|\(s\))?' if kind=='name' else r'Address'
+        english=[l for l in matches if re.fullmatch(pattern+r'\s*[:：]?\s*',l['text'],re.I)]
+        if len(english)==1:return english
+    return matches
+
+
 def table_blocks(scan):
     """Recognize explicit label/value rows; ambiguity goes to the model mapper.
 
@@ -242,19 +289,13 @@ def table_blocks(scan):
             region=[l for l in lines if y+4<l['rect'][1]<bottom-2]
             # ePCT field labels are aligned with the section heading; values
             # must be in a separate column and below the same role heading.
-            labels=[l for l in region if abs(l['rect'][0]-heading['rect'][0])<15
-                    and len(l['text'])<100 and FIELD_STOP.search(l['text'])]
+            labels=contact_labels(region,heading)
             block={'role':'agent' if policy.AGENT_SECTION.search(heading['text']) else 'applicant',
                    'section':heading['id'],'name':[],'address':[],'email':[],'phone':[],
                    'country':[],'entity_type':'unknown'}
-            for kind,pattern in FIELD_LABELS.items():
-                matched=[l for l in labels if pattern.search(l['text'])]
-                if len(matched)>1 and kind in {'name','address'}:
-                    # Bilingual forms explicitly print English Name/Address
-                    # beside a second language. Select the printed English
-                    # rendition; never translate an extracted identity.
-                    english=[l for l in matched if re.match(r'^(?:Name|Address)\s*:?$',l['text'],re.I)]
-                    if len(english)==1:matched=english
+            if correspondence_value(heading,lines):block['role']='correspondence'
+            for kind in FIELD_LABELS:
+                matched=matching_labels(labels,kind)
                 if len(matched)>1:return None
                 if not matched:continue
                 label=matched[0]
@@ -395,7 +436,7 @@ def chat(messages, schema, *, max_tokens=700, timeout=180, on_step=None, phase='
 
 ARRAY_IDS={'type':'array','items':{'type':'integer'}}
 LAYOUT_SCHEMA={'type':'object','properties':{'blocks':{'type':'array','items':{
-    'type':'object','properties':{'role':{'enum':['applicant','agent']},'section':{'type':'integer'},
+    'type':'object','properties':{'role':{'enum':['applicant','agent','correspondence']},'section':{'type':'integer'},
     **{k:ARRAY_IDS for k in ['name','address','email','phone','country']},
     'entity_type':{'enum':['company','individual','law_firm','unknown']}},
     'required':['role','section','name','address','email','phone','country','entity_type'],
@@ -446,6 +487,8 @@ def map_blocks(lines,on_step=None):
         if len({allowed[i]['page'] for i in ids})!=1:
             raise RuntimeError('ollama_cross_page_owner_mapping')
         heading=allowed[block['section']]
+        if correspondence_value(heading,lines):block['role']='correspondence'
+        elif block.get('role')=='correspondence':raise RuntimeError('ollama_source_role_unconfirmed')
         for kind in ['name','address','email','phone','country']:
             block[kind]=[i for i in block[kind] if not (
                 abs(allowed[i]['rect'][0]-heading['rect'][0])<15 and FIELD_STOP.search(allowed[i]['text']))]
@@ -647,7 +690,8 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
                     'section':block['section'],'reason':'Additional-agent list has no contact details; primary contact and name already verified'})
                 continue
             section=source_section(lookup[block['section']],scan['lines']);role=block['role']
-            pattern=policy.AGENT_SECTION if role=='agent' else policy.APPLICANT_SECTION
+            pattern=(policy.AGENT_SECTION if role=='agent' else policy.CORRESPONDENCE_SECTION
+                     if role=='correspondence' else policy.APPLICANT_SECTION)
             combined_ids={r['heading_id'] for r in record['confirmed_combined_applicant_regions']}
             if not pattern.search(section) or (EXCLUDED_HEADING.search(section) and block['section'] not in combined_ids):
                 issues.append('Contact withheld: source heading does not establish role');continue
@@ -697,12 +741,7 @@ def verify(pdf_path,ocr_result,on_step=None,context=None):
             step('[Recipient] Printed person could not be confirmed; verified contacts retained')
         if preferred_email_unconfirmed(result,unresolved_emails):
             raise RuntimeError('ollama_preferred_email_unconfirmed')
-        result['email_checks']={}
-        for email in policy.result_emails(result):
-            status=policy.email_domain_status(email)
-            result['email_checks'][email]={'source':'original_crop_and_ocr_agreement','domain':status,'mailbox':'not_tested'}
-            if status not in {'mx','implicit_mx'}:
-                policy.withhold_email(result,email);issues.append('Email withheld: domain mail routing '+status)
+        issues.extend(policy.apply_email_routing(result,'original_crop_and_ocr_agreement'))
         if result['status']=='found' and not policy.result_emails(result) and not result['phones']:
             result.update(status='not_found',ai_status='needs_review',category='')
         if not fields or issues:
@@ -728,7 +767,7 @@ def redundant_additional_agent(block,lookup,fields):
     only unused name pixels, after the actual contact and identity have passed.
     """
     if (block['role']!='agent' or block['email'] or block['phone'] or
-            not re.match(r'^Additional\s+agent',lookup[block['section']]['text'],re.I)):
+            not re.match(r'^(?:Additional\s+agent|其他代理人)',lookup[block['section']]['text'],re.I)):
         return False
     kinds={}
     for field in fields:

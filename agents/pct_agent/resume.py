@@ -55,7 +55,7 @@ def load_handoff(path, input_file, rows):
             raise ValueError("Resume handoff has malformed contact fields")
         additional = result.get('additional_emails', [])
         if not isinstance(additional, list) or any(
-                not isinstance(item, dict) or item.get('role') not in {'agent', 'applicant'}
+                not isinstance(item, dict) or item.get('role') not in {'agent', 'applicant', 'correspondence'}
                 or not isinstance(item.get('owner'), str)
                 or not isinstance(item.get('email'), str)
                 or not policy._valid_email_syntax(item['email']) for item in additional):

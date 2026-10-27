@@ -2,6 +2,39 @@
 
 Read `AGENTS.md`, `AGENT_LOGBOOK.md`, and `ENVIRONMENT_SETUP.md` completely before changing code.
 
+## PCT source-layout repair - 27 October 2026
+
+The normal one-worker profile is retained. This repair recognizes Chinese
+bilingual ePCT label cells, margin codes merged into labels, additional-agent
+sections and explicitly selected applicant/inventor roles. A registration
+number label is not a contact heading. Every required email region still must
+be mapped, and original-image/OCR character verification remains mandatory.
+
+An explicitly selected correspondence addressee has its own role; do not call
+that person an appointed agent or applicant. Transient DNS uncertainty is
+recorded separately from source accuracy and does not erase a verified email.
+Known NXDOMAIN/null-MX results remain withheld; mailbox existence is not tested.
+
+`agents/pct_agent/recovery.py` validates original row identities, generates a
+retry sheet containing only filing metadata, and merges retries without losing
+prior verified contacts. Its 500-row tests enforce coverage and stable order.
+The original input, journals, evidence and reports must remain unchanged.
+
+Private source-PDF checks, historical layout audit and an idle-only activation
+and recovery controller are in
+`C:\ProgramData\Menteso\pct-source-layout-repair-20261027`.
+Check `recovery-status.json`, `release-plan.json` and `activation.json` before
+claiming live deployment. While the original 500-row run is active, these
+changes are staged in an isolated checkout. Do not restart that run to apply
+them. A `CANCEL` file in the private job directory cancels queued work without
+stopping an active extraction. The controller performs one bounded retry pass
+after the current run ends and all agents are idle; it must not overwrite
+teammate changes or silently repeat a disconnected launch. Any remaining WIPO
+access failures or unresolved readings need an explicit follow-up, not a
+fabricated contact or a claim that all 500 rows were found. Reports distinguish
+processed, found, failed and still-unprocessed rows. No accuracy percentage is
+claimed for a batch without reference checking.
+
 ## Current PCT rollback - 27 October 2026
 
 The user requested the original pre-parallel checkpoint and a fresh run of all
